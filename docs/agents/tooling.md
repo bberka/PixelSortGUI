@@ -73,6 +73,7 @@ Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref
 | `hooks` | `sh .hooks/test-commit-msg.sh` |
 | `commit-messages` | Runs `.hooks/commit-msg` on every commit in a pull request |
 | `build` | `pnpm exec vp run build` |
+| `e2e` | `pnpm exec vp run test:e2e` (Chromium and Firefox against the production build) |
 | `test` | The required gate. `needs` all jobs above, `if: always()`, passes only when every needed job succeeded (except `commit-messages`, which may be `skipped` on `push` events only). Keep its name stable, because the branch ruleset requires it. |
 
 `agent-context.yml`, on pull requests (opened, synchronize, reopened, labeled, unlabeled): runs the size budget check against the base branch. Fetch the base from `github.base_ref`, not a hard-coded name. A pull request that grows the budget needs the label `agent-context-increase`.

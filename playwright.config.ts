@@ -9,7 +9,7 @@ export default defineConfig({
 	fullyParallel: true,
 	forbidOnly: Boolean(process.env.CI),
 	retries: process.env.CI ? 1 : 0,
-	reporter: process.env.CI ? 'github' : 'list',
+	reporter: process.env.CI ? [['github'], ['html', {open: 'never'}]] : 'list',
 	use: {
 		// eslint-disable-next-line @typescript-eslint/naming-convention -- Playwright config option name
 		baseURL: previewUrl,

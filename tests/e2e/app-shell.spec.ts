@@ -150,6 +150,21 @@ test('with IndexedDB unavailable the banner shows and the app stays usable', asy
 	expect(consoleErrors, 'Console errors').toEqual([]);
 });
 
+test('the app bar goes back to the library from the editor', async ({page}) => {
+	await page.goto('/');
+	await importSyntheticProject(page);
+	await expect(
+		page.getByRole('region', {name: 'Canvas', exact: true}),
+	).toBeVisible();
+
+	await page.getByRole('button', {name: 'Back to library'}).click();
+
+	await expect(
+		page.getByRole('region', {name: 'Canvas', exact: true}),
+	).toHaveCount(0);
+	expect(new URL(page.url()).hash).toBe('#/');
+});
+
 test('the theme toggle in the app bar changes the theme and survives a reload', async ({
 	page,
 }) => {

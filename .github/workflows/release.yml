@@ -1,0 +1,82 @@
+name: Release
+
+# Manual only: Actions -> Release -> Run workflow (on the default branch).
+# Version = 0.<VERSION file>.<patch>, computed from the latest v0.<VERSION>.* tag.
+# VERSION holds the minor number only and is bumped by hand in a normal pull request.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify, build, tag, and release
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # Uses the pnpm version pinned in package.json's packageManager field.
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Determine release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing_tag="$(git tag --points-at "$GITHUB_SHA" --list 'v0.*' --sort=-v:refname | head -n 1)"
+          if [ -n "$existing_tag" ]; then
+            version="${existing_tag#v}"
+            if gh release view "$existing_tag" >/dev/null 2>&1; then
+              echo "::error::Release $existing_tag already exists for commit $GITHUB_SHA."
+              exit 1
+            fi
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Re-running release for existing tag $existing_tag on $GITHUB_SHA"
+          else
+            version="$(node scripts/release-version.ts next)"
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::Tag v$version already exists."
+              exit 1
+            fi
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Releasing $version"
+          fi
+
+      - run: pnpm exec vp run check
+      - run: pnpm exec vp run build
+
+      - name: Create and push tag
+        if: steps.version.outputs.tag_exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "v$VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/v$VERSION"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "PixelSortGUI v$VERSION" \
+            --generate-notes

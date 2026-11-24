@@ -27,6 +27,7 @@
 		"lint:fix": "xo --fix",
 		"format": "xo --fix",
 		"check": "xo && tsgo -b && vp test run",
+		"version:next": "node scripts/release-version.ts next",
 		"test:e2e": "playwright test",
 		"check:a11y": "playwright test --grep @a11y",
 		"proof:sheet": "node scripts/proof-sheet.ts",

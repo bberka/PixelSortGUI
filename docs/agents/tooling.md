@@ -31,7 +31,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run proof:sheet` | Capture proof viewports and build a contact sheet via `scripts/proof-sheet.ts` |
 | `vp run browser:install` | Install Playwright Chromium and Firefox browsers |
 | `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite |
-| `vp run version:next` | Print the next release version (planned) |
+| `vp run version:next` | Print the next release version |
 | `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` |
 | `vp run skills:install` | Restore the agent skills listed in `skills-lock.json` (planned, optional) |
 
@@ -59,7 +59,7 @@ The branch checks share one helper, `scripts/git-hooks/protected-branch.sh`. Hoo
 
 Hooks do not stop a server-side merge from adding a trailer. The owner turns off any GitHub setting that adds co-authors to merge commits, and the lead checks the message on `main` after each merge.
 
-## CI (GitHub Actions, planned)
+## CI (GitHub Actions)
 
 Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref with `cancel-in-progress`, steps `actions/checkout`, `pnpm/action-setup`, `actions/setup-node` (Node 24, `cache: pnpm`), `pnpm install --frozen-lockfile`. Call `vp` through `pnpm exec` so the pinned version runs.
 
@@ -71,8 +71,9 @@ Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref
 | `typecheck` | `pnpm exec tsgo -b` |
 | `unit` | `pnpm exec vp test run` |
 | `hooks` | `sh .hooks/test-commit-msg.sh` |
+| `commit-messages` | Runs `.hooks/commit-msg` on every commit in a pull request |
 | `build` | `pnpm exec vp run build` |
-| `test` | The required gate. `needs` all jobs above, `if: always()`, fails if any result is `failure` or `cancelled`. Keep its name stable, because the branch ruleset requires it. |
+| `test` | The required gate. `needs` all jobs above, `if: always()`, passes only when every needed job succeeded (except `commit-messages`, which may be `skipped` on `push` events only). Keep its name stable, because the branch ruleset requires it. |
 
 `agent-context.yml`, on pull requests (opened, synchronize, reopened, labeled, unlabeled): runs the size budget check against the base branch. Fetch the base from `github.base_ref`, not a hard-coded name. A pull request that grows the budget needs the label `agent-context-increase`.
 
@@ -93,13 +94,14 @@ Goal: the always-loaded files stay small as the docs grow.
 
 Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`.github/workflows/pages.yml`). Pushes to `main` and manual dispatch build and deploy; pull requests build and validate output without deployment. The production build (`dist/`) must work when served from the domain root (`/`), and the published output includes `CNAME` containing `glitch.bbay.dev`. Run `pnpm run check:pages-output` locally to check the built output.
 
-ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
+ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only and is bumped by hand in a normal pull request when starting a new minor series; the release workflow never commits or pushes to `main`. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 
-1. Compute the next patch from the latest `v0.<VERSION>.*` tag (`scripts/release-version.ts next`). Fail if the tag exists.
+1. Determine the release version: if the current commit already has a `v0.*` tag without a GitHub release, reuse it; otherwise compute the next patch from the latest `v0.<VERSION>.*` tag (`scripts/release-version.ts next`).
 2. Run `vp run check` and `vp run build`.
-3. Tag the commit.
-4. Deploy the contents of `dist/` (with `CNAME`) to GitHub Pages.
-5. Create the GitHub release last, so a failed deploy leaves no release.
+3. Create and push the `v0.<minor>.<patch>` tag (skipped when reusing an existing tag on the same commit).
+4. Create the GitHub release last.
+
+Because tagging happens only after checks and build pass, and a re-run on a commit that already carries a `v0.*` tag without a GitHub release reuses that tag instead of computing a higher patch, retrying a failed release run will not accidentally skip a version. If both the tag and the GitHub release already exist on that commit, the run fails early.
 
 The source tree keeps no version number; the build stamps it.
 

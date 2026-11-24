@@ -1,5 +1,6 @@
 import type {ComponentType} from 'react';
 import {EffectStackPanel} from '@/features/stack/stack-panel.tsx';
+import {ParameterPanel} from '@/features/params/params-panel.tsx';
 import {cn} from '@/lib/utils';
 
 /**
@@ -15,7 +16,7 @@ export const EDITOR_SLOTS: Record<EditorSlotId, ComponentType | null> = {
 	toolbar: null,
 	canvas: null,
 	stack: EffectStackPanel,
-	params: null,
+	params: ParameterPanel,
 };
 
 function SlotPlaceholder({label}: {readonly label: string}) {

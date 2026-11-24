@@ -66,7 +66,7 @@ The subagent runs these and reports only what it ran:
 - **UI change.** Run the app in a desktop browser and check it at three viewport widths: 390x844 (phone width), 820x1180 (tablet width), and 1440x900 (desktop width). This checks responsive layout only; it does not reproduce mobile canvas, memory, or storage limits. Take a screenshot at each width. Assert in the script what can be asserted (text present, no horizontal scroll, no console errors) and look at the screenshots once, after the last edit. Do not mock the page. A fix shows before and after. A follow-up change after the pull request opens gets fresh screenshots.
 - **Engine change.** A test over fixed input pixels with expected output, plus a before and after image from a sample photo when the result is visual.
 - **Docs or tooling change.** The command output that shows it works, or the link and path check.
-- **Where screenshots go.** Save them to a local folder that git ignores, embed them in the final chat message by absolute path, and upload them into the pull request via `scripts/publish-evidence.ts` (planned; until `T0.4` lands, list the local paths in the pull request and write `screenshots not uploaded`).
+- **Where screenshots go.** Save them to a local folder that git ignores, embed them in the final chat message by absolute path, and upload them into the pull request via `scripts/publish-evidence.ts` (`vp run evidence`).
 - **Not possible.** Say what you tried and write `Validation: not run in app` with the reason.
 
 ## 6. Review (lead agent)

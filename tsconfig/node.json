@@ -8,6 +8,11 @@
 		"lib": ["ES2024"],
 		"types": ["node"]
 	},
-	"include": ["../vite.config.ts", "../xo.config.ts", "../scripts/**/*.ts"],
+	"include": [
+		"../vite.config.ts",
+		"../xo.config.ts",
+		"../playwright.config.ts",
+		"../scripts/**/*.ts"
+	],
 	"exclude": ["../scripts/**/*.test.ts"]
 }

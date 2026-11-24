@@ -18,6 +18,12 @@ logs/
 .unslop/
 .proof/
 
+# Playwright output
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
 # Editors and OS files
 .DS_Store
 Thumbs.db

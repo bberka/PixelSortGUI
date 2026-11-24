@@ -26,12 +26,18 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run lint`, `vp run lint:fix` | xo check, xo with fixes |
 | `vp run typecheck` | `tsgo -b` |
 | `vp run test`, `vp run test:watch` | `vp test run`, `vp test` |
+| `vp run test:e2e` | Playwright end-to-end suite against the production build on Chromium and Firefox |
+| `vp run check:a11y` | Playwright `@axe-core/playwright` accessibility checks (`@a11y` tests) |
+| `vp run proof:sheet` | Capture proof viewports and build a contact sheet via `scripts/proof-sheet.ts` |
+| `vp run browser:install` | Install Playwright Chromium and Firefox browsers |
 | `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite |
 | `vp run version:next` | Print the next release version (planned) |
-| `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` (planned) |
+| `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` |
 | `vp run skills:install` | Restore the agent skills listed in `skills-lock.json` (planned, optional) |
 
 `vp dev` is a built-in that ignores a `dev` script, so `dev` and `gui` are defined explicitly under `run.tasks` in `vite.config.ts` (`dev` runs `vp dev` and `gui` runs `vp build && vp preview`, both with `cache: false`) and omitted from `package.json` `scripts`. Verified with `vp` 1.4.0 (local `vite-plus` 1.6.0): Vite+ splits `&&` in `run.tasks.<name>.command` into sequential subcommands, respects `cache: false`, and serves `vp run gui` at `http://localhost:4173`.
+
+`vp run evidence` (`scripts/publish-evidence.ts`) only writes to the `evidence` branch for an open pull request in this repository. It accepts at most 10 regular image files per run (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`) inside `.proof/`, verified by both extension and file header bytes, with a 5 MB limit per file, and validates all inputs before any API write.
 
 ## Core scaffold files
 

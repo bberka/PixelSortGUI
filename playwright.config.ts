@@ -1,0 +1,51 @@
+import process from 'node:process';
+import {defineConfig, devices} from '@playwright/test';
+import {DESKTOP_VIEWPORT} from './tests/e2e/viewports.ts';
+
+const previewUrl = 'http://localhost:4173';
+
+export default defineConfig({
+	testDir: './tests/e2e',
+	fullyParallel: true,
+	forbidOnly: Boolean(process.env.CI),
+	retries: process.env.CI ? 1 : 0,
+	reporter: process.env.CI ? 'github' : 'list',
+	use: {
+		// eslint-disable-next-line @typescript-eslint/naming-convention -- Playwright config option name
+		baseURL: previewUrl,
+		viewport: {
+			width: DESKTOP_VIEWPORT.width,
+			height: DESKTOP_VIEWPORT.height,
+		},
+		trace: 'on-first-retry',
+	},
+	projects: [
+		{
+			name: 'chromium',
+			use: {
+				...devices['Desktop Chrome'],
+				viewport: {
+					width: DESKTOP_VIEWPORT.width,
+					height: DESKTOP_VIEWPORT.height,
+				},
+			},
+		},
+		{
+			name: 'firefox',
+			use: {
+				...devices['Desktop Firefox'],
+				viewport: {
+					width: DESKTOP_VIEWPORT.width,
+					height: DESKTOP_VIEWPORT.height,
+				},
+			},
+		},
+	],
+	webServer: {
+		command:
+			'pnpm exec vp build && pnpm exec vp preview --port 4173 --strictPort',
+		url: previewUrl,
+		reuseExistingServer: false,
+		timeout: 120_000,
+	},
+});

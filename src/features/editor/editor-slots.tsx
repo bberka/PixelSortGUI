@@ -1,4 +1,5 @@
 import type {ComponentType} from 'react';
+import {EffectStackPanel} from '@/features/stack/stack-panel.tsx';
 import {cn} from '@/lib/utils';
 import {CanvasStage} from '@/features/canvas/canvas-stage.tsx';
 
@@ -14,7 +15,7 @@ export type EditorSlotId = 'toolbar' | 'canvas' | 'stack' | 'params';
 export const EDITOR_SLOTS: Record<EditorSlotId, ComponentType | null> = {
 	toolbar: null,
 	canvas: CanvasStage,
-	stack: null,
+	stack: EffectStackPanel,
 	params: null,
 };
 

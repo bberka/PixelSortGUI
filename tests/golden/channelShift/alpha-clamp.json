@@ -1,0 +1,26 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "cs000003",
+				"type": "channelShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"redX": -4,
+					"redY": 3,
+					"greenX": 2,
+					"greenY": -2,
+					"blueX": 5,
+					"blueY": 1,
+					"edge": "clamp"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

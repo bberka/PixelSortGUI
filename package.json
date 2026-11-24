@@ -37,6 +37,8 @@
 		"agent-context:write": "node scripts/agent-context.ts --write",
 		"spike:s3": "node spikes/s3/run.ts",
 		"bench:s1": "node scripts/spike-s1-bench.ts",
+		"bench": "node scripts/bench.ts",
+		"golden:update": "node scripts/golden-update.ts",
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
 	},
 	"dependencies": {
@@ -63,6 +65,7 @@
 		"eslint-config-xo-react": "^0.32.0",
 		"fake-indexeddb": "^6.2.8",
 		"fast-check": "^4.11.0",
+		"fast-png": "^8.0.0",
 		"tailwindcss": "4.3.5",
 		"typescript": "^6.0.3",
 		"vite": "catalog:",

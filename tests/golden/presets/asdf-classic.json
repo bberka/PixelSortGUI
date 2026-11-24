@@ -1,0 +1,59 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "psasdf01",
+				"type": "pixelSort",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 270,
+					"intervalMode": "threshold",
+					"selectKey": "luma",
+					"threshold": [0.25, 0.8],
+					"edgeThreshold": 0.2,
+					"edgeBlur": 1,
+					"invert": false,
+					"maxLength": 0,
+					"lengthJitter": 0,
+					"skipChance": 0,
+					"sortKey": "luma",
+					"order": "ascending",
+					"discretize": 0,
+					"fill": "sort",
+					"seed": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			},
+			{
+				"id": "psasdf02",
+				"type": "pixelSort",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 0,
+					"intervalMode": "threshold",
+					"selectKey": "luma",
+					"threshold": [0.25, 0.8],
+					"edgeThreshold": 0.2,
+					"edgeBlur": 1,
+					"invert": false,
+					"maxLength": 0,
+					"lengthJitter": 0,
+					"skipChance": 0,
+					"sortKey": "luma",
+					"order": "ascending",
+					"discretize": 0,
+					"fill": "sort",
+					"seed": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

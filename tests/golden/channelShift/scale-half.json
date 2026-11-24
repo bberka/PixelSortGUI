@@ -1,0 +1,26 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "cs000004",
+				"type": "channelShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"redX": 6,
+					"redY": 0,
+					"greenX": 0,
+					"greenY": 0,
+					"blueX": -6,
+					"blueY": 0,
+					"edge": "clamp"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 0.5
+}

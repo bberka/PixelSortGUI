@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+repo_root="$(git rev-parse --show-toplevel)"
+. "$repo_root/scripts/git-hooks/protected-branch.sh"
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+	case "$remote_ref" in
+		refs/heads/*)
+			remote_branch="${remote_ref#refs/heads/}"
+			if is_protected_branch "$remote_branch"; then
+				block_protected_branch "push" "$remote_branch"
+			fi
+			;;
+	esac
+done
+
+vp run check

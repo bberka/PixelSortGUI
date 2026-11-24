@@ -19,6 +19,7 @@
 	"scripts": {
 		"prepare": "vp hooks enable --hooks-dir .hooks",
 		"build": "vp build",
+		"check:pages-output": "node scripts/check-pages-output.ts",
 		"test": "vp test run",
 		"test:watch": "vp test",
 		"typecheck": "tsgo -b",
@@ -31,6 +32,8 @@
 		"proof:sheet": "node scripts/proof-sheet.ts",
 		"evidence": "node scripts/publish-evidence.ts",
 		"browser:install": "playwright install chromium firefox",
+		"check:agent-context": "node scripts/agent-context.ts",
+		"agent-context:write": "node scripts/agent-context.ts --write",
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
 	},
 	"dependencies": {

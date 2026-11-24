@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+repo_root="$(git rev-parse --show-toplevel)"
+. "$repo_root/scripts/git-hooks/protected-branch.sh"
+
+branch="$(git symbolic-ref --short -q HEAD)"
+if [ -n "$branch" ] && is_protected_branch "$branch"; then
+	block_protected_branch "commit" "$branch"
+fi
+
+git diff --cached --check || exit 1
+
+if git diff --cached --name-only | grep -Eq '^(AGENTS|CLAUDE|CONTEXT)\.md$|^docs/agents/|^scripts/agent-context-budget\.json$'; then
+	vp run check:agent-context || exit 1
+fi
+
+vp staged --no-stash --quiet || exit 1
+pnpm exec tsgo -b || exit 1

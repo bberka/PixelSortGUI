@@ -19,14 +19,12 @@ function spans(sourceSize: number, targetSize: number): Spans {
 }
 
 /**
- Exact box (area-average) downscale. Destination pixel `d` covers the source
- interval `[d * S / D, (d + 1) * S / D)` on each axis, and a source pixel
- counts in proportion to the area of it that lies inside. In units of `1 / D`
- the overlap of source index `s` with destination index `d` is the integer
- `min((s + 1) * D, (d + 1) * S) - max(s * D, d * S)`, and the weights of one
- destination pixel sum to `S`. Each of R, G, B and A is averaged on its own:
- `floorDiv(2 * sum + total, 2 * total)` with `total = sourceWidth *
- sourceHeight`, which rounds halves up. All sums stay below 2^53.
+ Exact alpha-weighted (premultiplied) box downscale (engine.md section 8.2).
+ Destination pixel `d` covers `[d * S / D, (d + 1) * S / D)` on each axis, with
+ integer overlap weight `w = wx * wy` summing to `total = sw * sh`. Alpha is
+ `floorDiv(2 * sumA + total, 2 * total)`. Colour channels are weighted by
+ `w * A` and divided by `sumA` (rounding halves up), or `0` when `sumA === 0`.
+ All intermediate sums stay below 2^53.
  */
 export function boxDownscale(
 	source: RgbaImage,
@@ -76,17 +74,31 @@ export function boxDownscale(
 						(Math.min((sx + 1) * width, (dx + 1) * sw) -
 							Math.max(sx * width, dx * sw));
 					const p = row + sx * 4;
-					sums[o] += w * from[p];
-					sums[o + 1] += w * from[p + 1];
-					sums[o + 2] += w * from[p + 2];
-					sums[o + 3] += w * from[p + 3];
+					const wa = w * from[p + 3];
+					sums[o] += wa * from[p];
+					sums[o + 1] += wa * from[p + 1];
+					sums[o + 2] += wa * from[p + 2];
+					sums[o + 3] += wa;
 				}
 			}
 		}
 
 		const out = dy * width * 4;
-		for (let k = 0; k < width * 4; k++) {
-			to[out + k] = Math.floor((2 * sums[k] + total) / (2 * total));
+		for (let dx = 0; dx < width; dx++) {
+			const o = dx * 4;
+			const sumA = sums[o + 3];
+			if (sumA === 0) {
+				to[out + o] = 0;
+				to[out + o + 1] = 0;
+				to[out + o + 2] = 0;
+				to[out + o + 3] = 0;
+			} else {
+				const denom = 2 * sumA;
+				to[out + o] = Math.floor((2 * sums[o] + sumA) / denom);
+				to[out + o + 1] = Math.floor((2 * sums[o + 1] + sumA) / denom);
+				to[out + o + 2] = Math.floor((2 * sums[o + 2] + sumA) / denom);
+				to[out + o + 3] = Math.floor((2 * sumA + total) / (2 * total));
+			}
 		}
 	}
 

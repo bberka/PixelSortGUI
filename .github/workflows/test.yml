@@ -112,8 +112,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
+      - name: Check all required jobs succeeded
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+          HOOKS_RESULT: ${{ needs.hooks.result }}
+          COMMIT_MESSAGES_RESULT: ${{ needs.commit-messages.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
-          echo "$RESULTS"
-          ! echo "$RESULTS" | grep -Eq 'failure|cancelled'
+          failed=0
+          for pair in \
+            "lint:$LINT_RESULT" \
+            "typecheck:$TYPECHECK_RESULT" \
+            "unit:$UNIT_RESULT" \
+            "hooks:$HOOKS_RESULT" \
+            "build:$BUILD_RESULT"; do
+            job="${pair%%:*}"
+            result="${pair#*:}"
+            echo "$job: $result"
+            if [ "$result" != "success" ]; then
+              echo "::error::Required job '$job' did not succeed (result: $result)."
+              failed=1
+            fi
+          done
+
+          echo "commit-messages: $COMMIT_MESSAGES_RESULT (event: $EVENT_NAME)"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$COMMIT_MESSAGES_RESULT" != "success" ]; then
+              echo "::error::Required job 'commit-messages' did not succeed on pull_request (result: $COMMIT_MESSAGES_RESULT)."
+              failed=1
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            if [ "$COMMIT_MESSAGES_RESULT" != "success" ] && [ "$COMMIT_MESSAGES_RESULT" != "skipped" ]; then
+              echo "::error::Job 'commit-messages' had unexpected result on push: $COMMIT_MESSAGES_RESULT."
+              failed=1
+            fi
+          else
+            if [ "$COMMIT_MESSAGES_RESULT" != "success" ]; then
+              echo "::error::Job 'commit-messages' did not succeed on $EVENT_NAME (result: $COMMIT_MESSAGES_RESULT)."
+              failed=1
+            fi
+          fi
+
+          exit "$failed"

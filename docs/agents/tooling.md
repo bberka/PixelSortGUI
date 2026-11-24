@@ -67,7 +67,7 @@ Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref
 | `hooks` | `sh .hooks/test-commit-msg.sh` |
 | `commit-messages` | Runs `.hooks/commit-msg` on every commit in a pull request |
 | `build` | `pnpm exec vp run build` |
-| `test` | The required gate. `needs` all jobs above, `if: always()`, fails if any result is `failure` or `cancelled`. Keep its name stable, because the branch ruleset requires it. |
+| `test` | The required gate. `needs` all jobs above, `if: always()`, passes only when every needed job succeeded (except `commit-messages`, which may be `skipped` on `push` events only). Keep its name stable, because the branch ruleset requires it. |
 
 `agent-context.yml`, on pull requests (opened, synchronize, reopened, labeled, unlabeled): runs the size budget check against the base branch. Fetch the base from `github.base_ref`, not a hard-coded name. A pull request that grows the budget needs the label `agent-context-increase`.
 
@@ -86,15 +86,16 @@ Goal: the always-loaded files stay small as the docs grow.
 
 ## Deployment and release
 
-Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`pages.yml`, planned). The production build (`dist/`) must work when served from the domain root (`/`), and the published output must include a `CNAME` file containing `glitch.bbay.dev`.
+Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`**. A separate workflow (`pages.yml`) deploys on every push to `main` and takes the `CNAME` file from `public/CNAME`. The production build (`dist/`) must work when served from the domain root (`/`).
 
-ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
+ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only and is bumped by hand in a normal pull request when starting a new minor series; the release workflow never commits or pushes to `main`. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 
-1. Compute the next patch from the latest `v0.<VERSION>.*` tag (`scripts/release-version.ts next`). Fail if the tag exists.
+1. Determine the release version: if the current commit already has a `v0.*` tag without a GitHub release, reuse it; otherwise compute the next patch from the latest `v0.<VERSION>.*` tag (`scripts/release-version.ts next`).
 2. Run `vp run check` and `vp run build`.
-3. Tag the commit.
-4. Deploy the contents of `dist/` (with `CNAME`) to GitHub Pages.
-5. Create the GitHub release last, so a failed deploy leaves no release.
+3. Create and push the `v0.<minor>.<patch>` tag (skipped when reusing an existing tag on the same commit).
+4. Create the GitHub release last.
+
+Because tagging happens only after checks and build pass, and a re-run on a commit that already carries a `v0.*` tag without a GitHub release reuses that tag instead of computing a higher patch, retrying a failed release run will not accidentally skip a version. If both the tag and the GitHub release already exist on that commit, the run fails early.
 
 The source tree keeps no version number; the build stamps it.
 

@@ -26,7 +26,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run lint`, `vp run lint:fix` | xo check, xo with fixes |
 | `vp run typecheck` | `tsgo -b` |
 | `vp run test`, `vp run test:watch` | `vp test run`, `vp test` |
-| `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite (planned) |
+| `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite |
 | `vp run version:next` | Print the next release version |
 | `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` (planned) |
 | `vp run skills:install` | Restore the agent skills listed in `skills-lock.json` (planned, optional) |
@@ -46,10 +46,10 @@ Hooks live in `.hooks/` and are committed. `vp hooks enable --hooks-dir .hooks` 
 | Hook | Does | State |
 | --- | --- | --- |
 | `commit-msg` | Rejects `Co-authored-by` trailers and "Generated with" lines. POSIX sh, no dependencies. Test: `sh .hooks/test-commit-msg.sh` | exists |
-| `pre-commit` | Refuses `main`; `git diff --cached --check`; runs the agent-context check when agent docs are staged; `vp staged --no-stash --quiet` (xo on staged files); `pnpm exec tsgo -b` | planned |
-| `pre-push` | Blocks any push that updates or deletes `main` (read the refs from stdin); then `vp run check` | planned |
+| `pre-commit` | Refuses `main`; `git diff --cached --check`; runs the agent-context check when agent docs are staged; `vp staged --no-stash --quiet` (xo on staged files); `pnpm exec tsgo -b` | exists |
+| `pre-push` | Blocks any push that updates or deletes `main` (read the refs from stdin); then `vp run check` | exists |
 
-The branch checks share one helper, `scripts/git-hooks/protected-branch.sh` (planned). Hooks check and never edit files. The scaffolding task must keep `commit-msg` working under the `.hooks/_` dispatcher and add the hook test to CI.
+The branch checks share one helper, `scripts/git-hooks/protected-branch.sh`. Hooks check and never edit files. The scaffolding task must keep `commit-msg` working under the `.hooks/_` dispatcher and add the hook test to CI.
 
 Hooks do not stop a server-side merge from adding a trailer. The owner turns off any GitHub setting that adds co-authors to merge commits, and the lead checks the message on `main` after each merge.
 
@@ -77,7 +77,7 @@ The owner sets a ruleset on `main` that requires a pull request and the checks `
 
 Goal: the always-loaded files stay small as the docs grow.
 
-- Script `scripts/agent-context.ts` (planned, run by Node type stripping, no dependencies) and `scripts/agent-context-budget.json` with one byte count per file.
+- Script `scripts/agent-context.ts` (run by Node type stripping, no dependencies) and `scripts/agent-context-budget.json` with one byte count per file.
 - Measured files: `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`, and every file in `docs/agents/`. Specs are large reference documents and are not budgeted.
 - The measured size must equal the JSON. `--write` rewrites it. With `--base <ref>`, any value above the base branch's value fails unless the pull request carries the label.
 - Targets for the root map: `AGENTS.md` under 100 lines and 6 KB; the always-loaded total (`AGENTS.md` plus `CLAUDE.md`) is the number to watch.
@@ -86,7 +86,7 @@ Goal: the always-loaded files stay small as the docs grow.
 
 ## Deployment and release
 
-Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`**. A separate workflow (`pages.yml`) deploys on every push to `main` and takes the `CNAME` file from `public/CNAME`. The production build (`dist/`) must work when served from the domain root (`/`).
+Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`.github/workflows/pages.yml`). Pushes to `main` and manual dispatch build and deploy; pull requests build and validate output without deployment. The production build (`dist/`) must work when served from the domain root (`/`), and the published output includes `CNAME` containing `glitch.bbay.dev`. Run `pnpm run check:pages-output` locally to check the built output.
 
 ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only and is bumped by hand in a normal pull request when starting a new minor series; the release workflow never commits or pushes to `main`. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 

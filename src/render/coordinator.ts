@@ -64,6 +64,7 @@ export type SourceInfo = {
 	width: number;
 	height: number;
 	settle: ProxySize;
+	// At the cap in use when the source loaded. A `drag` frame carries its own size.
 	drag: ProxySize;
 	// The unprocessed image at `settle` size, for Compare.
 	original: ImageBitmap;

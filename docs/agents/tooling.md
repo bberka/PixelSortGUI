@@ -37,6 +37,8 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 
 `vp dev` is a built-in that ignores a `dev` script, so `dev` and `gui` are defined explicitly under `run.tasks` in `vite.config.ts` (`dev` runs `vp dev` and `gui` runs `vp build && vp preview`, both with `cache: false`) and omitted from `package.json` `scripts`. Verified with `vp` 1.4.0 (local `vite-plus` 1.6.0): Vite+ splits `&&` in `run.tasks.<name>.command` into sequential subcommands, respects `cache: false`, and serves `vp run gui` at `http://localhost:4173`.
 
+`vp run evidence` (`scripts/publish-evidence.ts`) only writes to the `evidence` branch for an open pull request in this repository. It accepts at most 10 regular image files per run (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`) inside `.proof/`, verified by both extension and file header bytes, with a 5 MB limit per file, and validates all inputs before any API write.
+
 ## Core scaffold files
 
 `package.json` (with `"prepare": "vp hooks enable --hooks-dir .hooks"`), `pnpm-workspace.yaml` (catalog with `vite` as `npm:@voidzero-dev/vite-plus-core@<version>` and `vite-plus`, override `vite@*` to the catalog), `vite.config.ts`, `xo.config.ts`, `tsconfig.json` as a solution file with `tsconfig/base.json`, `app.json`, `node.json`, `test.json`, `components.json`, `index.html`, `.gitignore`, `VERSION`, and `t3.json` (planned, optional, buttons for `dev` and `gui`), plus the scripts below (planned).

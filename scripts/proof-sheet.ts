@@ -1,4 +1,4 @@
-import {Buffer} from 'node:buffer';
+import type {Buffer} from 'node:buffer';
 import {execFileSync, spawn, type ChildProcess} from 'node:child_process';
 import {
 	mkdir,
@@ -227,12 +227,31 @@ async function startPreviewServer(
 	}
 }
 
+type ThemeSignature = {
+	background: string;
+	foreground: string;
+	colorScheme: string;
+};
+
+type CapturedViewport = {
+	png: Buffer;
+	themeSignature: ThemeSignature;
+};
+
+function sameThemeSignature(a: ThemeSignature, b: ThemeSignature): boolean {
+	return (
+		a.background === b.background &&
+		a.foreground === b.foreground &&
+		a.colorScheme === b.colorScheme
+	);
+}
+
 async function captureViewport(
 	browser: Browser,
 	targetUrl: string,
 	viewport: (typeof PROOF_VIEWPORTS)[number],
 	theme: ThemeName,
-): Promise<Buffer> {
+): Promise<CapturedViewport> {
 	const context = await browser.newContext({
 		viewport: {width: viewport.width, height: viewport.height},
 		colorScheme: theme,
@@ -245,7 +264,16 @@ async function captureViewport(
 		);
 		const page = await context.newPage();
 		await page.goto(targetUrl, {waitUntil: 'networkidle'});
-		return await page.screenshot();
+		const themeSignature = await page.evaluate<ThemeSignature>(`(() => {
+			const style = getComputedStyle(document.documentElement);
+			return {
+				background: style.getPropertyValue('--background').trim(),
+				foreground: style.getPropertyValue('--foreground').trim(),
+				colorScheme: style.colorScheme,
+			};
+		})()`);
+		const png = await page.screenshot();
+		return {png, themeSignature};
 	} finally {
 		await context.close();
 	}
@@ -273,7 +301,10 @@ async function captureRouteShots(
 		firstViewport,
 		'dark',
 	);
-	const singleTheme = Buffer.compare(firstLight, firstDark) === 0;
+	const singleTheme = sameThemeSignature(
+		firstLight.themeSignature,
+		firstDark.themeSignature,
+	);
 	const activeThemes: readonly ThemeName[] = singleTheme ? ['light'] : THEMES;
 
 	const shots: Shot[] = [];
@@ -281,11 +312,17 @@ async function captureRouteShots(
 		for (const viewport of PROOF_VIEWPORTS) {
 			let png: Buffer;
 			if (viewport === firstViewport && theme === 'light') {
-				png = firstLight;
+				png = firstLight.png;
 			} else if (viewport === firstViewport && theme === 'dark') {
-				png = firstDark;
+				png = firstDark.png;
 			} else {
-				png = await captureViewport(browser, targetUrl, viewport, theme);
+				const captured = await captureViewport(
+					browser,
+					targetUrl,
+					viewport,
+					theme,
+				);
+				png = captured.png;
 			}
 
 			const suffix = singleTheme ? '' : `-${theme}`;

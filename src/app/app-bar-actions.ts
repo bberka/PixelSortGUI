@@ -1,4 +1,5 @@
 import type {ComponentType} from 'react';
+import {ImportImagesAction} from '@/features/import';
 import type {AppRoute} from '@/state/router.ts';
 
 /**
@@ -14,4 +15,6 @@ export type AppBarAction = {
 	readonly component: ComponentType;
 };
 
-export const APP_BAR_ACTIONS: readonly AppBarAction[] = [];
+export const APP_BAR_ACTIONS: readonly AppBarAction[] = [
+	{id: 'import-images', screen: 'library', component: ImportImagesAction},
+];

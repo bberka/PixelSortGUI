@@ -2,6 +2,7 @@ Written by Claude Opus 5.5 (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated after the engine foundation review by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI engine spec
 
@@ -14,7 +15,7 @@ The engine turns a source image and an effect stack into an output image. It is 
 Rules every part of the engine follows:
 
 1. **Own implementation.** Every algorithm here is described in our own words and formulas. Do not copy or translate code from pxlsort (no licence), pixel-sorter or rkargon/pixelsorter (GPL-3.0), or any of the unlicensed projects in the research. Implementers work from this file, not from those repositories.
-2. **Pure effects.** An effect's output depends only on its input pixels, its parameters and the render context. No `Math.random`, `Date`, `performance.now` (except for the time-slice check in section 8.4), global state or I/O.
+2. **Pure effects.** An effect's output depends only on its input pixels, its parameters and the render context. No `Math.random`, `Date`, `performance.now` (except for the time-slice check in section 8.4, and `pipeline.ts` reading `performance.now()` solely to populate `perInstanceMs` timing stats without affecting pixels, cache keys, warnings or progress), global state or I/O.
 3. **Exact arithmetic.** Wherever output depends on a number, the formula is given in integers or in IEEE-754 double operations that are exactly specified (`+ - * /`, comparisons, `Math.floor`). Functions that ECMAScript leaves implementation-approximated (`Math.cos`, `Math.sin`, `Math.pow`, `Math.cbrt`, `Math.exp`) are not used at render time; where trigonometry is needed it comes from a checked-in table (section 5.2).
 4. **Same size out as in.** First-release effects do not change image dimensions.
 5. **Resolution independence.** Spatial parameters are given in source-image pixels and scaled by the render context; random choices are keyed to source-image coordinates, so the `settle` preview and the full-resolution export show the same structure (section 10.3).
@@ -66,7 +67,7 @@ type EffectStack = {
 
 The stack is plain JSON. It is stored as-is in IndexedDB, in history entries and in presets. `schemaVersion` changes only when the shape of `EffectStack` or `EffectInstance` changes; per-effect parameter changes use the instance's `version` (section 4.4).
 
-Canonical form: `canonicalStackJson(stack)` serialises with object keys sorted alphabetically at every level and numbers in shortest round-trip form. It is used as a cache key (section 8.5) and for equality in tests.
+Canonical form: `canonicalStackJson(stack)` serialises with object keys sorted by UTF-16 code unit (not locale) at every level, numbers formatted as `JSON.stringify` writes them (shortest round-trip form), and array order preserved. It is used as a cache key (section 8.5) and for equality in tests.
 
 ### 2.3 Render context
 
@@ -106,7 +107,7 @@ type ParamSpec = ParamSpecBase &
 		| {kind: 'enum'; options: readonly {value: string; label: string}[]; default: string}
 		| {kind: 'range'; min: number; max: number; step: number; default: readonly [number, number]}
 		| {kind: 'angle'; default: number; snaps: readonly number[]} // degrees, stored in [0, 360), step 0.1
-		| {kind: 'seed'} // uint32; a new instance gets a random seed from crypto.getRandomValues
+		| {kind: 'seed'} // uint32; engine default is 0; whoever creates an instance supplies a random seed (e.g. from crypto.getRandomValues)
 	);
 ```
 
@@ -114,7 +115,7 @@ Rules:
 
 - `unit: 'px'` means the value is in source-image pixels and the effect must convert it with `ctx.px` or `ctx.pxLength`.
 - Numbers are stored rounded to their `step` (angles to 0.1). Integers are stored as integers.
-- `validateParams(spec, params)` returns a complete, valid parameter object: missing keys get the default, values of the wrong type get the default, numbers are clamped to `[min, max]` and rounded to `step`, enums not in `options` get the default, ranges are clamped and swapped if `lo > hi`, angles are normalised with `wrap(round(a * 10), 3600) / 10`, seeds are converted with `>>> 0`. Unknown keys are dropped. The pipeline always validates before calling `render`.
+- `validateParams(spec, params)` returns a complete, valid parameter object: missing keys get the default, values of the wrong type get the default (`NaN` counts as a wrong type; `±Infinity` clamps to `[min, max]` for `number` and `integer` and gets the default for `angle`, as does a finite angle large enough to overflow when multiplied by 10; a `range` that is not a two-number array gets the default; a `seed` of the wrong type becomes `0`), numbers are clamped to `[min, max]` and rounded to `step` (steps counted from `0`, not `min`: clamp, round half away from zero — dividing by `k` when `step` is `1/k` so decimals store cleanly — clamp again, and normalise `-0` to `0`), enums not in `options` get the default, ranges are clamped and swapped if `lo > hi`, angles are normalised with `wrap(roundHalfAway(a * 10), 3600) / 10`, seeds are converted with `>>> 0`. Unknown keys are dropped. `defaultParams` returns `0` for `seed`; whoever creates an effect instance supplies a random seed. The pipeline always validates before calling `render`.
 - `visibleWhen` only hides controls; hidden parameters keep their values and still reach `render`.
 - `group` names a section in the parameter panel. Groups appear in first-use order.
 
@@ -140,7 +141,7 @@ type EffectDefinition<P extends Record<string, ParamValue> = Record<string, Para
 
 Contract for `render`:
 
-- `input` and `output` have the same width and height and do not share memory. `render` reads `input` and writes every byte of `output`. It never writes `input`.
+- `input` and `output` have the same width and height and do not share memory. `render` reads `input` and writes every byte of `output`. The pipeline does not copy `input` defensively; an effect must never write to `input`, and every effect's tests must prove it.
 - It calls `ctx.checkpoint()` between lines or rows, at least once per 16,384 pixels processed, and awaits it when it returns a promise.
 - It may allocate at most `2 * width * height` bytes of scratch memory per render, through `ctx.scratch`. Per-line buffers up to 16,384 entries are free.
 - When `ctx.debugView` is `'selection'` and the effect lists `'selection'` in `debugViews`, it writes its selection view (defined per effect) instead of its result.
@@ -168,6 +169,7 @@ type PipelineOptions = {
 	sourceHeight: number; // source dimensions; `source` here is already at render size
 	debug?: {instanceId: string; view: 'selection'};
 	cache?: StageCache; // section 8.5
+	sourceKey?: string; // identifies the source image in stage cache keys; defaults to ''
 	checkpoint: () => void | Promise<void>;
 	onProgress?: (fraction: number) => void;
 };
@@ -185,20 +187,22 @@ Algorithm:
 2. For each instance `i` in order:
    1. Skip it if `enabled` is false.
    2. Look up its definition. If the type is unknown, or the instance `version` is greater than the definition's, skip it and add a warning.
-   3. Migrate parameters if the instance `version` is lower (section 4.4), then `validateParams`.
-   4. Build the context (`scale = renderWidth / sourceWidth`, `seed = params.seed ?? 0`, `debugView` from `options.debug` when it names this instance, else `'none'`).
-   5. `output` = whichever of `a`, `b` is not `current`. Call `render(current, output, params, ctx)`.
+   3. Migrate parameters if the instance `version` is lower (section 4.4), then `validateParams`. Emit a `params-fixed` warning when validation changed, added (including filling missing keys from defaults), or dropped a value after migration; migration alone does not emit it.
+   4. Build the context (`scale = renderWidth / sourceWidth`, `seed = params.seed ?? 0`, `debugView` from `options.debug` when it names this instance and the effect lists that view in `debugViews`, else `'none'`).
+   5. `output` = whichever of `a`, `b` is not `current`. Call `render(current, output, params, ctx)`. The pipeline does not copy `current` defensively before calling `render`.
    6. If `debugView` is `'none'` and (`mix < 1` or `blend !== 'normal'`), composite in place: `output = composite(current, output, mix, blend)` (section 4.5).
    7. `current = output`.
-   8. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection.
-3. Return `current` (copied out if it is a working buffer that will be reused).
+   8. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection. If the debug instance's effect does not list `'selection'` in `debugViews`, it renders normally with mix and blend and the pipeline still stops there; if the debug instance is disabled or unknown, the whole stack renders normally.
+3. Return a fresh copy of `current` (never aliasing `source`, a stage cache entry, or a working buffer).
 
-Progress is reported as `(completedInstances + instanceFraction) / enabledInstanceCount`.
+`perInstanceMs` has one entry per stack instance at the same index, with `0` for instances that did not run. Progress is reported as `(completedInstances + instanceFraction) / enabledInstanceCount` (counting skipped unknown or newer-version instances as completed); fractions lower than the last reported are dropped, and a render that ends early (cache hit or debug stop) reports `1` at the end.
+
+The pipeline enforces neither the 32-instance limit nor `schemaVersion` (nor instance `id` format or the `2 * width * height` scratch limit); the 32-instance limit and `schemaVersion` are enforced by storage and the UI.
 
 ### 4.4 Versions and migration
 
 - An effect type's `version` starts at 1. Bump it when a parameter is added, removed, renamed, its range or meaning changes, or when the output for the same parameters changes.
-- `migrations[n]` converts parameters of version `n` to version `n + 1`. The pipeline applies them in sequence from the instance's `version` to the definition's `version`. Migrations are pure and idempotent with respect to their input.
+- `migrations[n]` converts parameters of version `n` to version `n + 1`. The pipeline applies them in sequence from the instance's `version` to the definition's `version`. A version step with no entry in `migrations` is treated as identity. Each migration receives a shallow copy of the parameter object, so mutating its argument cannot change stored data. Migrations are pure and idempotent with respect to their input.
 - Migrated instances are written back with the new `version` on the next save (persistence.md section 6). The stored history keeps old versions; they are migrated when loaded.
 - Changing output without changing parameters is allowed with a version bump and a matching golden-image update in the same pull request; old projects then render with the new behaviour. Keeping old behaviours runnable is not required in the first release.
 
@@ -216,7 +220,7 @@ For every pixel, with `i` the instance input channel, `f` the effect output chan
 - R, G, B: `out = floorDiv(2 * (i * (100 - m) + b * m) + 100, 200)`.
 - A: `out = floorDiv(2 * (iA * (100 - m) + fA * m) + 100, 200)` (alpha always mixes as `normal`).
 
-Mix and blend are applied against the instance's own input at the same render size, so they work at every level (this avoids the scale mismatch the research found in pixel-sorter's blending).
+Mix and blend are applied against the instance's own input at the same render size, so they work at every level (this avoids the scale mismatch the research found in pixel-sorter's blending). Out-of-range `mix` is clamped to `[0, 1]` (`NaN` is treated as `1`) and an unknown `blend` mode renders as `'normal'`, without changing stored data.
 
 ### 4.6 Adding a new effect
 
@@ -417,6 +421,17 @@ Defined in `src/presets/builtin.ts` with ids `builtin:<slug>`. Parameters not li
 
 Adaptive `drag` cap: after each `drag` render, if its time exceeded the drag budget (section 9), halve the cap (not below 0.125 MP); if it took less than 40% of the budget, double it (not above the starting cap). The worker regenerates the drag proxy when the cap changes.
 
+**Box downscale (`boxDownscale`):** exact alpha-weighted (premultiplied) area average with integer overlap weights. It throws `RangeError` on upscaling or non-positive/non-integer target dimensions. For source `sw × sh`, target `dw × dh`, destination pixel `(dx, dy)` and source pixel `(sx, sy)`:
+
+- `wx = min((sx + 1) * dw, (dx + 1) * sw) - max(sx * dw, dx * sw)`
+- `wy = min((sy + 1) * dh, (dy + 1) * sh) - max(sy * dh, dy * sh)`
+- `w = wx * wy` for all `(sx, sy)` with `wx > 0` and `wy > 0`, and `total = sw * sh`.
+- `sumA = sum(w * A)` and, for each colour channel `C` in `R, G, B`, `sumC = sum(w * A * C)`.
+- Output alpha is `floorDiv(2 * sumA + total, 2 * total)`.
+- If `sumA === 0`, the output pixel is `(0, 0, 0, 0)`; otherwise each colour channel is `floorDiv(2 * sumC + sumA, 2 * sumA)`.
+
+For fully opaque images (`A = 255`), the output is bit-identical to straight-alpha area averaging.
+
 ### 8.3 Scheduling
 
 The main-thread render coordinator (`src/render/coordinator.ts`) owns the preview worker (one project is open at a time) and keeps a monotonically increasing `generation` number.
@@ -431,12 +446,12 @@ The main-thread render coordinator (`src/render/coordinator.ts`) owns the previe
 
 A worker cannot read new messages while a synchronous loop runs, and `SharedArrayBuffer` flags need cross-origin isolation, which the app does not require (decision D6). So:
 
-- **Preview worker: cooperative time slicing.** `ctx.checkpoint()` checks `performance.now()`; once 8 ms have passed since the last yield, it yields to the event loop with a `MessageChannel` round trip (no 4 ms timer clamp), during which `render` and `cancel` messages are processed. If the running job's generation is now older than the newest requested generation, `checkpoint` throws `Cancelled`, the pipeline discards its work and the worker starts the newest request. Expected overhead: under 3% of render time.
+- **Preview worker: cooperative time slicing.** `ctx.checkpoint()` checks `performance.now()`; once 8 ms have passed since the last yield, it yields to the event loop with a `MessageChannel` round trip (no 4 ms timer clamp), during which `render` and `cancel` messages are processed. If the running job's generation is now older than the newest requested generation, `checkpoint` throws `Cancelled` (exported from `src/engine/types.ts`; the pipeline does not depend on it and rethrows whatever `checkpoint` throws), the pipeline discards its work and the worker starts the newest request. Expected overhead: under 3% of render time.
 - **Export worker: termination.** Exports and `full` renders run in a separate worker. Cancelling terminates it with `worker.terminate()`; a fresh worker is created for the next job.
 
 ### 8.5 Stage cache
 
-The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The cache holds at most 6 entries or 160 MB, whichever is smaller, evicting least recently used. It is cleared when the source or render size changes. Debug renders do not write to the cache.
+The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source or render size changes to free memory. Debug renders read earlier stages from the cache but never write to it.
 
 ### 8.6 Progressive refinement
 
@@ -606,11 +621,12 @@ With `fast-check`, at least 200 runs each, on random images up to 64 × 64 and r
 ## 15. Module layout
 
 ```
-src/engine/            pure TypeScript, no DOM
-  types.ts             RgbaImage, EffectStack, EffectInstance, ParamSpec, RenderContext
+src/engine/            pure TypeScript, no DOM (no barrel file; import from each module)
+  types.ts             RgbaImage, EffectStack, EffectInstance, ParamSpec, RenderContext, Cancelled, canonicalStackJson
+  math.ts              floorDiv, roundHalfAway, clamp, wrap
   params.ts            validateParams, defaults, migration runner
   registry.ts          createRegistry
-  pipeline.ts          renderStack, StageCache
+  pipeline.ts          renderStack, StageCache, createStageCache
   composite.ts         mix and blend
   random.ts            mix32, hash32, unit, intIn
   keys.ts              the 8 keys

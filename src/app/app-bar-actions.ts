@@ -1,5 +1,6 @@
 import type {ComponentType} from 'react';
 import {ImportImagesAction} from '@/features/import';
+import {SettingsButton} from '@/features/settings/settings-button.tsx';
 import type {AppRoute} from '@/state/router.ts';
 
 /**
@@ -17,4 +18,6 @@ export type AppBarAction = {
 
 export const APP_BAR_ACTIONS: readonly AppBarAction[] = [
 	{id: 'import-images', screen: 'library', component: ImportImagesAction},
+	{id: 'settings-library', screen: 'library', component: SettingsButton},
+	{id: 'settings-editor', screen: 'editor', component: SettingsButton},
 ];

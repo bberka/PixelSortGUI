@@ -103,11 +103,47 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec vp run build
 
-  # End-to-end (Playwright) job: added in T0.4 and wired into `test.needs` below.
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright browsers and dependencies
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium firefox
+      - run: pnpm exec vp run test:e2e
+      - name: Upload Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
 
   test:
     name: test
-    needs: [lint, typecheck, unit, hooks, commit-messages, build]
+    needs: [lint, typecheck, unit, hooks, commit-messages, build, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -121,6 +157,7 @@ jobs:
           HOOKS_RESULT: ${{ needs.hooks.result }}
           COMMIT_MESSAGES_RESULT: ${{ needs.commit-messages.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
         run: |
           failed=0
           for pair in \
@@ -128,7 +165,8 @@ jobs:
             "typecheck:$TYPECHECK_RESULT" \
             "unit:$UNIT_RESULT" \
             "hooks:$HOOKS_RESULT" \
-            "build:$BUILD_RESULT"; do
+            "build:$BUILD_RESULT" \
+            "e2e:$E2E_RESULT"; do
             job="${pair%%:*}"
             result="${pair#*:}"
             echo "$job: $result"

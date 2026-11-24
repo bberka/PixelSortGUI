@@ -1,18 +1,19 @@
 import type {ComponentType} from 'react';
 import {cn} from '@/lib/utils';
+import {CanvasStage} from '@/features/canvas/canvas-stage.tsx';
 
 /**
  Regions of the editor, in reading order. A later task fills a region by
- importing its component in `src/features/editor/editor-screen.tsx` and naming
- it in `EDITOR_SLOTS`; a region left `null` renders its empty placeholder.
- The responsive layout in `editor-screen.tsx` already places all four at
- phone, tablet and desktop widths.
+ importing its component above and naming it in `EDITOR_SLOTS`; a region left
+ `null` renders its empty placeholder. The responsive layout in
+ `editor-screen.tsx` already places all four at phone, tablet and desktop
+ widths.
  */
 export type EditorSlotId = 'toolbar' | 'canvas' | 'stack' | 'params';
 
 export const EDITOR_SLOTS: Record<EditorSlotId, ComponentType | null> = {
 	toolbar: null,
-	canvas: null,
+	canvas: CanvasStage,
 	stack: null,
 	params: null,
 };

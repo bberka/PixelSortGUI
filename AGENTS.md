@@ -1,0 +1,44 @@
+# PixelSortGUI
+
+Web GUI editor for glitch art and pixel sorting of still photos. Static-hostable, fully offline, no accounts, all state in browser storage, usable on phone, tablet, and desktop.
+Stack (planned): Vite+ (`vp`), pnpm, TypeScript, React, Tailwind, shadcn, xo. Status: planning. No application code exists yet.
+The owner does not write code. A lead agent splits work into tasks, delegates each to a subagent, and reviews the result.
+
+## Hard rules
+
+- Never commit on or push to `main`. Work on a `<type>/<short-topic>` branch in your own git worktree, then open a pull request. The owner merges.
+- Never add a co-author or an attribution line to a commit: no `Co-authored-by` trailer, no "Generated with" line. `.hooks/commit-msg` rejects both. Never bypass hooks (`--no-verify`, `core.hooksPath` changes).
+- Every pull request lists each agent and model that worked on it, with effort or thinking level and what it did. Use the template in `.github/PULL_REQUEST_TEMPLATE.md` and the wording in [roster.md](docs/agents/roster.md).
+- Documents come before code. A feature is specified in `docs/specs/` before it is implemented. A change is not done while a doc still describes the old behavior.
+- Copy code only from projects that [licensing.md](docs/agents/licensing.md) lists as MIT, and keep their notice. Learn from every other surveyed project, never copy. The project's own licence is not chosen yet; do not add a `LICENSE` file or licence headers.
+- Nothing leaves the browser at runtime: no network calls for app features, no accounts, no analytics, no remote fonts or scripts. Photos stay on the device.
+- A UI change is checked in the running app at phone, tablet, and desktop widths, with screenshots. Report only what you ran, and say what you could not run.
+- Do only the task you were given. Install no tools and add no config unless the task is the scaffolding task.
+
+## Commands
+
+Not available yet. They land with the scaffolding task, so do not run them before it merges. Details in [tooling.md](docs/agents/tooling.md).
+
+- `vp run dev`: dev mode (planned)
+- `vp run gui`: build, then serve the production build locally (planned)
+- `vp run check`: lint, typecheck, tests (planned)
+
+Available now: `sh .hooks/test-commit-msg.sh` tests the commit-msg hook.
+
+## Load on demand
+
+- Starting a task, branching, committing, review, merge → [workflow.md](docs/agents/workflow.md)
+- Choosing or identifying as a model, effort levels, escalation → [roster.md](docs/agents/roster.md)
+- Adding an effect, or a custom feature the owner asked for → [adding-an-effect.md](docs/agents/adding-an-effect.md)
+- Reusing code or an algorithm from another project, notices, project licence → [licensing.md](docs/agents/licensing.md)
+- Scripts, hooks, CI, size budget, releases, scaffolding task → [tooling.md](docs/agents/tooling.md)
+- Domain words (run, interval, mask, effect, effect stack, pipeline, proxy) → [CONTEXT.md](CONTEXT.md)
+- What the product is and is not → [product.md](docs/specs/product.md)
+- Sorting engine, effect interface, pipeline → [engine.md](docs/specs/engine.md)
+- Saved projects, library, browser storage, migrations → [persistence.md](docs/specs/persistence.md)
+- Visual design, tokens, components → [DESIGN.md](DESIGN.md)
+- Planned order of work → [roadmap.md](docs/specs/roadmap.md)
+- Why something was decided → [decisions.md](docs/specs/decisions.md)
+- Algorithms and prior art → `docs/research/` (background only; the specs rule where they differ)
+
+Specs are being written and a linked file may not exist yet. If it is missing, say so in your report and ask the lead agent; do not invent its contents.

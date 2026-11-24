@@ -1,0 +1,330 @@
+Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
+
+# PixelSortGUI design system
+
+Status: draft for owner review, 2026-11-24. Companion specs: [product.md](docs/specs/product.md), [engine.md](docs/specs/engine.md), [persistence.md](docs/specs/persistence.md), [roadmap.md](docs/specs/roadmap.md), [decisions.md](docs/specs/decisions.md). Source of truth for CSS tokens in code: `src/styles/app.css`.
+
+## 1. Design direction and principles
+
+PixelSortGUI is a darkroom-style still-photo utility. The user's image is the visual focus; the interface recedes into neutral monochrome chrome with one restrained accent reserved for active controls, slider tracks, progress indicators, and keyboard focus.
+
+Rules every screen follows:
+
+- **No decoration or marketing copy.** No hero banners, gradients, background grids, onboarding tours, or explanatory subtitles that restate labels.
+- **No remote assets.** System fonts only, bundled `lucide-react` icons only. Zero network requests at runtime.
+- **Semantic tokens only.** Never write raw hex, `rgb()`, or Tailwind palette color utilities (`bg-zinc-900`, `text-blue-500`) in `.tsx` components. Use semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) mapped in `src/styles/app.css`.
+- **Same features on every screen size.** Phone, tablet, and desktop expose the exact same capabilities (F1 to F19); only chrome placement and target sizing adapt.
+
+## 2. Themes and color tokens
+
+The owner's "light black theme" request is implemented as two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default). Open question Q1 in [decisions.md](docs/specs/decisions.md#open-questions-for-the-owner).
+
+### 2.1 Activation and zero-flash boot
+
+- `<html data-theme="system | light | dark">` controls the active theme.
+- An inline `<script>` in `index.html` reads `localStorage.getItem('psg:theme')` synchronously before CSS/JS loads and sets `document.documentElement.dataset.theme`, preventing any flash of the wrong theme on reload (AC-F14.2).
+- Switching the OS appearance while `data-theme="system"` updates immediately via `@media (prefers-color-scheme: dark)` without reloading (AC-F14.1).
+
+### 2.2 Semantic token table
+
+Defined as space-separated RGB triples in `src/styles/app.css` and exposed through Tailwind 4 `@theme` (`--color-background: rgb(var(--background))`). Every foreground/background pair meets WCAG 2.2 AA (≥ 4.5:1 for normal text, ≥ 3:1 for large text and UI components).
+
+| Token | Light (`hex` / RGB) | True Black (`hex` / RGB) | Role |
+|---|---|---|---|
+| `--background` | `#fafafa` / `250 250 250` | `#000000` / `0 0 0` | App shell, Library background, Editor chrome base |
+| `--canvas-stage` | `#e4e4e7` / `228 228 231` | `#000000` / `0 0 0` | Viewport behind the photo canvas |
+| `--card` | `#ffffff` / `255 255 255` | `#0a0a0a` / `10 10 10` | Library cards, sidebar panels, bottom sheet surface |
+| `--popover` | `#ffffff` / `255 255 255` | `#121212` / `18 18 18` | Dialogs, menus, dropdowns, floating canvas pills |
+| `--secondary` | `#f4f4f5` / `244 244 245` | `#18181b` / `24 24 27` | Secondary buttons, segmented track, hover fills |
+| `--muted` | `#f4f4f5` / `244 244 245` | `#141414` / `20 20 20` | Disabled surfaces, thumbnail placeholders, slider track |
+| `--foreground` | `#09090b` / `9 9 11` | `#fafafa` / `250 250 250` | Primary text and icons (≥ 18:1 on `--background`) |
+| `--muted-foreground` | `#52525b` / `82 82 91` | `#a1a1aa` / `161 161 170` | Secondary labels, dimensions, dates, units (≥ 7:1) |
+| `--border` | `#e4e4e7` / `228 228 231` | `#262626` / `38 38 38` | Hairline 1 px dividers, card and panel borders |
+| `--input` | `#d4d4d8` / `212 212 216` | `#3f3f46` / `63 63 70` | Input borders, slider thumb ring, switch off-track |
+| `--primary` | `#18181b` / `24 24 27` | `#fafafa` / `250 250 250` | Primary action button fill ("Open images", "Export") |
+| `--primary-foreground` | `#fafafa` / `250 250 250` | `#000000` / `0 0 0` | Text/icons on `--primary` |
+| `--accent` | `#2563eb` / `37 99 235` | `#3b82f6` / `59 130 246` | Slider fill, active selection indicator, progress bar |
+| `--accent-foreground` | `#ffffff` / `255 255 255` | `#000000` / `0 0 0` | High-contrast label on filled accent controls |
+| `--accent-text` | `#1d4ed8` / `29 78 216` | `#60a5fa` / `96 165 250` | Accent text/links on `--background` or `--card` (≥ 6.5:1) |
+| `--ring` | `#2563eb` / `37 99 235` | `#60a5fa` / `96 165 250` | Keyboard focus ring (`2 px solid`) |
+| `--destructive` | `#dc2626` / `220 38 38` | `#ef4444` / `239 68 68` | Delete button fill and error indicators |
+| `--destructive-text` | `#b91c1c` / `185 28 28` | `#f87171` / `248 113 113` | Destructive text on `--background` or `--card` (≥ 6.4:1) |
+| `--destructive-foreground` | `#ffffff` / `255 255 255` | `#000000` / `0 0 0` | Text on `--destructive` fill |
+| `--warning` | `#b45309` / `180 83 9` | `#f59e0b` / `245 158 11` | Storage warning and Safari 7-day banner accent |
+| `--success` | `#15803d` / `21 128 61` | `#22c55e` / `34 197 94` | Persistent storage badge, completed status |
+| `--checker-a` | `#d4d4d8` / `212 212 216` | `#141414` / `20 20 20` | Transparency checkerboard tile A behind RGBA images |
+| `--checker-b` | `#e4e4e7` / `228 228 231` | `#0a0a0a` / `10 10 10` | Transparency checkerboard tile B behind RGBA images |
+
+## 3. Typography
+
+System stacks only (zero network requests):
+
+- `--font-sans`: `system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+- `--font-mono`: `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`
+
+| Role | Font | Size / Line height | Weight | Extra rules |
+|---|---|---|---|---|
+| App / Screen heading (`h1`) | Sans | 18 px / 24 px | 600 | Single `h1` per screen |
+| Dialog / Sheet title | Sans | 16 px / 22 px | 600 | |
+| Parameter group heading | Sans | 11 px / 16 px | 600 | Uppercase, `letter-spacing: 0.05em`, `text-muted-foreground` |
+| Control label / Body | Sans | 14 px / 20 px | 500 (label), 400 (body) | |
+| Metadata (dimensions, dates, helper text) | Sans | 12 px / 16 px | 400 | `text-muted-foreground` |
+| Numeric readouts & inputs (desktop) | Mono | 13 px / 18 px | 400 | `font-variant-numeric: tabular-nums` |
+| Text and numeric inputs (touch devices) | Mono / Sans | **16 px** / 22 px | 400 | Enforced under `@media (pointer: coarse)` so iOS Safari never auto-zooms on focus (AC-F18.4) |
+| Status pill (`Off`, `Original`, `100%`) | Mono / Sans | 12 px / 16 px | 500 | `tabular-nums` for percentages |
+
+## 4. Spacing, radii and elevation
+
+- **Base grid:** 4 px (`4, 8, 12, 16, 20, 24, 32`).
+- **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges/pills; `9999px` for slider thumbs and the angle dial.
+- **Chrome dimensions:**
+  - Top bar height: `48 px` on desktop; `52 px` plus `env(safe-area-inset-top)` on tablet and phone.
+  - Desktop right sidebar width: `340 px` (fixed).
+  - Tablet docked bottom panel height: `360 px` default, resizable by pointer/keyboard handle between `240 px` and `50%` of viewport height, collapsible to a `48 px` header strip.
+  - Phone bottom sheet detents: **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half** (`44%` viewport height), **Expanded** (`80%` viewport height).
+- **Interactive target minimums (AC-F18.3):**
+  - Touch (`@media (pointer: coarse)` or phone/tablet viewport class): `44 × 44 CSS px` minimum hit area for every button, slider thumb, toggle, chip, and menu trigger.
+  - Desktop (`@media (pointer: fine)` and desktop class): `24 × 24 CSS px` minimum (`32 px` standard toolbar buttons).
+- **Elevation:** Flat hierarchy using `1 px solid rgb(var(--border))` and `--background` → `--card` → `--popover` steps. Only overlays (`Dialog`, `Popover`, `DropdownMenu`, `Sheet`) carry a subtle shadow in Light mode (`0 8px 24px rgb(0 0 0 / 0.10)`); in True Black mode they rely on a crisp `1 px solid rgb(var(--input))` border instead of diffuse shadow.
+
+## 5. Controls and shadcn component mapping
+
+All base primitives come from **shadcn/ui** (`new-york` style, Radix UI primitives, `lucide-react` icons, `src/components/ui/`). Scrollable panels use shadcn `ScrollArea`.
+
+### 5.1 Parameter controls (F5, schema-driven)
+
+Every control renders a visible `<label>` (equal to its accessible name, AC-F5.6), its formatted current value with unit (`120 px`, `45°`, `0.25`, `30%`), and a compact per-parameter `"Reset to default"` icon button (`RotateCcw`, disabled/hidden at opacity 0 until focus when value equals default, always reachable by keyboard when modified). Parameters whose `visibleWhen` predicate evaluates to `false` are omitted from the DOM (AC-F5.5). Groups from `ParamSpec.group` appear in first-use order separated by `Separator`.
+
+| `ParamSpec.kind` | Control composition | Exact behaviour |
+|---|---|---|
+| `number` | `Slider` + numeric `Input` (`inputMode="decimal"`) | Slider emits live `drag` updates; 1 commit on release. Input commits on Enter/blur, clamps to `[min, max]`, rounds to `step` (AC-F5.1, AC-F5.2). |
+| `integer` | `Slider` + numeric `Input` (`inputMode="numeric"`) | Same as `number`; displays `px` suffix when `unit === 'px'`. |
+| `boolean` | `Switch` | Toggles immediately; 1 commit per toggle. |
+| `enum` (≤ 4 options) | `ToggleGroup` (`type="single"`) | Segmented toggle buttons; active option uses high-contrast fill. |
+| `enum` (> 4 options) | `Select` (`SelectTrigger`, `SelectContent`, `SelectItem`) | Dropdown list (used for 8 sort/selection keys and 6 `channelSwap` orders). |
+| `range` | Two-thumb `Slider` (`minStepsBetweenThumbs={0}`) + two numeric `Input`s (`Low`, `High`) | Thumbs cannot cross; typing `lo > hi` swaps them to match `validateParams` (engine.md section 3). |
+| `angle` | Custom `AngleDial` + numeric `Input` (unit `°`, step `0.1`) | 44 × 44 px circular dial with pointer/touch drag; snaps within `±4°` to `spec.snaps` (`0, 45, 90, 135, 180, 225, 270, 315`), Shift bypasses snap. Keyboard on dial: Arrow ±1°, Shift+Arrow ±15°, Home 0°. |
+| `seed` | Numeric `Input` (`inputMode="numeric"`, uint32) + `"New seed"` `Button` (`Dices` icon) | `"New seed"` writes a random uint32 from `crypto.getRandomValues` as 1 commit. |
+
+### 5.2 Universal effect instance controls
+
+Displayed in the parameter panel whenever an effect instance is selected (outside `ParamSpec`):
+
+- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit).
+- **Blend & Mix group (bottom section):**
+  - `Mix`: `Slider` + numeric `Input` (`0` to `100%`, step `1%`, stored as `0..1` step `0.01`, default `100%`).
+  - `Blend`: `ToggleGroup` (`normal` "Normal", `lighten` "Lighten", `darken` "Darken", `difference` "Difference").
+
+### 5.3 Application-wide shadcn mapping
+
+| UI element | Feature | shadcn component | Notes |
+|---|---|---|---|
+| Primary / toolbar / icon buttons | All | `Button` + `Tooltip` | Every icon-only button has `aria-label` and a `Tooltip` (desktop) |
+| Library project card | F2 | `Card` | 4:3 thumbnail container, title (1-line truncate), `W × H px`, last-opened date, overflow `DropdownMenu` |
+| Card actions / Instance actions / Zoom menu | F2, F4, F13 | `DropdownMenu` | Keyboard-navigable menus |
+| Add effect picker | F4 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lists all registered effects with label and 1-line description (AC-F4.1) |
+| Stack / Presets switcher | F4, F10 | `Tabs` (`TabsList`, `TabsTrigger`, `TabsContent`) | Switches sidebar or panel between Stack and Presets |
+| Export / Backup / Save preset / Settings / About | F10, F12, F16, F17 | `Dialog` (desktop/tablet) / full-height `Sheet` (phone) | Focus-trapped modals |
+| Delete project / Storage full / Mobile 24 MP choice | F1, F2, F16 | `AlertDialog` | Explicit confirmation or blocking choice |
+| Phone parameter panel | F18 | Custom detent bottom sheet (Radix `Dialog` non-modal or pointer-tracked region) | Drag handle + detent cycle button; never blocks canvas gestures while collapsed/half |
+| Render & export progress | F8, F12 | `Progress` | `2 px` top bar on canvas (> 300 ms renders); labeled bar with Cancel in Export dialog |
+| Status tags (`Off`, `Original`, `Persistent`) | F4, F11, F16 | `Badge` | Text + icon, never colour alone |
+| Update ready / Import summary / Deleted project | F3, F15, F17 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
+| Persistent warnings (Storage unavailable, Safari 7-day, Backup reminder) | F16, F17 | Inline alert bar (`role="status"` or `role="alert"`) | Docked directly under the top bar; never overlays canvas controls |
+
+## 6. Layout
+
+Viewport classes match [product.md section 4](docs/specs/product.md#4-platforms-and-support) and proof viewports match [workflow.md](docs/agents/workflow.md#proof):
+
+- **Phone:** width `< 640 CSS px`, or height `< 500 CSS px` in landscape. Proof viewport: **`390 × 844`**.
+- **Tablet:** width `640` to `1023 CSS px` (and height ≥ 500 px). Proof viewport: **`820 × 1180`**.
+- **Desktop:** width `≥ 1024 CSS px` (and height ≥ 500 px). Proof viewport: **`1440 × 900`**.
+
+All screens use `100dvh` height and `overflow-x: hidden` on the root shell so horizontal page scroll never occurs at any width (AC-F18.1). Rotating a phone or tablet preserves the open project, selected instance, zoom, and pan without tearing down the canvas worker (AC-F18.2).
+
+### 6.1 Library screen (all widths)
+
+```
++-------------------------------------------------------------------+
+| PixelSortGUI            [Open images]  [Backup] [Theme] [Settings]|  <- 48/52 px
++-------------------------------------------------------------------+
+| [Optional banner: Safari 7-day / Backup reminder / Storage error] |
++-------------------------------------------------------------------+
+|  +---------------+  +---------------+  +---------------+          |
+|  |  [thumbnail]  |  |  [thumbnail]  |  |  [thumbnail]  |          |
+|  |  sunset   [...]  |  portrait [...]  |  street   [...]          |
+|  |  4032x3024    |  |  3000x4000    |  |  1920x1080    |          |
+|  |  Today        |  |  Yesterday    |  |  Nov 18       |          |
+|  +---------------+  +---------------+  +---------------+          |
++-------------------------------------------------------------------+
+```
+
+- **Grid columns:** Phone (`390 × 844`): 2 columns, `12 px` gap, `12 px` page padding. Tablet (`820 × 1180`): 3 columns, `16 px` gap, `16 px` padding. Desktop (`1440 × 900`): `repeat(auto-fill, minmax(220px, 1fr))`, `16 px` gap, `24 px` padding.
+- **Drag and drop (desktop, AC-F1.2):** Dragging files over the window displays a high-contrast dashed overlay (`"Drop images to open"`).
+- **Card interaction (AC-F2.7):** Card body is a focusable button (`Enter` / `Space` opens project); overflow `⋯` button sits in the card footer with `Open`, `Rename`, `Duplicate`, `Export backup`, `Delete`.
+
+### 6.2 Editor screen: Desktop (`1440 × 900`)
+
+```
++-----------------------------------------------------------------------------+
+| <- Library | project-name | [Undo][Redo] | [Compare][Split] | [100% v] | [Export] [Theme] [Settings] |  48 px
++-----------------------------------------------------------------------------+
+| [2 px render progress bar when > 300 ms]               | [Stack | Presets]  |
+|                                                        +--------------------+
+|                                                        | + Add effect       |
+|                                                        | [=] Pixel sort [on]|  <- Stack
+|                     CANVAS STAGE                       | [=] Ch. shift [Off]|     (max 38% H,
+|                 (fluid: ~1100 x 852)                   |                    |      ScrollArea)
+|                                                        +--------------------+
+|                                                        | Pixel sort [Reset] |  <- Params
+|                                                        | Show selection [o] |     (fluid H,
+|  [Rendering full resolution]                           | DIRECTION          |      ScrollArea)
+|                                                        | Angle (dial) 45.0° |
+|                                                        | SELECTION ...      |
++--------------------------------------------------------+--------------------+
+                                                           <--- 340 px --->
+```
+
+### 6.3 Editor screen: Tablet (`820 × 1180`)
+
+```
++---------------------------------------------------+
+| <- | project-name | [Undo][Redo] [Cmp][Spl] [Exp] |  52 px
++---------------------------------------------------+
+| [2 px progress bar]                               |
+|                                                   |
+|                   CANVAS STAGE                    |
+|                 (820 x ~768 px)                   |
+|                                                   |
+| [100% v]                              [Full res]  |
++======================[ === ]======================+  <- resize/collapse handle
+| [Stack | Presets]       | Pixel sort      [Reset] |
+| + Add effect            | Show selection      [o] |
+| [=] Pixel sort     [on] | DIRECTION               |  <- Docked bottom panel
+| [=] Channel shift [Off] | Angle   [dial]   45.0°  |     (360 px default)
+|                         | SELECTION               |
+| <--- 260 px --->        | <--- fluid (560 px) --> |
++-------------------------+-------------------------+
+```
+
+### 6.4 Editor screen: Phone (`390 × 844`)
+
+```
++-------------------------------+
+| <- [Undo][Redo] [Cmp] [Exp][⋮]|  52 px + safe-area-top
++-------------------------------+
+| [2 px progress bar]           |
+|                               |
+|         CANVAS STAGE          |
+|                               |
+| [100% v]          [Split]     |
++-------------------------------+
+| [+][Pixel sort][Ch. shift Off]|  <- 48 px horizontal scrollable stack strip
++===========[  ===  ]===========+  <- Bottom sheet (Collapsed / Half / Expanded)
+| Pixel sort   [Presets][Reset] |
+| Show selection            [o] |
+| DIRECTION                     |
+| Angle        [dial]    45.0°  |
+| ...                           |
++-------------------------------+  + safe-area-bottom
+```
+
+- **Phone top bar overflow (`⋮`):** Holds Project rename, Presets, Theme toggle, and Settings so the primary bar stays uncluttered at 390 px with 44 × 44 px buttons.
+- **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled dot/`"Off"` text, and tap-to-select; tapping the active chip's `⋮` menu opens Enable/Disable, Move left (up), Move right (down), Duplicate, Remove. A pinned `+` chip opens Add effect.
+- **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet to a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
+
+## 7. Feature-specific visual specifications
+
+- **Canvas rendering (F8, F13):** Displays the active `ImageBitmap` (or `2,048 × 2,048` tiles for `full` renders) on an `<canvas>` sized to `clientWidth * devicePixelRatio` × `clientHeight * devicePixelRatio`. Above 200% zoom, sets `ctx.imageSmoothingEnabled = false` so individual pixels stay crisp. Transparent areas render over the `--checker-a` / `--checker-b` `16 × 16 CSS px` checkerboard.
+- **Compare and Split overlays (F11):**
+  - When Compare toggle/hold is active, draw the `original` `settle` bitmap aligned to the exact same zoom and pan transform, and display a top-left pill `"Original"` (AC-F11.1).
+  - In Split view, clip the source bitmap to `[0, splitX]` and the rendered result to `[splitX, canvasWidth]`. Draw a `2 px` vertical line (`#ffffff` with `1 px` `#000000` casing so it stays visible over any photo) and a `44 × 44 CSS px` circular grab handle at vertical midpoint (`role="slider"`, `aria-label="Compare split position"`, `aria-valuemin="0"`, `aria-valuemax="100"`). Small corner pills label `"Original"` (top-left) and `"Edited"` (top-right).
+- **Selection debug view (F6):** While `"Show selection"` is on for a `pixelSort` instance, show a top-left pill `"Selection preview (not exported)"`.
+- **Effect stack row (F4):** Shows drag grip (`GripVertical`), effect label, enabled `Switch`, and when off displays BOTH an `EyeOff` icon and the text `"Off"` (AC-F4.2). An unknown or newer-version instance renders with a dashed border, label `"Unsupported effect (<type> v<version>)"`, no parameter controls, and only Move up / Move down / Remove menu items (AC-F4.6).
+- **Export dialog (F12):**
+  - Format: `ToggleGroup` showing `PNG`, `JPEG`, and `WebP` (omitted when startup `convertToBlob` probe fails, e.g. Safari, AC-F12.2).
+  - Quality: `Slider` + `Input` (`50` to `100`, default `92`), hidden when `PNG` is selected.
+  - Size: `ToggleGroup` (`Full`, `1/2`, `1/4`, `Custom`). Choosing `Custom` reveals a `"Longest side (px)"` numeric input capped at `max(sourceWidth, sourceHeight)`. Below the control, display exact output dimensions computed by `renderSize` (e.g. `"2000 × 1500 px"`).
+  - Filename: text `Input` prefilled `<project name>-<YYYYMMDD-HHmmss>.<ext>`.
+  - Actions: `"Download"` primary button, `"Share"` secondary button (shown only when `navigator.canShare?.({files: [...]})` is true), and during export a `Progress` bar with stage label (`Decoding`, `Rendering`, `Encoding`) and `"Cancel"` button (AC-F12.4).
+- **Settings and About (F14, F15, F16, F17):**
+  - Appearance: Theme `ToggleGroup` (`System`, `Light`, `True Black`).
+  - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, `"Last backup"` date, `"Export backup"` and `"Import backup"` buttons, and a short note that Private Browsing does not retain data after closing.
+  - App installation: `"Install app"` button when `beforeinstallprompt` is captured (Android Chrome / desktop Chromium), or brief `"Add to Home Screen"` instructions on iOS Safari tabs.
+  - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section / dialog listing bundled MIT notices when present.
+
+## 8. Interaction: touch, pointer and keyboard
+
+### 8.1 Canvas gestures (F13)
+
+- **Zoom bounds:** `minZoom = 0.1 * fitZoom`, `maxZoom = 32` (`3200%`).
+- **Pan clamp (AC-F13.3):** After every pan or zoom update, clamp `centerX` and `centerY` so at least `64 CSS px` of the rendered image remains inside the canvas viewport on every edge.
+- **Pointer (desktop/tablet with mouse or trackpad):**
+  - Drag on canvas: pan (`grab` / `grabbing` cursor).
+  - `Ctrl` / `Cmd` + wheel, or trackpad pinch (`wheel` with `ctrlKey`): zoom continuously around the pointer position.
+  - Plain wheel: pan vertically (and horizontally with trackpad two-finger scroll or `Shift + wheel`).
+  - Double-click: toggle between `Fit` and `100%` centered on the clicked point.
+- **Touch (phone/tablet):**
+  - Single-finger drag: pan.
+  - Two-finger pinch: continuous zoom and pan around the finger midpoint at 60 fps (`touch-action: none` on the canvas element, direct `requestAnimationFrame` redraw without React re-renders, AC-F13.1).
+  - Double-tap: toggle between `Fit` and `100%` centered on the tap point.
+- **Zoom control (AC-F13.2):** Shows current zoom rounded to nearest integer percent (e.g. `"100%"`); activating opens a menu with `Fit`, `50%`, `100%`, `200%`, `400%`.
+
+### 8.2 Compare hold vs toggle (F11)
+
+- **Pointer / touch on Compare button:** `pointerdown` starts a `300 ms` timer and immediately shows the source image. If `pointerup` occurs before `300 ms`, Compare toggles its latched state (`on ↔ off`). If held ≥ `300 ms`, releasing returns to the edited result (AC-F11.2).
+- **Keyboard `\`:** Same `300 ms` hold-vs-toggle rule (`keydown` without `repeat` starts timer; `keyup` < 300 ms toggles, ≥ 300 ms releases back to result).
+
+### 8.3 Keyboard shortcuts
+
+Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select>`, or `[contenteditable]`, except Undo/Redo (`Ctrl/Cmd+Z`) which let native text undo work inside text inputs.
+
+| Shortcut | Scope | Action |
+|---|---|---|
+| `Ctrl+Z` / `Cmd+Z` | Editor | Undo last commit (AC-F9.1) |
+| `Ctrl+Shift+Z` / `Cmd+Shift+Z` / `Ctrl+Y` | Editor | Redo commit (AC-F9.1) |
+| `\` | Editor | Toggle Compare (tap) or peek Original (hold > 300 ms) (F11) |
+| `S` | Editor | Toggle Split compare view (F11) |
+| `+` / `=` and `-` | Editor | Zoom in / out by factor of 2 around canvas centre (F13) |
+| `0` | Editor | Zoom to Fit (F13) |
+| `1` | Editor | Zoom to 100% (F13) |
+| `Arrow` keys | Canvas focused | Pan by 10% of viewport width/height (F13) |
+| `ArrowLeft` / `ArrowRight` (`+ Shift`) | Split divider focused | Move split divider by 1% (10% with Shift) (AC-F11.3) |
+| `Arrow` keys (`+ Shift`) | Slider focused | Change value by 1 step (10 steps with Shift); burst with ≤ 500 ms gaps creates 1 commit (AC-F5.4) |
+| `Alt+ArrowUp` / `Alt+ArrowDown` | Effect stack row focused | Move selected effect instance up / down 1 position (AC-F4.3) |
+| `Escape` | Any modal / menu / sheet | Close overlay and restore focus to its trigger |
+
+## 9. Empty, loading and error states
+
+| State | Trigger | Presentation and exact copy | Actions |
+|---|---|---|---|
+| Empty library (AC-F2.1) | 0 projects stored | Centered column: heading `"No projects yet"`, note `"Images stay on this device."` | `"Open images"` (primary), `"Import backup"` (secondary) |
+| Empty effect stack | New project or all effects removed | Centered note in stack panel: `"No effects yet"` | `"Add effect"`, `"Browse presets"` |
+| Render in progress (AC-F8.3) | Preview render running > 300 ms | Thin `2 px` `--accent` progress bar pinned to top of canvas stage | Disappears on finish or cancel |
+| Full-resolution render (AC-F8.4) | Zoom > 1.25× settle proxy | Compact pill at bottom-left of canvas: `"Rendering full resolution"` | Disappears on finish or cancel (AC-F8.5) |
+| Worker crash (engine.md section 11) | 2nd worker crash within 60 s | Centered error card over canvas stage: `"Rendering stopped unexpectedly."` | `"Retry"`, `"Reset effects"` |
+| Insecure context (product.md section 4) | `!window.isSecureContext` | Full-screen blocking card: `"Secure connection required"` + `"Open PixelSortGUI over HTTPS or http://localhost so browser storage and offline features can work."` | none |
+| Unsupported image format (AC-F1.3) | Browser cannot decode file | Error toast / dialog: `"Can't open <file name>: the browser can't read this image format."` | `"Dismiss"` |
+| Image too large (AC-F1.4) | Longest side > 16,384 px (or > 64 MP desktop / > 200 MB) | Error dialog: `"Image too large: the longest side is <N> px; the limit is 16,384 px."` (or area / file-size equivalent) | `"Dismiss"` |
+| Mobile large image (AC-F1.5) | Phone/tablet import between 24 MP and 64 MP | `AlertDialog`: explains 24 MP guaranteed mobile limit and that larger files may fail to export | `"Import at 24 MP"` (primary), `"Import anyway"` (secondary), `"Cancel"` |
+| Deleted project link (AC-F3.5) | Open `#/p/<deleted-id>` | Library screen + toast: `"That project no longer exists."` | none |
+| Storage full (AC-F16.2) | Quota pre-flight fail or `QuotaExceededError` | `AlertDialog`: `"Storage is full"` + explanation that no partial project was saved | `"Manage library"`, `"Export backup"` |
+| Storage unavailable (AC-F16.4) | IndexedDB cannot open | Persistent top banner: `"Storage unavailable: nothing will be saved after you close this tab."` | `"Export backup"` |
+| Safari 7-day eviction (AC-F16.3) | iOS/iPadOS Safari tab after 1st import | Dismissable top banner explaining 7-day tab data deletion and Share → **Add to Home Screen** | `"Dismiss"` (hides 30 days) |
+| Backup reminder (AC-F17.4) | ≥ 1 project and > 30 days since backup | Dismissable banner on Library screen: `"You haven't backed up your projects in 30 days."` | `"Export backup"`, `"Dismiss"` |
+| Damaged or newer backup (AC-F17.3) | Backup import fails validation | Error dialog naming the exact failure (persistence.md section 8.3); imports nothing | `"Dismiss"` |
+| Export out of memory (engine.md section 11) | Worker returns `out-of-memory` | Inline error inside Export dialog: `"Not enough memory to export at this size. Try 1/2 or 1/4 size."` | Switch size preset, retry |
+| PWA update ready (AC-F15.3) | New service worker waiting | Persistent non-blocking toast: `"A new version is ready."` | `"Reload to update"`, `"Later"` |
+
+## 10. Accessibility
+
+Target: **WCAG 2.2 Level AA** for all UI outside the user's photo (F19).
+
+- **Semantic structure:** Every screen uses landmark elements (`<header>`, `<main>`, `<aside>` or named `<section>`), a single `<h1>`, and logical DOM reading order matching visual layout.
+- **Keyboard completeness (AC-F19.1):** The entire core loop (importing via keyboard-activated file input, adding an effect, tuning every parameter including angle and range, reordering the stack, undoing/redoing, comparing, moving the split divider, zooming/panning, and exporting) works without a pointer. Every drag or hover interaction has a keyboard equivalent.
+- **Focus visibility and management:** `:focus-visible` renders `2 px solid rgb(var(--ring))` with `2 px` offset on every interactive control. Opening a dialog or menu traps or moves focus inside; closing returns focus to the triggering element. Deleting a project card or effect row moves focus cleanly to the next sibling (or the Add/Open button if empty).
+- **Accessible names and tooltips:** Every icon-only button has an explicit `aria-label`. Undo and Redo buttons include the target commit label in both `aria-label` and tooltip, for example `"Undo Change Angle"` and `"Redo Add Pixel sort"` (AC-F9.2).
+- **Status announcements (AC-F19.3):** One visually hidden live region (`role="status" aria-live="polite" aria-atomic="true"`) announces `"Rendering"`, `"Rendered"`, `"Export finished: <file name>"`, and undo/redo results. Throttled so rapid `drag` renders do not spam assistive tech (announce on `settle` and `full` transitions).
+- **Touch targets and zoom safety:** Minimum `44 × 44 CSS px` interactive targets and minimum `16 px` font size on text/numeric inputs under `@media (pointer: coarse)` (AC-F18.3, AC-F18.4).
+- **Reduced motion (AC-F19.4):** Under `@media (prefers-reduced-motion: reduce)`, all sheet transitions, toast slides, zoom easing, and spinner/progress animations become instant state updates (`transition-duration: 0.01ms`).
+- **Automated verification (AC-F14.3, AC-F19.2):** CI runs Playwright with `@axe-core/playwright` checking zero serious/critical/moderate WCAG 2.2 AA violations on the Library, Editor, Export dialog, and Settings screens in both Light and True Black themes at `390 × 844`, `820 × 1180`, and `1440 × 900`.

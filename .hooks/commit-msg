@@ -1,0 +1,25 @@
+#!/bin/sh
+# Rejects commit messages that carry a Co-authored-by trailer or a "Generated with" attribution line.
+# Plain POSIX sh plus grep and sed, so it works before any package is installed.
+
+msg_file=$1
+
+if [ -z "$msg_file" ] || [ ! -r "$msg_file" ]; then
+	echo "commit-msg: cannot read the commit message file" >&2
+	exit 1
+fi
+
+# Text below the scissors line comes from "git commit -v" and is not part of the message.
+body=$(sed '/^# -* >8 -*$/,$d' "$msg_file")
+
+if printf '%s\n' "$body" | LC_ALL=C grep -qiE '^[[:space:]]*co-authored-by[[:space:]]*:'; then
+	echo "commit rejected: remove the Co-authored-by trailer; name agents and models in the pull request (AGENTS.md)." >&2
+	exit 1
+fi
+
+if printf '%s\n' "$body" | LC_ALL=C grep -qiE '^[^[:alnum:]]*(generated|created|written|authored|made)[[:space:]]+(with|by|using)[[:space:]]'; then
+	echo "commit rejected: remove the 'Generated with' attribution line; name agents and models in the pull request (AGENTS.md)." >&2
+	exit 1
+fi
+
+exit 0

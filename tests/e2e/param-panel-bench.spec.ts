@@ -198,6 +198,10 @@ test.describe('parameter panel on a 12 MP photo', () => {
 						record.target instanceof globalThis.Element
 							? record.target
 							: record.target.parentElement;
+					const slot =
+						element instanceof globalThis.HTMLElement
+							? (element.dataset.slot ?? null)
+							: null;
 					const rowElement = element?.closest('[data-param-row]');
 					const rowLabel =
 						rowElement?.querySelector('label')?.textContent?.trim() ?? 'row';
@@ -206,7 +210,7 @@ test.describe('parameter panel on a 12 MP photo', () => {
 							type: record.type,
 							attribute: record.attributeName,
 							tag: element?.tagName ?? 'none',
-							slot: element?.getAttribute('data-slot') ?? null,
+							slot,
 							row: rowLabel,
 						});
 					}

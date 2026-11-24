@@ -6,6 +6,25 @@ import {defineConfig} from 'vite-plus';
 export default defineConfig({
 	base: '/',
 	plugins: [react(), tailwindcss()],
+	worker: {
+		format: 'es',
+	},
+	build: {
+		rollupOptions: {
+			// The render coordinator is its own entry so its chunk (and the worker
+			// chunks it references) exists before any feature imports it. The
+			// end-to-end tests load it from `dist/assets/coordinator-*.js`, which
+			// needs its exports kept.
+			preserveEntrySignatures: 'exports-only',
+			input: {
+				index: path.resolve(import.meta.dirname, 'index.html'),
+				coordinator: path.resolve(
+					import.meta.dirname,
+					'src/render/coordinator.ts',
+				),
+			},
+		},
+	},
 	resolve: {
 		alias: {
 			'@': path.resolve(import.meta.dirname, './src'),

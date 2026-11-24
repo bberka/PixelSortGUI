@@ -6,8 +6,14 @@ import type {
 	RenderEvent,
 	RenderSource,
 } from '../../src/render/coordinator.ts';
-import type {AppStoreTimerEnv} from '../../src/state/app-store.ts';
+import {
+	createAppStore,
+	type AppStoreDependencies,
+	type AppStoreTimerEnv,
+} from '../../src/state/app-store.ts';
 import type {HashRouterEnv} from '../../src/state/router.ts';
+import {MemoryStorageAdapter} from '../../src/storage/memory-adapter.ts';
+import type {StorageManagerLike} from '../../src/storage/quota.ts';
 import type {StackRequest} from '../../src/worker/protocol.ts';
 
 export type FakeCoordinatorCall =
@@ -217,4 +223,63 @@ export function makeTestBlob(label = 'image', byteLength = 64): Blob {
 	}
 
 	return new Blob([bytes], {type: 'image/png'});
+}
+
+export async function flushMicrotasks(turns = 8): Promise<void> {
+	for (let index = 0; index < turns; index++) {
+		await Promise.resolve();
+	}
+}
+
+export function createTestStore(
+	options: {
+		initialHash?: string;
+		timerEnv?: AppStoreTimerEnv;
+		storageManager?: StorageManagerLike;
+		repository?: MemoryStorageAdapter;
+		thumbnailGenerator?: AppStoreDependencies['thumbnailGenerator'];
+	} = {},
+) {
+	const fakeTimerEnv = createFakeTimerEnv();
+	const timerEnv = options.timerEnv ?? fakeTimerEnv;
+	const repository =
+		options.repository ?? new MemoryStorageAdapter({now: () => timerEnv.now()});
+	const coordinator = createFakeCoordinator();
+	const routerEnv = createFakeRouterEnv(options.initialHash ?? '');
+	const syncedThemes: string[] = [];
+	const thumbnailCalls: number[] = [];
+
+	const bundle = createAppStore({
+		repository,
+		coordinator,
+		routerEnv,
+		timerEnv,
+		storageManager: options.storageManager,
+		syncTheme(theme) {
+			syncedThemes.push(theme);
+		},
+		thumbnailGenerator:
+			options.thumbnailGenerator ??
+			(async (frame) => {
+				thumbnailCalls.push(frame.generation);
+				return {
+					blob: new Blob([new Uint8Array([1, 2, 3])], {type: 'image/webp'}),
+					width: Math.min(512, frame.width),
+					height: Math.min(512, frame.height),
+				};
+			}),
+	});
+	bundle.store.getState().attachListeners();
+
+	return {
+		bundle,
+		store: bundle.store,
+		transientStore: bundle.transientStore,
+		repository,
+		coordinator,
+		routerEnv,
+		timerEnv: fakeTimerEnv,
+		syncedThemes,
+		thumbnailCalls,
+	};
 }

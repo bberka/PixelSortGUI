@@ -1,501 +1,383 @@
 import {describe, expect, it} from 'vite-plus/test';
-import {
-	createAppStore,
-	KEYBOARD_COMMIT_DEBOUNCE_MS,
-	MISSING_PROJECT_NOTICE,
-	selectCanRedo,
-	selectCanUndo,
-	selectRedoLabel,
-	selectUndoLabel,
-	VIEW_STATE_DEBOUNCE_MS,
-} from '../../src/state/app-store.ts';
+import {MISSING_PROJECT_NOTICE} from '../../src/state/app-store.ts';
 import {DEV_GALLERY_HASH} from '../../src/state/router.ts';
-import {MemoryStorageAdapter} from '../../src/storage/memory-adapter.ts';
-import {StorageValidationError} from '../../src/storage/types.ts';
-import {
-	createFakeCoordinator,
-	createFakeRouterEnv,
-	createFakeTimerEnv,
-	makeTestBlob,
-} from './fixtures.ts';
+import {createTestStore, flushMicrotasks, makeTestBlob} from './fixtures.ts';
 
-function setupStore(options: {initialHash?: string} = {}) {
-	const timerEnv = createFakeTimerEnv();
-	const repository = new MemoryStorageAdapter({now: () => timerEnv.now()});
-	const coordinator = createFakeCoordinator();
-	const routerEnv = createFakeRouterEnv(options.initialHash ?? '');
-	const syncedThemes: string[] = [];
-	const thumbnailCalls: number[] = [];
+function makeQuotaError(): DOMException {
+	return new DOMException('Storage quota exceeded', 'QuotaExceededError');
+}
 
-	const bundle = createAppStore({
-		repository,
-		coordinator,
-		routerEnv,
-		timerEnv,
-		syncTheme(theme) {
-			syncedThemes.push(theme);
-		},
-		async thumbnailGenerator(frame) {
-			thumbnailCalls.push(frame.generation);
-			return {
-				blob: new Blob([new Uint8Array([1, 2, 3])], {type: 'image/webp'}),
-				width: Math.min(512, frame.width),
-				height: Math.min(512, frame.height),
-			};
-		},
+describe('app store — projects, routing, settings, coordinator, and quota', () => {
+	it('importImage creates and activates a project, persists it, updates hash, tells coordinator, and requests persistence once', async () => {
+		let persistCalls = 0;
+		const {store, repository, coordinator, routerEnv} = createTestStore({
+			storageManager: {
+				async persist() {
+					persistCalls++;
+					return true;
+				},
+				async persisted() {
+					return true;
+				},
+			},
+		});
+
+		const result = await store.getState().importImage({
+			name: 'sunset.jpg',
+			blob: makeTestBlob('sunset', 128),
+			width: 800,
+			height: 600,
+		});
+		await flushMicrotasks();
+
+		const state = store.getState();
+		expect(state.activeProjectId).toBe(result.project.id);
+		expect(state.activeProject?.name).toBe('sunset');
+		expect(state.activeSource?.sha256).toBe(result.source.sha256);
+		expect(state.history).toHaveLength(1);
+		expect(state.history[0].label).toBe('Initial');
+		expect(state.route).toEqual({
+			screen: 'editor',
+			projectId: result.project.id,
+		});
+		expect(routerEnv.getHash()).toBe(`#/p/${result.project.id}`);
+		expect(persistCalls).toBe(1);
+		expect(state.storage.persisted).toBe(true);
+
+		const persisted = await repository.getProject(result.project.id);
+		expect(persisted?.name).toBe('sunset');
+		expect((await repository.getAppState()).activeProjectId).toBe(
+			result.project.id,
+		);
+		expect(await repository.getHistory(result.project.id)).toHaveLength(1);
+
+		expect(coordinator.calls).toEqual([
+			{
+				type: 'setSource',
+				source: {
+					key: result.source.sha256,
+					blob: result.source.blob,
+					width: 800,
+					height: 600,
+				},
+			},
+			{
+				type: 'setStack',
+				request: {stack: result.project.stack, debug: undefined},
+				options: undefined,
+			},
+			{type: 'setViewScale', scale: 0},
+		]);
 	});
-	bundle.store.getState().attachListeners();
 
-	return {
-		bundle,
-		store: bundle.store,
-		transientStore: bundle.transientStore,
-		repository,
-		coordinator,
-		routerEnv,
-		timerEnv,
-		syncedThemes,
-		thumbnailCalls,
-	};
-}
+	it('importImage with setActive=false persists project without activating or notifying coordinator', async () => {
+		const {store, repository, coordinator, routerEnv} = createTestStore();
 
-async function flushMicrotasks(): Promise<void> {
-	for (let index = 0; index < 5; index++) {
-		await Promise.resolve();
-	}
-}
+		const result = await store.getState().importImage({
+			name: 'background.png',
+			blob: makeTestBlob('bg'),
+			width: 200,
+			height: 100,
+			setActive: false,
+		});
 
-describe('app store', () => {
-	it('imports single and multiple images, deduplicates sources, and activates the first', async () => {
-		const {store, repository, coordinator, routerEnv} = setupStore();
+		expect(store.getState().projects).toHaveLength(1);
+		expect(store.getState().activeProjectId).toBeNull();
+		expect(routerEnv.getHash()).toBe('');
+		expect(coordinator.calls).toHaveLength(0);
+		expect(await repository.getProject(result.project.id)).toBeDefined();
+	});
+
+	it('importImages imports multiple files, deduplicates identical sources, and activates only the first', async () => {
+		const {store, repository, coordinator, routerEnv} = createTestStore();
 		const blobA = makeTestBlob('photo-a', 128);
 		const blobB = makeTestBlob('photo-b', 128);
 
 		const results = await store.getState().importImages([
-			{name: 'sunset.jpg', blob: blobA, width: 800, height: 600},
-			{name: 'bridge.png', blob: blobB, width: 640, height: 480},
-			{name: 'sunset-again.jpg', blob: blobA, width: 800, height: 600},
+			{name: 'first.jpg', blob: blobA, width: 800, height: 600},
+			{name: 'second.png', blob: blobB, width: 640, height: 480},
+			{name: 'first-dup.jpg', blob: blobA, width: 800, height: 600},
 		]);
 
 		expect(results).toHaveLength(3);
+		expect(results[0].deduplicated).toBe(false);
+		expect(results[1].deduplicated).toBe(false);
 		expect(results[2].deduplicated).toBe(true);
+		expect(results[2].source.sha256).toBe(results[0].source.sha256);
+
 		expect(store.getState().projects).toHaveLength(3);
 		expect(store.getState().activeProjectId).toBe(results[0].project.id);
-		expect(store.getState().activeProject?.name).toBe('sunset');
 		expect(routerEnv.getHash()).toBe(`#/p/${results[0].project.id}`);
+
+		const persisted = await repository.listProjects();
+		expect(persisted).toHaveLength(3);
+		expect((await repository.getAppState()).activeProjectId).toBe(
+			results[0].project.id,
+		);
 
 		const sourceCalls = coordinator.calls.filter((c) => c.type === 'setSource');
 		expect(sourceCalls).toHaveLength(1);
 		expect(sourceCalls[0].source?.key).toBe(results[0].source.sha256);
-
-		const persistedProjects = await repository.listProjects();
-		expect(persistedProjects).toHaveLength(3);
 	});
 
-	it('opens, closes, renames, duplicates, and deletes projects', async () => {
-		const {store, repository, coordinator, routerEnv} = setupStore();
-		const created = await store.getState().importImage({
+	it('openProject loads project, source, history, and viewScale into state and coordinator, and flushes pending edits first', async () => {
+		const {store, repository, coordinator, routerEnv, timerEnv} =
+			createTestStore();
+		const first = await store.getState().importImage({
 			name: 'first.png',
 			blob: makeTestBlob('first'),
 			width: 400,
 			height: 300,
 		});
+		const inst = await store.getState().addEffect('pixelSort');
+		store.getState().nudgeParam(inst.id, 'angle', 45);
+		store.getState().setViewState({fitMode: 'custom', zoom: 2});
 
-		const renamed = await store
-			.getState()
-			.renameProject(created.project.id, '  Renamed Photo  ');
-		expect(renamed.name).toBe('Renamed Photo');
-		expect(store.getState().activeProject?.name).toBe('Renamed Photo');
+		const second = await store.getState().importImage({
+			name: 'second.png',
+			blob: makeTestBlob('second'),
+			width: 600,
+			height: 500,
+		});
 
-		const copy = await store.getState().duplicateProject(created.project.id);
-		expect(copy.name).toBe('Renamed Photo copy');
-		expect(store.getState().projects).toHaveLength(2);
+		// Pending nudge and viewState on first must have been flushed when switching
+		const firstPersisted = await repository.getProject(first.project.id);
+		expect(firstPersisted?.stack.instances[0].params.angle).toBe(45);
+		expect(firstPersisted?.viewState.zoom).toBe(2);
 
-		await store.getState().closeProject();
+		coordinator.calls.length = 0;
+		timerEnv.setDevicePixelRatio(2);
+		await store.getState().openProject(first.project.id);
+
+		expect(store.getState().activeProjectId).toBe(first.project.id);
+		expect(store.getState().route).toEqual({
+			screen: 'editor',
+			projectId: first.project.id,
+		});
+		expect(routerEnv.getHash()).toBe(`#/p/${first.project.id}`);
+		expect((await repository.getAppState()).activeProjectId).toBe(
+			first.project.id,
+		);
+		expect(coordinator.calls).toEqual([
+			{
+				type: 'setSource',
+				source: {
+					key: first.source.sha256,
+					blob: first.source.blob,
+					width: 400,
+					height: 300,
+				},
+			},
+			{
+				type: 'setStack',
+				request: {
+					stack: firstPersisted!.stack,
+					debug: undefined,
+				},
+				options: undefined,
+			},
+			{type: 'setViewScale', scale: 4},
+		]);
+
+		// Verify replaceHash option replaces instead of pushing
+		const historyLengthBefore = routerEnv.history.length;
+		await store.getState().openProject(second.project.id, {replaceHash: true});
+		expect(routerEnv.history).toHaveLength(historyLengthBefore);
+		expect(routerEnv.getHash()).toBe(`#/p/${second.project.id}`);
+	});
+
+	it('openProject on a missing id returns to library, sets notice, clears activeProjectId, and clears coordinator source', async () => {
+		const {store, repository, coordinator, routerEnv} = createTestStore();
+		await repository.updateAppState({activeProjectId: 'missing-id'});
+		coordinator.calls.length = 0;
+
+		const opened = await store.getState().openProject('missing-id');
+
+		expect(opened).toBeNull();
 		expect(store.getState().activeProjectId).toBeNull();
 		expect(store.getState().route).toEqual({screen: 'library'});
+		expect(store.getState().notice).toBe(MISSING_PROJECT_NOTICE);
 		expect(routerEnv.getHash()).toBe('#/');
+		expect((await repository.getAppState()).activeProjectId).toBeNull();
+		expect(coordinator.calls).toEqual([{type: 'setSource', source: undefined}]);
+
+		store.getState().clearNotice();
+		expect(store.getState().notice).toBeNull();
+	});
+
+	it('closeProject flushes pending edits, clears state and persisted activeProjectId, resets hash, and clears coordinator source', async () => {
+		const {store, repository, coordinator, routerEnv} = createTestStore();
+		const {project} = await store.getState().importImage({
+			name: 'close-me.png',
+			blob: makeTestBlob('close'),
+			width: 300,
+			height: 200,
+		});
+		const inst = await store.getState().addEffect('pixelSort');
+		store.getState().nudgeParam(inst.id, 'angle', 90);
+		store.getState().setViewState({splitPosition: 0.25});
+
+		coordinator.calls.length = 0;
+		await store.getState().closeProject();
+
+		const state = store.getState();
+		expect(state.activeProjectId).toBeNull();
+		expect(state.activeProject).toBeNull();
+		expect(state.activeSource).toBeNull();
+		expect(state.history).toEqual([]);
+		expect(state.route).toEqual({screen: 'library'});
+		expect(routerEnv.getHash()).toBe('#/');
+		expect((await repository.getAppState()).activeProjectId).toBeNull();
+
+		const persisted = await repository.getProject(project.id);
+		expect(persisted?.stack.instances[0].params.angle).toBe(90);
+		expect(persisted?.viewState.splitPosition).toBe(0.25);
+
 		expect(coordinator.calls.at(-1)).toEqual({
 			type: 'setSource',
 			source: undefined,
 		});
-
-		await store.getState().openProject(copy.id);
-		expect(store.getState().activeProjectId).toBe(copy.id);
-		expect(routerEnv.getHash()).toBe(`#/p/${copy.id}`);
-
-		const delResult = await store.getState().deleteProject(copy.id);
-		expect(delResult.deleted).toBe(true);
-		expect(delResult.sourceDeleted).toBe(false);
-		expect(store.getState().activeProjectId).toBeNull();
-		expect(store.getState().route).toEqual({screen: 'library'});
-		expect(await repository.listProjects()).toHaveLength(1);
 	});
 
-	it('adds, removes, reorders, duplicates, toggles, and selects effect instances', async () => {
-		const {store, repository, coordinator, timerEnv} = setupStore();
+	it('renameProject trims and persists the new name for active and inactive projects', async () => {
+		const {store, repository, coordinator} = createTestStore();
 		const {project} = await store.getState().importImage({
-			name: 'effects.png',
-			blob: makeTestBlob('effects'),
-			width: 320,
-			height: 240,
-		});
-
-		const first = await store.getState().addEffect('pixelSort');
-		const second = await store.getState().addEffect('channelShift');
-		expect(first.id).toMatch(/^[0-9a-z]{8}$/);
-		expect(second.id).toMatch(/^[0-9a-z]{8}$/);
-		expect(first.id).not.toBe(second.id);
-		expect(store.getState().activeProject?.selectedInstanceId).toBe(second.id);
-
-		const dup = await store.getState().duplicateEffect(first.id);
-		expect(dup.id).not.toBe(first.id);
-		expect(dup.params).toEqual(first.params);
-		expect(
-			store.getState().activeProject?.stack.instances.map((i) => i.id),
-		).toEqual([first.id, dup.id, second.id]);
-
-		await store.getState().reorderEffect(2, 0);
-		expect(
-			store.getState().activeProject?.stack.instances.map((i) => i.id),
-		).toEqual([second.id, first.id, dup.id]);
-
-		await store.getState().setEffectEnabled(first.id, false);
-		expect(
-			store
-				.getState()
-				.activeProject?.stack.instances.find((i) => i.id === first.id)?.enabled,
-		).toBe(false);
-
-		const historyBeforeSelect = (await repository.getHistory(project.id))
-			.length;
-		store.getState().selectEffect(second.id);
-		expect(store.getState().activeProject?.selectedInstanceId).toBe(second.id);
-		timerEnv.advance(VIEW_STATE_DEBOUNCE_MS);
-		await flushMicrotasks();
-		expect((await repository.getHistory(project.id)).length).toBe(
-			historyBeforeSelect,
-		);
-		expect((await repository.getProject(project.id))?.selectedInstanceId).toBe(
-			second.id,
-		);
-
-		await store.getState().removeEffect(second.id);
-		expect(store.getState().activeProject?.stack.instances).toHaveLength(2);
-		expect(store.getState().activeProject?.selectedInstanceId).toBe(first.id);
-
-		const stackCalls = coordinator.calls.filter((c) => c.type === 'setStack');
-		expect(stackCalls.at(-1)?.request.stack.instances).toHaveLength(2);
-	});
-
-	it('keeps drag updates isolated in transientStore with zero history or repo writes, and commits once on release', async () => {
-		const {store, transientStore, repository, coordinator} = setupStore();
-		const {project} = await store.getState().importImage({
-			name: 'drag.png',
-			blob: makeTestBlob('drag'),
-			width: 320,
-			height: 240,
-		});
-		const instance = await store.getState().addEffect('pixelSort');
-		const historyBefore = (await repository.getHistory(project.id)).length;
-
-		let appStoreNotifications = 0;
-		const unsubscribe = store.subscribe(() => {
-			appStoreNotifications++;
-		});
-		coordinator.calls.length = 0;
-
-		store.getState().dragParam(instance.id, 'angle', 15);
-		store.getState().dragParam(instance.id, 'angle', 45);
-		store.getState().dragParam(instance.id, 'angle', 90);
-		store.getState().dragMix(instance.id, 0.5);
-
-		expect(appStoreNotifications).toBe(0);
-		expect(transientStore.getState().activeDrag).toEqual({
-			instanceId: instance.id,
-			params: {angle: 90},
-			mix: 0.5,
-		});
-		expect((await repository.getHistory(project.id)).length).toBe(
-			historyBefore,
-		);
-		expect(
-			coordinator.calls.every(
-				(c) => c.type === 'setStack' && c.options?.dragging === true,
-			),
-		).toBe(true);
-		expect(coordinator.calls).toHaveLength(4);
-
-		await store.getState().commitParam(instance.id, 'angle', 90);
-		unsubscribe();
-
-		expect(appStoreNotifications).toBe(1);
-		expect(transientStore.getState().activeDrag).toBeNull();
-		const historyAfter = await repository.getHistory(project.id);
-		expect(historyAfter).toHaveLength(historyBefore + 1);
-		expect(historyAfter.at(-1)?.label).toBe('Change Angle');
-		expect(
-			(await repository.getProject(project.id))?.stack.instances[0].params
-				.angle,
-		).toBe(90);
-
-		const lastCall = coordinator.calls.at(-1);
-		expect(lastCall?.type).toBe('setStack');
-		if (lastCall?.type === 'setStack') {
-			expect(lastCall.options).toBeUndefined();
-			expect(lastCall.request.stack.instances[0].params.angle).toBe(90);
-		}
-
-		// Releasing with no value change skips creating a history entry and calls endDrag
-		coordinator.calls.length = 0;
-		await store.getState().commitParam(instance.id, 'angle', 90);
-		expect(await repository.getHistory(project.id)).toHaveLength(
-			historyBefore + 1,
-		);
-		expect(coordinator.calls.at(-1)).toEqual({type: 'endDrag'});
-	});
-
-	it('coalesces a burst of keyboard changes within 500 ms into a single commit', async () => {
-		const {store, repository, timerEnv} = setupStore();
-		const {project} = await store.getState().importImage({
-			name: 'burst.png',
-			blob: makeTestBlob('burst'),
+			name: 'old.png',
+			blob: makeTestBlob('old'),
 			width: 200,
 			height: 200,
 		});
-		const instance = await store.getState().addEffect('pixelSort');
-		const historyBefore = (await repository.getHistory(project.id)).length;
+		coordinator.calls.length = 0;
 
-		store.getState().nudgeParam(instance.id, 'angle', 10);
-		timerEnv.advance(200);
-		store.getState().nudgeParam(instance.id, 'angle', 20);
-		timerEnv.advance(200);
-		store.getState().nudgeParam(instance.id, 'angle', 30);
-		timerEnv.advance(KEYBOARD_COMMIT_DEBOUNCE_MS - 1);
-		await flushMicrotasks();
+		const updated = await store
+			.getState()
+			.renameProject(project.id, '  New Title  ');
 
-		expect(await repository.getHistory(project.id)).toHaveLength(historyBefore);
-
-		timerEnv.advance(1);
-		await flushMicrotasks();
-
-		const historyAfter = await repository.getHistory(project.id);
-		expect(historyAfter).toHaveLength(historyBefore + 1);
-		expect(historyAfter.at(-1)?.label).toBe('Change Angle');
-		expect(
-			store.getState().activeProject?.stack.instances[0].params.angle,
-		).toBe(30);
+		expect(updated.name).toBe('New Title');
+		expect(store.getState().activeProject?.name).toBe('New Title');
+		expect(store.getState().projects[0].name).toBe('New Title');
+		expect((await repository.getProject(project.id))?.name).toBe('New Title');
+		expect(coordinator.calls).toHaveLength(0);
 	});
 
-	it('commits mix, blend, resetParam, and resetInstance', async () => {
-		const {store} = setupStore();
-		await store.getState().importImage({
-			name: 'mix.png',
-			blob: makeTestBlob('mix'),
+	it('duplicateProject flushes pending edits, persists a copy sharing sourceHash, and keeps active project unchanged', async () => {
+		const {store, repository, coordinator} = createTestStore();
+		const {project} = await store.getState().importImage({
+			name: 'orig.png',
+			blob: makeTestBlob('orig'),
+			width: 200,
+			height: 200,
+		});
+		const inst = await store.getState().addEffect('pixelSort');
+		store.getState().nudgeParam(inst.id, 'angle', 120);
+		coordinator.calls.length = 0;
+
+		const copy = await store.getState().duplicateProject(project.id);
+
+		expect(copy.name).toBe('orig copy');
+		expect(copy.sourceHash).toBe(project.sourceHash);
+		expect(copy.stack.instances[0].params.angle).toBe(120);
+		expect(store.getState().activeProjectId).toBe(project.id);
+		expect(store.getState().projects).toHaveLength(2);
+		expect(await repository.getProject(copy.id)).toBeDefined();
+		expect((await repository.getHistory(copy.id)).length).toBeGreaterThan(1);
+	});
+
+	it('deleteProject removes an inactive project without disturbing the active project or coordinator', async () => {
+		const {store, repository, coordinator} = createTestStore();
+		const first = await store.getState().importImage({
+			name: 'keep.png',
+			blob: makeTestBlob('keep'),
 			width: 100,
 			height: 100,
 		});
-		const instance = await store.getState().addEffect('pixelSort');
+		const second = await store.getState().importImage({
+			name: 'drop.png',
+			blob: makeTestBlob('drop'),
+			width: 100,
+			height: 100,
+			setActive: false,
+		});
+		coordinator.calls.length = 0;
 
-		await store.getState().commitMix(instance.id, 0.42);
-		await store.getState().setBlend(instance.id, 'difference');
-		await store.getState().commitParam(instance.id, 'angle', 135);
+		const result = await store.getState().deleteProject(second.project.id);
 
-		expect(store.getState().activeProject?.stack.instances[0].mix).toBe(0.42);
-		expect(store.getState().activeProject?.stack.instances[0].blend).toBe(
-			'difference',
-		);
-
-		await store.getState().resetParam(instance.id, 'angle');
-		expect(
-			store.getState().activeProject?.stack.instances[0].params.angle,
-		).toBe(0);
-
-		await store.getState().resetInstance(instance.id);
-		const reset = store.getState().activeProject?.stack.instances[0];
-		expect(reset?.mix).toBe(1);
-		expect(reset?.blend).toBe('normal');
+		expect(result.deleted).toBe(true);
+		expect(result.sourceDeleted).toBe(true);
+		expect(store.getState().activeProjectId).toBe(first.project.id);
+		expect(store.getState().projects.map((p) => p.id)).toEqual([
+			first.project.id,
+		]);
+		expect(await repository.getProject(second.project.id)).toBeUndefined();
+		expect(await repository.getSource(second.source.sha256)).toBeUndefined();
+		expect(coordinator.calls).toHaveLength(0);
 	});
 
-	it('undoes and redoes stack + selection without altering viewState, discards redo on new commit, and stops at 200 undos', async () => {
-		const {store, coordinator} = setupStore();
-		await store.getState().importImage({
-			name: 'history.png',
-			blob: makeTestBlob('history'),
+	it('deleteProject on the active project cancels pending timers, returns to library, and clears coordinator source', async () => {
+		const {store, repository, coordinator, routerEnv, timerEnv} =
+			createTestStore();
+		const {project, source} = await store.getState().importImage({
+			name: 'active-drop.png',
+			blob: makeTestBlob('active-drop'),
+			width: 100,
+			height: 100,
+		});
+		const inst = await store.getState().addEffect('pixelSort');
+		store.getState().nudgeParam(inst.id, 'angle', 45);
+		store.getState().setViewState({zoom: 3});
+		coordinator.calls.length = 0;
+
+		const result = await store.getState().deleteProject(project.id);
+		// Advancing timers must not throw or recreate anything
+		timerEnv.advance(1000);
+		await flushMicrotasks();
+
+		expect(result.deleted).toBe(true);
+		expect(result.sourceDeleted).toBe(true);
+		expect(store.getState().activeProjectId).toBeNull();
+		expect(store.getState().route).toEqual({screen: 'library'});
+		expect(routerEnv.getHash()).toBe('#/');
+		expect(await repository.getProject(project.id)).toBeUndefined();
+		expect(await repository.getSource(source.sha256)).toBeUndefined();
+		expect(coordinator.calls).toEqual([{type: 'setSource', source: undefined}]);
+	});
+
+	it('persists compareMode, theme (with syncTheme), and exportSettings', async () => {
+		const {store, repository, syncedThemes} = createTestStore();
+		const {project} = await store.getState().importImage({
+			name: 'settings.png',
+			blob: makeTestBlob('settings'),
 			width: 500,
 			height: 400,
 		});
-		const instance = await store.getState().addEffect('pixelSort');
-		await store.getState().commitParam(instance.id, 'angle', 45);
-		await store.getState().commitParam(instance.id, 'angle', 90);
 
-		store.getState().setViewState({
-			fitMode: 'custom',
-			zoom: 2,
-			centerX: 120,
-			centerY: 80,
+		await store.getState().setCompareMode('split');
+		expect(store.getState().compareMode).toBe('split');
+		expect((await repository.getAppState()).compareMode).toBe('split');
+
+		await store.getState().setTheme('dark');
+		expect(store.getState().theme).toBe('dark');
+		expect(syncedThemes).toEqual(['dark']);
+		expect((await repository.getAppState()).theme).toBe('dark');
+
+		const updated = await store.getState().updateExportSettings({
+			format: 'jpeg',
+			quality: 85,
+			sizeMode: 'half',
+			customLongestSide: null,
 		});
-
-		expect(selectCanUndo(store.getState())).toBe(true);
-		expect(selectCanRedo(store.getState())).toBe(false);
-		expect(selectUndoLabel(store.getState())).toBe('Change Angle');
-
-		coordinator.calls.length = 0;
-		expect(await store.getState().undo()).toBe(true);
-		expect(
-			store.getState().activeProject?.stack.instances[0].params.angle,
-		).toBe(45);
-		expect(store.getState().activeProject?.viewState.zoom).toBe(2);
-		expect(selectCanRedo(store.getState())).toBe(true);
-		expect(selectRedoLabel(store.getState())).toBe('Change Angle');
-		expect(coordinator.calls.at(-1)?.type).toBe('setStack');
-
-		expect(await store.getState().redo()).toBe(true);
-		expect(
-			store.getState().activeProject?.stack.instances[0].params.angle,
-		).toBe(90);
-
-		// Undo then commit discards redo branch
-		await store.getState().undo();
-		await store.getState().commitParam(instance.id, 'angle', 180);
-		expect(selectCanRedo(store.getState())).toBe(false);
-		expect(await store.getState().redo()).toBe(false);
-
-		// 205 total commits -> 200 undos succeed, 201st returns false
-		for (let step = 1; step <= 205; step++) {
-			await store
-				.getState()
-				.commitParam(instance.id, 'angle', (step * 1.5) % 360);
-		}
-
-		let undoCount = 0;
-		while (await store.getState().undo()) {
-			undoCount++;
-		}
-
-		expect(undoCount).toBe(200);
-		expect(await store.getState().undo()).toBe(false);
-	});
-
-	it('applies, appends, saves, renames, and deletes presets while protecting built-ins', async () => {
-		const {store} = setupStore();
-		await store.getState().importImage({
-			name: 'presets.png',
-			blob: makeTestBlob('presets'),
-			width: 200,
-			height: 200,
-		});
-
-		await store.getState().applyPreset('builtin:asdf-classic');
-		const applied = store.getState().activeProject?.stack.instances ?? [];
-		expect(applied).toHaveLength(2);
-		expect(applied[0].params.angle).toBe(270);
-		expect(applied[1].params.angle).toBe(0);
-		expect(applied[0].id).not.toBe('psasdf01');
-
-		const saved = await store.getState().saveStackAsPreset('Mine');
-		expect(saved.id).toMatch(/^user:/);
-		expect(store.getState().presets.map((p) => p.name)).toEqual(['Mine']);
-
-		await store.getState().addPresetToStack('builtin:bright-streaks');
-		expect(store.getState().activeProject?.stack.instances).toHaveLength(3);
-
-		const renamed = await store
-			.getState()
-			.renameUserPreset(saved.id, 'Renamed Preset');
-		expect(renamed.name).toBe('Renamed Preset');
-
-		await expect(
-			store.getState().renameUserPreset('builtin:asdf-classic', 'Nope'),
-		).rejects.toThrow(StorageValidationError);
-		await expect(
-			store.getState().deleteUserPreset('builtin:asdf-classic'),
-		).rejects.toThrow(StorageValidationError);
-
-		expect(await store.getState().deleteUserPreset(saved.id)).toBe(true);
-		expect(store.getState().presets).toHaveLength(0);
-	});
-
-	it('debounces viewState saves and flushes on visibilitychange/pagehide', async () => {
-		const {store, repository, timerEnv} = setupStore();
-		const {project} = await store.getState().importImage({
-			name: 'view.png',
-			blob: makeTestBlob('view'),
-			width: 1000,
-			height: 800,
-		});
-
-		let updateCalls = 0;
-		const originalUpdate = repository.updateViewState.bind(repository);
-		repository.updateViewState = async (...args) => {
-			updateCalls++;
-			return originalUpdate(...args);
-		};
-
-		store.getState().setViewState({fitMode: 'custom', zoom: 1.5, centerX: 300});
-		timerEnv.advance(100);
-		store.getState().setViewState({zoom: 2.5, centerY: 200});
-		expect(updateCalls).toBe(0);
-
-		timerEnv.advance(VIEW_STATE_DEBOUNCE_MS);
-		await flushMicrotasks();
-		expect(updateCalls).toBe(1);
-		expect((await repository.getProject(project.id))?.viewState).toMatchObject({
-			fitMode: 'custom',
-			zoom: 2.5,
-			centerX: 300,
-			centerY: 200,
-		});
-
-		// Flush immediately on lifecycle hide/pagehide before debounce elapses
-		store.getState().setViewState({zoom: 4, splitPosition: 0.25});
-		timerEnv.advance(50);
-		expect(updateCalls).toBe(1);
-
-		timerEnv.triggerFlush();
-		await flushMicrotasks();
-		expect(updateCalls).toBe(2);
-		expect((await repository.getProject(project.id))?.viewState).toMatchObject({
-			zoom: 4,
-			splitPosition: 0.25,
+		expect(updated.exportSettings.format).toBe('jpeg');
+		expect(store.getState().activeProject?.exportSettings.quality).toBe(85);
+		expect((await repository.getProject(project.id))?.exportSettings).toEqual({
+			format: 'jpeg',
+			quality: 85,
+			sizeMode: 'half',
+			customLongestSide: null,
 		});
 	});
 
-	it('enforces the 32-instance stack limit and generates unique ids and random seeds', async () => {
-		const {store} = setupStore();
-		await store.getState().importImage({
-			name: 'limit.png',
-			blob: makeTestBlob('limit'),
-			width: 100,
-			height: 100,
-		});
-
-		const ids = new Set<string>();
-		const seeds = new Set<number>();
-		for (let count = 0; count < 32; count++) {
-			const inst = await store.getState().addEffect('pixelSort');
-			expect(inst.id).toMatch(/^[0-9a-z]{8}$/);
-			ids.add(inst.id);
-			seeds.add(inst.params.seed as number);
-		}
-
-		expect(ids.size).toBe(32);
-		expect(seeds.size).toBeGreaterThan(25);
-
-		await expect(store.getState().addEffect('pixelSort')).rejects.toThrow(
-			StorageValidationError,
-		);
-		const firstId = store.getState().activeProject!.stack.instances[0].id;
-		await expect(store.getState().duplicateEffect(firstId)).rejects.toThrow(
-			StorageValidationError,
-		);
-		await expect(
-			store.getState().addPresetToStack('builtin:bright-streaks'),
-		).rejects.toThrow(StorageValidationError);
-	});
-
-	it('handles hash routing including back/forward, unknown project ids, and dev gallery', async () => {
-		const {store, routerEnv} = setupStore();
+	it('syncs route on hashchange (editor, library, missing project, gallery) and stops after dispose', async () => {
+		const {store, routerEnv, bundle} = createTestStore();
 		const first = await store.getState().importImage({
 			name: 'one.png',
 			blob: makeTestBlob('one'),
@@ -508,8 +390,7 @@ describe('app store', () => {
 			width: 100,
 			height: 100,
 		});
-
-		expect(routerEnv.getHash()).toBe(`#/p/${second.project.id}`);
+		expect(store.getState().activeProjectId).toBe(second.project.id);
 
 		routerEnv.navigate(`#/p/${first.project.id}`);
 		await flushMicrotasks();
@@ -520,7 +401,7 @@ describe('app store', () => {
 		expect(store.getState().route).toEqual({screen: 'library'});
 		expect(store.getState().activeProjectId).toBeNull();
 
-		routerEnv.navigate('#/p/does-not-exist');
+		routerEnv.navigate('#/p/no-such-project');
 		await flushMicrotasks();
 		expect(store.getState().route).toEqual({screen: 'library'});
 		expect(store.getState().notice).toBe(MISSING_PROJECT_NOTICE);
@@ -529,10 +410,78 @@ describe('app store', () => {
 		routerEnv.navigate(DEV_GALLERY_HASH);
 		await flushMicrotasks();
 		expect(store.getState().route).toEqual({screen: 'gallery'});
+
+		bundle.dispose();
+		routerEnv.navigate(`#/p/${first.project.id}`);
+		await flushMicrotasks();
+		expect(store.getState().route).toEqual({screen: 'gallery'});
 	});
 
-	it('captures thumbnails on settled frames and skips drag or selection debug frames', async () => {
-		const {store, repository, coordinator, thumbnailCalls} = setupStore();
+	it('updates render status from coordinator source, frame, full, busy, progress, and error events', async () => {
+		const {store, coordinator} = createTestStore();
+		const fakeBitmap = {close() {}} as unknown as ImageBitmap;
+
+		coordinator.emit({
+			type: 'source',
+			source: {
+				key: 'k1',
+				width: 800,
+				height: 600,
+				settle: {width: 800, height: 600},
+				drag: {width: 400, height: 300},
+				original: fakeBitmap,
+			},
+		});
+		expect(store.getState().render.source?.key).toBe('k1');
+		expect(store.getState().render.source?.width).toBe(800);
+
+		coordinator.emit({type: 'busy', level: 'settle', busy: true});
+		coordinator.emit({type: 'progress', level: 'settle', fraction: 0.5});
+		expect(store.getState().render.busy.settle).toBe(true);
+		expect(store.getState().render.progress.settle).toBe(0.5);
+
+		coordinator.emit({type: 'busy', level: 'settle', busy: false});
+		expect(store.getState().render.busy.settle).toBe(false);
+		expect(store.getState().render.progress.settle).toBe(0);
+
+		coordinator.emit({
+			type: 'error',
+			error: {code: 'worker-crashed', message: 'boom'},
+			failed: true,
+		});
+		expect(store.getState().render.error?.message).toBe('boom');
+		expect(store.getState().render.failed).toBe(true);
+
+		coordinator.emit({
+			type: 'frame',
+			frame: {
+				generation: 1,
+				level: 'settle',
+				bitmap: fakeBitmap,
+				width: 800,
+				height: 600,
+				totalMs: 12,
+				perInstanceMs: [],
+				warnings: [],
+			},
+		});
+		expect(store.getState().render.frame?.generation).toBe(1);
+		expect(store.getState().render.error).toBeNull();
+
+		coordinator.emit({
+			type: 'full',
+			full: {
+				generation: 1,
+				width: 800,
+				height: 600,
+				tiles: [],
+			},
+		});
+		expect(store.getState().render.full?.width).toBe(800);
+	});
+
+	it('captures thumbnails on settled frames, skips drag/debug/activeDrag/duplicate stack signatures', async () => {
+		const {store, repository, coordinator, thumbnailCalls} = createTestStore();
 		const {project} = await store.getState().importImage({
 			name: 'thumb.png',
 			blob: makeTestBlob('thumb'),
@@ -540,63 +489,105 @@ describe('app store', () => {
 			height: 400,
 		});
 		const instance = await store.getState().addEffect('pixelSort');
-
 		const fakeBitmap = {close() {}} as unknown as ImageBitmap;
 
-		// Drag frame should be ignored
-		coordinator.emit({
-			type: 'frame',
-			frame: {
-				generation: 1,
-				level: 'drag',
-				bitmap: fakeBitmap,
-				width: 300,
-				height: 200,
-				totalMs: 10,
-				perInstanceMs: [10],
-				warnings: [],
-			},
-		});
-		await flushMicrotasks();
-		expect(thumbnailCalls).toHaveLength(0);
+		const emitFrame = (generation: number, level: 'drag' | 'settle') => {
+			coordinator.emit({
+				type: 'frame',
+				frame: {
+					generation,
+					level,
+					bitmap: fakeBitmap,
+					width: 600,
+					height: 400,
+					totalMs: 15,
+					perInstanceMs: [15],
+					warnings: [],
+				},
+			});
+		};
 
-		// Selection debug view should be ignored
+		// 1. Drag level frame skipped
+		emitFrame(1, 'drag');
+		await flushMicrotasks();
+		expect(thumbnailCalls).toEqual([]);
+
+		// 2. Selection debug view active skipped
 		store.getState().setDebugView({instanceId: instance.id, view: 'selection'});
-		coordinator.emit({
-			type: 'frame',
-			frame: {
-				generation: 2,
-				level: 'settle',
-				bitmap: fakeBitmap,
-				width: 600,
-				height: 400,
-				totalMs: 20,
-				perInstanceMs: [20],
-				warnings: [],
-			},
-		});
+		emitFrame(2, 'settle');
 		await flushMicrotasks();
-		expect(thumbnailCalls).toHaveLength(0);
-
-		// Normal settle frame captures and stores thumbnail
+		expect(thumbnailCalls).toEqual([]);
 		store.getState().setDebugView(null);
-		coordinator.emit({
-			type: 'frame',
-			frame: {
-				generation: 3,
-				level: 'settle',
-				bitmap: fakeBitmap,
-				width: 600,
-				height: 400,
-				totalMs: 20,
-				perInstanceMs: [20],
-				warnings: [],
-			},
-		});
+
+		// 3. Active drag in transientStore skipped
+		store.getState().dragParam(instance.id, 'angle', 45);
+		emitFrame(3, 'settle');
 		await flushMicrotasks();
-		expect(thumbnailCalls).toEqual([3]);
-		const storedThumb = await repository.getThumbnail(project.id);
-		expect(storedThumb).toBeDefined();
-		expect(storedThumb?.width).toBe(512);
+		expect(thumbnailCalls).toEqual([]);
+		store.getState().cancelDrag();
+
+		// 4. Normal settle frame captured and persisted
+		emitFrame(4, 'settle');
+		await flushMicrotasks();
+		expect(thumbnailCalls).toEqual([4]);
+		const stored = await repository.getThumbnail(project.id);
+		expect(stored?.width).toBe(512);
+		expect(store.getState().activeThumbnail?.projectId).toBe(project.id);
+
+		// 5. Same stack signature skipped on subsequent settle frame
+		emitFrame(5, 'settle');
+		await flushMicrotasks();
+		expect(thumbnailCalls).toEqual([4]);
+	});
+
+	it('sets storage.quotaFull and leaves state consistent with persistence when QuotaExceededError occurs', async () => {
+		const {store, repository, coordinator} = createTestStore();
+		const {project} = await store.getState().importImage({
+			name: 'quota.png',
+			blob: makeTestBlob('quota'),
+			width: 200,
+			height: 200,
+		});
+		const inst = await store.getState().addEffect('pixelSort');
+		coordinator.calls.length = 0;
+
+		const origCommit = repository.commitStack.bind(repository);
+		repository.commitStack = async () => {
+			throw makeQuotaError();
+		};
+
+		await expect(
+			store.getState().commitParam(inst.id, 'angle', 180),
+		).rejects.toThrow();
+
+		expect(store.getState().storage.quotaFull).toBe(true);
+		expect(
+			store.getState().activeProject?.stack.instances[0].params.angle,
+		).toBe(0);
+		expect(
+			(await repository.getProject(project.id))?.stack.instances[0].params
+				.angle,
+		).toBe(0);
+		expect(coordinator.calls).toHaveLength(0);
+
+		store.getState().clearQuotaFull();
+		expect(store.getState().storage.quotaFull).toBe(false);
+
+		// Restore commitStack and verify quotaFull on importImage too
+		repository.commitStack = origCommit;
+		repository.createProject = async () => {
+			throw makeQuotaError();
+		};
+
+		await expect(
+			store.getState().importImage({
+				name: 'too-big.png',
+				blob: makeTestBlob('big'),
+				width: 100,
+				height: 100,
+			}),
+		).rejects.toThrow();
+		expect(store.getState().storage.quotaFull).toBe(true);
+		expect(store.getState().projects).toHaveLength(1);
 	});
 });

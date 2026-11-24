@@ -638,13 +638,19 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					: null;
 
 			transientStore.setState({activeDrag: null});
-			store.setState((state) => ({
-				activeProject: project,
-				projects: upsertProject(state.projects, project),
-				history: trimmedHistory,
-				stackNeedsWriteBack: false,
-				debugView: nextDebugView,
-			}));
+			store.setState((state) => {
+				const nextProject: ProjectRecord =
+					viewStateDirty && state.activeProject?.id === project.id
+						? {...project, viewState: state.activeProject.viewState}
+						: project;
+				return {
+					activeProject: nextProject,
+					projects: upsertProject(state.projects, nextProject),
+					history: trimmedHistory,
+					stackNeedsWriteBack: false,
+					debugView: nextDebugView,
+				};
+			});
 
 			dispatchStackToCoordinator(project.stack, nextDebugView, false);
 			return project;

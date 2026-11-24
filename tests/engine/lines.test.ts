@@ -253,3 +253,74 @@ describe('line partition (engine.md section 5.2, 14.1, 14.3)', () => {
 		);
 	});
 });
+
+function floorDivBig(n: bigint, d: bigint): bigint {
+	const q = n / d;
+	return n % d !== 0n && n < 0n !== d < 0n ? q - 1n : q;
+}
+
+// Section 5.2 evaluated pixel by pixel in BigInt: each pixel's line is
+// `minor - o(major)`, and a line lists its pixels by major position in the
+// direction's order.
+function specLines(width: number, height: number, angle: number): number[][] {
+	const [dx, dy] = directionForAngle(angle);
+	const horizontal = Math.abs(dx) >= Math.abs(dy);
+	const majorLength = horizontal ? width : height;
+	const majorDelta = BigInt(horizontal ? dx : dy);
+	const minorDelta = BigInt(horizontal ? dy : dx);
+	const sign = majorDelta < 0n ? -1n : 1n;
+	const absMajor = majorDelta * sign;
+	const byLine = new Map<number, number[]>();
+
+	for (let major = 0; major < majorLength; major++) {
+		const o = Number(
+			floorDivBig(
+				2n * BigInt(major) * minorDelta * sign + absMajor,
+				2n * absMajor,
+			),
+		);
+		const minorLength = horizontal ? height : width;
+		for (let minor = 0; minor < minorLength; minor++) {
+			const k = minor - o;
+			const offset = horizontal ? minor * width + major : major * width + minor;
+			const line = byLine.get(k) ?? [];
+			line.push(offset);
+			byLine.set(k, line);
+		}
+	}
+
+	return [...byLine]
+		.toSorted(([a], [b]) => a - b)
+		.map(([, offsets]) => (sign < 0n ? offsets.toReversed() : offsets));
+}
+
+describe('line partition against the section 5.2 formula', () => {
+	it('matches a per-pixel BigInt evaluation at every tested angle and shape', () => {
+		const angles = [
+			0, 0.1, 1, 7.3, 30, 44.9, 45, 45.1, 60, 89.9, 90, 135, 153.4, 180, 200.2,
+			225, 270, 300, 315, 359.9,
+			// Angles where `o` lands exactly on a half within 33 pixels, so the
+			// rounding direction shows: 2.6 at x = 11, 41.5 and 48.5 at 13,
+			// 12.4 and 77.6 at 25, and their opposites.
+			2.6, 12.4, 41.5, 48.5, 77.6, 87.4, 182.6, 221.5, 257.6, 318.5,
+		];
+		const shapes: Array<[number, number]> = [
+			[1, 1],
+			[1, 9],
+			[9, 1],
+			[7, 5],
+			[5, 7],
+			[16, 16],
+			[33, 20],
+		];
+		for (const angle of angles) {
+			for (const [width, height] of shapes) {
+				const partition = createLinePartition(width, height, angle);
+				const actual = collectLines(partition).map((line) => line.offsets);
+				expect(actual, `angle ${angle}, ${width}x${height}`).toEqual(
+					specLines(width, height, angle),
+				);
+			}
+		}
+	});
+});

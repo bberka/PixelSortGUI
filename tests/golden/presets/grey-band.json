@@ -1,0 +1,34 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "psgrbd01",
+				"type": "pixelSort",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 0,
+					"intervalMode": "threshold",
+					"selectKey": "lightness",
+					"threshold": [0.196, 0.627],
+					"edgeThreshold": 0.2,
+					"edgeBlur": 1,
+					"invert": false,
+					"maxLength": 0,
+					"lengthJitter": 0,
+					"skipChance": 0,
+					"sortKey": "luma",
+					"order": "ascending",
+					"discretize": 3,
+					"fill": "sort",
+					"seed": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

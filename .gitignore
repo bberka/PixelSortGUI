@@ -17,6 +17,7 @@ logs/
 .pi/
 .unslop/
 .proof/
+tests/golden/.out/
 
 # Playwright output
 test-results/

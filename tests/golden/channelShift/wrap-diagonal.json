@@ -1,0 +1,26 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "cs000002",
+				"type": "channelShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"redX": 12,
+					"redY": -4,
+					"greenX": -5,
+					"greenY": 7,
+					"blueX": 3,
+					"blueY": 9,
+					"edge": "wrap"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

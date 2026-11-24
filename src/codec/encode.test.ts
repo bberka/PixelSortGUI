@@ -59,6 +59,16 @@ function makeFakeEncodeRuntime(options?: {
 }
 
 describe('flattenAlphaForJpeg', () => {
+	it('rounds a partly transparent pixel to the nearest value', () => {
+		// (10 * 3 + 200 * 252 + 127) / 255 = 198.26 -> 198; without the +127 it is 197.76 -> 197.
+		// (100 * 128 + 200 * 127 + 127) / 255 = 150.30 -> 150; blue over 0 is 50.69 -> 50.
+		const flattened = flattenAlphaForJpeg(
+			makeImage(2, 1, [10, 10, 10, 3, 100, 100, 100, 128]),
+			[200, 200, 0],
+		);
+		expect([...flattened]).toEqual([198, 198, 0, 255, 150, 150, 50, 255]);
+	});
+
 	it('composites transparent and semi-transparent pixels over the background color', () => {
 		const image = makeImage(
 			3,

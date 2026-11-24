@@ -54,7 +54,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	await page.emulateMedia({colorScheme: 'light'});
 	await page.goto('/');
 
-	const themeGroup = page.getByRole('group', {name: 'Theme'}).first();
+	const themeGroup = page.getByRole('radiogroup', {name: 'Theme'}).first();
 	await themeGroup.getByRole('radio', {name: 'True Black'}).click();
 
 	await expect
@@ -79,7 +79,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	).toEqual({stored: 'dark', attr: 'dark', bg: TRUE_BLACK_BG});
 
 	await page
-		.getByRole('group', {name: 'Theme'})
+		.getByRole('radiogroup', {name: 'Theme'})
 		.first()
 		.getByRole('radio', {name: 'Light'})
 		.click();
@@ -94,7 +94,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	).toEqual({stored: 'light', attr: 'light', bg: LIGHT_BG});
 
 	await page
-		.getByRole('group', {name: 'Theme'})
+		.getByRole('radiogroup', {name: 'Theme'})
 		.first()
 		.getByRole('radio', {name: 'System'})
 		.click();
@@ -217,17 +217,22 @@ for (const theme of THEMES) {
 		const assertFocusRing = async (
 			locator: ReturnType<typeof page.locator>,
 		) => {
-			const style = await locator.evaluate((element) => {
-				const computed = globalThis.getComputedStyle(element);
-				return {
-					outlineStyle: computed.outlineStyle,
-					outlineWidth: computed.outlineWidth,
-					outlineColor: computed.outlineColor,
-				};
-			});
-			expect(style.outlineStyle).toBe('solid');
-			expect(style.outlineWidth).toBe('2px');
-			expect(style.outlineColor).toBe(theme.ring);
+			await expect
+				.poll(() =>
+					locator.evaluate((element) => {
+						const computed = globalThis.getComputedStyle(element);
+						return {
+							outlineStyle: computed.outlineStyle,
+							outlineWidth: computed.outlineWidth,
+							outlineColor: computed.outlineColor,
+						};
+					}),
+				)
+				.toEqual({
+					outlineStyle: 'solid',
+					outlineWidth: '2px',
+					outlineColor: theme.ring,
+				});
 		};
 
 		const exportButton = page.getByRole('button', {name: 'Export'});

@@ -61,6 +61,19 @@ async function hoverNoticeToast(page: Page): Promise<void> {
 	await toast.hover();
 }
 
+/**
+ Plain http over a LAN address is an insecure context; this makes every run
+ insecure regardless of the loopback host the preview server listens on.
+ */
+async function blockSecureContext(page: Page): Promise<void> {
+	await page.addInitScript(() => {
+		Object.defineProperty(globalThis, 'isSecureContext', {
+			value: false,
+			configurable: true,
+		});
+	});
+}
+
 async function blockIndexedDb(page: Page): Promise<void> {
 	await page.addInitScript(() => {
 		IDBFactory.prototype.open = () => {
@@ -275,6 +288,21 @@ for (const theme of THEMES) {
 			await blockIndexedDb(page);
 			await openInTheme(page, theme, '/', viewport);
 			await expect(page.getByRole('alert')).toBeVisible();
+			await expectLayoutAndA11y(page, viewport, consoleErrors);
+		});
+
+		test(`secure-context screen has no a11y violations or horizontal scroll in ${theme.name} at ${viewport.name} @a11y`, async ({
+			page,
+		}) => {
+			const consoleErrors = collectConsoleErrors(page);
+			await blockSecureContext(page);
+			await openInTheme(page, theme, '/', viewport);
+			await expect(
+				page.getByRole('heading', {
+					level: 1,
+					name: 'Secure connection required',
+				}),
+			).toBeVisible();
 			await expectLayoutAndA11y(page, viewport, consoleErrors);
 		});
 

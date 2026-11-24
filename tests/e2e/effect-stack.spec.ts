@@ -478,6 +478,21 @@ for (const theme of THEMES) {
 				);
 			}
 
+			await page.getByRole('button', {name: 'Add effect'}).click();
+			const picker = page.locator(
+				viewport.name === 'phone'
+					? '[data-slot="dialog-content"]'
+					: '[data-slot="popover-content"]',
+			);
+			await expect(
+				picker,
+				`${viewport.name} opens the add-effect picker as ${
+					viewport.name === 'phone' ? 'a dialog' : 'a popover'
+				}`,
+			).toBeVisible();
+			await page.keyboard.press('Escape');
+			await expect(picker).toHaveCount(0);
+
 			const metrics = await page.evaluate(() => ({
 				scrollWidth: globalThis.document.documentElement.scrollWidth,
 				innerWidth: globalThis.innerWidth,

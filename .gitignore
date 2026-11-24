@@ -5,6 +5,7 @@ node_modules/
 dist/
 .dev/
 *.tsbuildinfo
+node_modules/.tmp/
 coverage/
 
 # Logs
@@ -14,6 +15,8 @@ logs/
 # Scratch and proof artifacts
 /tmp/
 .pi/
+.unslop/
+.proof/
 
 # Editors and OS files
 .DS_Store

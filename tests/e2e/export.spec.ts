@@ -455,6 +455,11 @@ test('AC-F12.4: Cancel stops the export within 1 s and writes no file', async ({
 		}
 
 		const original = booted.bundle.coordinator.exportImage;
+		const cancelState = {cancelled: false};
+		Object.defineProperty(globalThis, '__exportCancelState', {
+			configurable: true,
+			value: cancelState,
+		});
 		booted.bundle.coordinator.exportImage = (options) => {
 			const real = original(options);
 			let cancelled = false;
@@ -469,6 +474,7 @@ test('AC-F12.4: Cancel stops the export within 1 s and writes no file', async ({
 					}
 
 					cancelled = true;
+					cancelState.cancelled = true;
 					real.cancel();
 					resolve({status: 'cancelled'});
 				},
@@ -489,6 +495,16 @@ test('AC-F12.4: Cancel stops the export within 1 s and writes no file', async ({
 	await cancelButton.click();
 	await expect(dialog.getByRole('button', {name: 'Download'})).toBeVisible();
 	expect(performance.now() - cancelStart).toBeLessThan(1000);
+	expect(
+		await page.evaluate(
+			() =>
+				(
+					globalThis as unknown as {
+						__exportCancelState?: {cancelled: boolean};
+					}
+				).__exportCancelState?.cancelled,
+		),
+	).toBe(true);
 	expect(downloaded).toBe(false);
 });
 

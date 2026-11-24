@@ -425,13 +425,17 @@ export function ExportDialog({
 		setProgress({stage: 'decode', percent: 0});
 		setExporting(true);
 
+		let currentTask: ExportTask | null = null;
 		const task = bundle.coordinator.exportImage({
 			stack: activeProject.stack,
 			scale: toExportScale(finalSettings, sourceWidth, sourceHeight),
 			format: effectiveFormat,
 			quality: finalQuality,
 			onProgress(stage, fraction) {
-				if (!mountedRef.current || taskRef.current !== task) {
+				if (
+					!mountedRef.current ||
+					(currentTask !== null && taskRef.current !== currentTask)
+				) {
 					return;
 				}
 
@@ -442,6 +446,7 @@ export function ExportDialog({
 				}));
 			},
 		});
+		currentTask = task;
 		taskRef.current = task;
 
 		void task.result.then(async (outcome) => {

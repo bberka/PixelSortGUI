@@ -19,7 +19,7 @@
 	"scripts": {
 		"prepare": "vp hooks enable --hooks-dir .hooks",
 		"build": "vp build",
-		"check:pages-output": "node scripts/check-pages-output.mjs",
+		"check:pages-output": "node scripts/check-pages-output.ts",
 		"test": "vp test run",
 		"test:watch": "vp test",
 		"typecheck": "tsgo -b",

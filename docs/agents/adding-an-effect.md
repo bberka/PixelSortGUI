@@ -1,5 +1,6 @@
 Written by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # Adding an effect
 
@@ -43,8 +44,8 @@ Follow the interface in `engine.md` and register the effect the way it says. Kee
 
 ### 4. UI controls
 
-- Write no control code. The parameter panel is generated from the effect's parameter schema (`ParamSpec`, engine.md sections 3 and 4.6), so the labels, ranges, and units in the spec's parameter list must be in the schema. Add UI code only if the effect needs a new `ParamSpec` kind, and then change engine.md and DESIGN.md first.
-- Check the generated controls in the running app at 390x844, 820x1180, and 1440x900: each parameter has a control with the right label and range, and it works by touch on a phone, by pointer on desktop, and by keyboard. Take screenshots (see [workflow.md](workflow.md#proof)).
+- Write no control code. The parameter panel is generated from the effect's parameter schema (`ParamSpec`, engine.md sections 3 and 4.6), so the labels, ranges, and units in the spec's parameter list must be in the schema. Add UI code only if the effect needs a new `ParamSpec` kind (change `engine.md` and `DESIGN.md` first) or uses the reserved on-canvas tool slot once that slot is implemented (engine.md section 4.7, DESIGN.md section 7.1).
+- Check the generated controls in a desktop browser at 390x844, 820x1180, and 1440x900: each parameter has a control with the right label and range, and it works by pointer and keyboard. Take screenshots (see [workflow.md](workflow.md#proof)).
 
 ### 5. Docs and notices
 

@@ -1,9 +1,10 @@
 Written by Claude Opus 5.5 (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # PixelSortGUI engine spec
 
-Status: draft for owner review, 2026-11-24. Terms are defined in [product.md section 2](product.md#2-terms). Storage of everything described here is in [persistence.md](persistence.md).
+Status: settled for first release, 2026-11-24. Terms are defined in [product.md section 2](product.md#2-terms). Storage of everything described here is in [persistence.md](persistence.md).
 
 ## 1. Scope and rules
 
@@ -62,7 +63,7 @@ type EffectStack = {
 };
 ```
 
-The stack is plain JSON. It is stored as-is in IndexedDB, in history entries, in presets and in backups. `schemaVersion` changes only when the shape of `EffectStack` or `EffectInstance` changes; per-effect parameter changes use the instance's `version` (section 4.4).
+The stack is plain JSON. It is stored as-is in IndexedDB, in history entries and in presets. `schemaVersion` changes only when the shape of `EffectStack` or `EffectInstance` changes; per-effect parameter changes use the instance's `version` (section 4.4).
 
 Canonical form: `canonicalStackJson(stack)` serialises with object keys sorted alphabetically at every level and numbers in shortest round-trip form. It is used as a cache key (section 8.5) and for equality in tests.
 
@@ -226,7 +227,16 @@ The owner will add his own effects. The full procedure, which touches no UI or s
 4. Add at least the generic property tests by listing the type in `tests/engine/effect-contract.test.ts` (output size, determinism, input not modified, mix 0 is identity).
 5. Optionally add a built-in preset in `src/presets/builtin.ts`.
 
-Nothing else changes: the parameter panel, persistence, history, presets and backups all handle the new type through the schema.
+Nothing else changes: the parameter panel, persistence, history and presets all handle the new type through the schema.
+
+### 4.7 On-canvas tool slot (reserved for later)
+
+Designed now so future interactive canvas tools (such as painting a mask or drawing a sort path) can be added without changing `EffectDefinition`, `ParamSpec`, or `renderStack`. Not built in the first release.
+
+- The engine remains DOM-free and knows nothing about pointer events or UI tools.
+- A separate UI-side tool registry (later, under `src/features/canvas/tools/`) can register an optional tool binding keyed by `(effectType, version)` (or for a universal feature such as per-instance masks).
+- When the selected instance matches a registered tool binding, the canvas stage mounts the tool's overlay ([DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later)), which translates canvas pointer gestures into normal parameter updates or mask-asset writes and commits through the existing stack/history store.
+- Effects that do not register a canvas tool require zero UI code and remain purely schema-driven.
 
 ## 5. Pixel sort effect (`pixelSort`)
 
@@ -358,7 +368,7 @@ With `ctx.debugView = 'selection'`, the output is the input with every unselecte
 
 ## 6. Other first-release effects
 
-All four keep alpha from the input pixel at the same `(x, y)` unless stated. Purpose codes are per effect.
+Keeps alpha from the input pixel at the same `(x, y)`.
 
 ### 6.1 `channelShift` (version 1, glitch): "Offset the red, green and blue channels."
 
@@ -371,41 +381,9 @@ All four keep alpha from the input pixel at the same `(x, y)` unless stated. Pur
 
 For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) = in.c(E(x - dx, W), E(y - dy, H))`, where `E` is `clamp(v, 0, n - 1)` for `clamp` and `wrap(v, n)` for `wrap`. Positive `X` moves the channel right, positive `Y` down.
 
-### 6.2 `sliceShift` (version 1, glitch): "Shift random bands of the image sideways."
+### 6.2 Later effects
 
-| Param | Kind | Default | Range | Group |
-|---|---|---|---|---|
-| `axis` | enum | `horizontal` | `horizontal` "Rows", `vertical` "Columns" | Slices |
-| `sliceMin` | integer (px) | 4 | 1..2048 | Slices |
-| `sliceMax` | integer (px) | 48 | 1..2048 | Slices |
-| `probability` | number (ratio) | 0.3 | 0..1, step 0.01 | Slices |
-| `maxOffset` | integer (px) | 80 | 0..4096 | Offset |
-| `edge` | enum | `wrap` | `wrap`, `clamp` | Offset |
-| `seed` | seed | random | | Seed |
-
-Slices are defined in source space so the preview and export match. For `horizontal`, slices partition source rows `0..Hs-1` (for `vertical`, swap rows and columns, and `x` and `y` below). Let `lo = sliceMin`, `hi = max(sliceMin, sliceMax)`. Starting at `y0 = 0` with `i = 0`: slice `i` covers source rows `[y0, y0 + h)` with `h = intIn(lo, hi, seed, 1, i)`; it is active when `unit(seed, 2, i) < probability`; its offset is `o = intIn(-maxOffset, maxOffset, seed, 3, i)` when active, else 0; then `y0 += h`, `i += 1`, until `y0 >= Hs`.
-
-Render: for render row `y`, find the slice containing `ys = clamp(ctx.toSource(y), 0, Hs - 1)`, let `or = ctx.px(o)`, and set `out(x, y) = in(E(x - or, W), y)` for all four channels, with `E` as in 6.1.
-
-### 6.3 `blockShuffle` (version 1, glitch): "Swap square tiles around the image."
-
-| Param | Kind | Default | Range | Group |
-|---|---|---|---|---|
-| `tileSize` | integer (px) | 64 | 4..1024 | Tiles |
-| `amount` | number (ratio) | 0.15 | 0..1, step 0.01 | Tiles |
-| `seed` | seed | random | | Seed |
-
-Source grid: `T = tileSize`, `cols = floor(Ws / T)`, `rows = floor(Hs / T)`, `N = cols * rows` full tiles; the right and bottom remainders never move. If `N < 2`, output equals input. Permutation `π` starts as the identity; for `t` from 0 to `N - 1`, if `unit(seed, 1, t) < amount`, swap `π[t]` and `π[intIn(0, N - 1, seed, 2, t)]`.
-
-Render pixel `(x, y)`: `xs = (x + 0.5) / scale`, `ys = (y + 0.5) / scale`, `tx = floor(xs / T)`, `ty = floor(ys / T)`. If `tx < cols` and `ty < rows`: `t2 = π[ty * cols + tx]`, `xs2 = xs + (t2 % cols - tx) * T`, `ys2 = ys + (floor(t2 / cols) - ty) * T`, and `out(x, y) = in(clamp(floor(xs2 * scale), 0, W - 1), clamp(floor(ys2 * scale), 0, H - 1))`. Otherwise `out(x, y) = in(x, y)`. At scale 1 this is an exact tile swap.
-
-### 6.4 `channelSwap` (version 1, color): "Swap the red, green and blue channels."
-
-One parameter `order`, enum, default `gbr`, options `rgb`, `rbg`, `grb`, `gbr`, `brg`, `bgr`. The three letters name the input channel written to output R, G and B: `gbr` means `outR = inG`, `outG = inB`, `outB = inR`.
-
-### 6.5 Later effects
-
-Specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `posterize`, `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+Three already-specified glitch effects (`sliceShift`, `blockShuffle`, `channelSwap`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `posterize`, `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -419,10 +397,8 @@ Defined in `src/presets/builtin.ts` with ids `builtin:<slug>`. Parameters not li
 | `builtin:grey-band` | Grey band | `pixelSort` angle 0, `selectKey` lightness, threshold [0.196, 0.627], `discretize` 3 |
 | `builtin:hue-bands` | Hue bands | `pixelSort` angle 0, `intervalMode` whole, `sortKey` hue, `maxLength` 240, `lengthJitter` 0.5, seed 1 |
 | `builtin:edge-melt` | Edge melt | `pixelSort` angle 270, `intervalMode` edges, `edgeThreshold` 0.20, `edgeBlur` 2 |
-| `builtin:vhs-split` | VHS split | `sliceShift` defaults with seed 7; then `channelShift` defaults |
-| `builtin:tile-scramble` | Tile scramble | `blockShuffle` `tileSize` 96, `amount` 0.25, seed 3; then `channelSwap` `gbr` |
 
-"ASDF classic" credits the column-then-row recipe of Kim Asendorf's ASDFPixelSort, the community's acknowledged origin of the technique; the About screen credits it. "Grey band" reproduces the look of a grey-band sort with a small tolerance, written in our own parameters.
+"ASDF classic" credits the column-then-row recipe of Kim Asendorf's ASDFPixelSort, the community's acknowledged origin of the technique; the About screen credits it. "Grey band" reproduces the look of a grey-band sort with a small tolerance, written in our own parameters. (`builtin:vhs-split` and `builtin:tile-scramble` move to section 16.1 with their effects.)
 
 ## 8. Preview strategy
 
@@ -432,13 +408,11 @@ Defined in `src/presets/builtin.ts` with ids `builtin:<slug>`. Parameters not li
 
 ### 8.2 Levels
 
-| Level | Pixel cap, phone | Pixel cap, tablet and desktop | Produced by |
-|---|---|---|---|
-| `drag` | adaptive, starts at 0.5 MP (524,288), between 0.125 MP and 0.5 MP | adaptive, starts at 1 MP (1,048,576), between 0.125 MP and 1 MP | preview worker, downscaled from the `settle` proxy by box averaging (our own resampler, deterministic) |
-| `settle` | 2 MP (2,097,152) | 4 MP (4,194,304) | preview worker, decoded with `createImageBitmap(blob, {resizeWidth, resizeHeight, resizeQuality: 'high'})` |
-| `full` | source size (up to the 24 MP mobile limit) | source size (desktop up to 64 MP; tablet up to the same 24 MP mobile limit as phone) | export worker (section 13) |
-
-Caps follow the viewport class (product.md section 4) when the project is opened: phone caps for the phone class, the other column for tablet and desktop. The 24 MP area limit for `full` applies to phones and tablets alike (product.md section 4), because iPadOS Safari has the same canvas limits as iOS.
+| Level | Pixel cap (desktop) | Produced by |
+|---|---|---|
+| `drag` | adaptive, starts at 1 MP (1,048,576), between 0.125 MP and 1 MP | preview worker, downscaled from the `settle` proxy by box averaging (our own resampler, deterministic) |
+| `settle` | 4 MP (4,194,304) | preview worker, decoded with `createImageBitmap(blob, {resizeWidth, resizeHeight, resizeQuality: 'high'})` |
+| `full` | source size (guaranteed up to 50 MP on desktop) | export worker (section 13) |
 
 Adaptive `drag` cap: after each `drag` render, if its time exceeded the drag budget (section 9), halve the cap (not below 0.125 MP); if it took less than 40% of the budget, double it (not above the starting cap). The worker regenerates the drag proxy when the cap changes.
 
@@ -465,27 +439,27 @@ The preview worker caches pipeline stage outputs so editing instance `j` re-rend
 
 ### 8.6 Progressive refinement
 
-1. `drag` while moving (fast, coarse), 2. `settle` after the control stops (sharp at normal zoom), 3. `full` when the user zooms past the `settle` proxy's resolution. The `full` result is sent to the main thread as tiles of at most 2,048 × 2,048 px as `ImageBitmap`s (each well under the iOS single-canvas limit) and drawn per visible tile. Only one `full` result is kept; any stack change discards it.
+1. `drag` while moving (fast, coarse), 2. `settle` after the control stops (sharp at normal zoom), 3. `full` when the user zooms past the `settle` proxy's resolution. The `full` result is sent to the main thread as tiles of at most 2,048 × 2,048 px as `ImageBitmap`s and drawn per visible tile. Only one `full` result is kept; any stack change discards it.
 
 ## 9. Performance budgets
 
-Targets, not measurements: the research marks its targets as proposed engineering targets until spikes run. Spikes S1 and S2 (roadmap.md) measure them; misses are reported with numbers. Reference devices: product.md section 8. Workload unless stated: one `pixelSort` instance with defaults at angle 0, on a representative 4:3 JPEG photo.
+Unbenchmarked engineering targets, not measurements: spike S1 (roadmap.md) measures them on the reference laptop; misses are reported with numbers. Reference device: product.md section 8 (desktop laptop only in the first release). Workload unless stated: one `pixelSort` instance with defaults at angle 0, on a representative 4:3 JPEG photo.
 
-| Measure | Laptop | Mid-range phone |
-|---|---|---|
-| `drag` render at its starting cap (1 MP / 0.5 MP), p95 | ≤ 50 ms | ≤ 80 ms |
-| Visible update after a change (input to pixels on screen), p95 | ≤ 100 ms | ≤ 150 ms |
-| `settle` render (4 MP / 2 MP), p95 | ≤ 300 ms | ≤ 400 ms |
-| Same, angle 30 | ≤ 1.5× the angle-0 time | ≤ 1.5× the angle-0 time |
-| `pixelSort` kernel throughput, angle 0, single thread | ≥ 25 MP/s | ≥ 8 MP/s |
-| Project open: decode + first `settle` render, 12 MP source | ≤ 1.0 s | ≤ 2.0 s |
-| Export 12 MP, PNG, full size, including decode and encode | ≤ 2 s (engineering target, not yet benchmarked) | ≤ 5 s |
-| Export 24 MP, same | ≤ 5 s | ≤ 12 s |
-| Export 48 MP, same | ≤ 12 s | later (not supported on phones in the first release) |
-| Main-thread long tasks during any render | none over 50 ms | none over 50 ms |
-| Peak worker memory for a `full` render of `P` pixels | ≤ `3 × 4P + 2P` bytes plus encoder output | same |
+| Measure | Reference laptop (unbenchmarked target) |
+|---|---|
+| `drag` render at its starting cap (1 MP), p95 | ≤ 50 ms |
+| Visible update after a change (input to pixels on screen), p95 | ≤ 100 ms |
+| `settle` render (4 MP), p95 | ≤ 300 ms |
+| Same, angle 30 | ≤ 1.5× the angle-0 time |
+| `pixelSort` kernel throughput, angle 0, single thread | ≥ 25 MP/s |
+| Project open: decode + first `settle` render, 12 MP source | ≤ 1.0 s |
+| Export 12 MP, PNG, full size, including decode and encode | ≤ 2 s (engineering target, not yet benchmarked) |
+| Export 24 MP, same | ≤ 5 s |
+| Export 50 MP, same | ≤ 12 s |
+| Main-thread long tasks during any render | none over 50 ms |
+| Peak worker memory for a `full` render of `P` pixels | ≤ `3 × 4P + 2P` bytes plus encoder output |
 
-Several laptop figures above are engineering targets that are tighter than a product.md acceptance criterion, and none has been benchmarked yet. The acceptance limit is the product.md number; missing the engineering target alone does not fail acceptance:
+Several figures above are unbenchmarked engineering targets that are tighter than a product.md acceptance criterion. The acceptance limit is the product.md number; missing the engineering target alone does not fail acceptance:
 
 - Export 12 MP, PNG, full size, laptop: engineering target 2 s; the acceptance limit is 5 s (product.md AC-F12.1).
 - `drag` render (50 ms) and visible update (100 ms), laptop: engineering targets; the acceptance limit is at least 5 preview updates per second while dragging (product.md AC-F8.1).
@@ -511,7 +485,7 @@ function intIn(lo: number, hi: number, seed: number, ...keys: number[]): number;
 
 For identical input pixels, an identical effect stack (after migration and validation) and an identical render size, the output bytes are identical on every run, in every browser and in Node. Two limits:
 
-- Input pixels come from the browser's decoder. JPEG decoders and the `settle` resize differ slightly between browsers, so the same file can give slightly different results in Safari and Chrome. PNG sources decode identically.
+- Input pixels come from the browser's decoder. JPEG decoders and the `settle` resize differ slightly between browsers, so the same file can give slightly different results across browsers (for example Chrome and Firefox). PNG sources decode identically.
 - The `drag` and `settle` previews are exact renders at their size, not downscaled copies of the full result. Their structure matches the export (10.3), but pixel values differ.
 
 ### 10.3 Resolution independence
@@ -572,29 +546,24 @@ Effect definitions do not change when GPU acceleration arrives. The plan:
 4. The first candidate is axis-aligned `pixelSort` with lines up to 4,096 px: per-line workgroups, selection and interval splitting by parallel scans and a sorting network in workgroup memory, as described in the research for an MIT-licensed project. If code from that project is ported rather than rewritten, its MIT notice goes in the third-party notices.
 5. Device loss falls back to the CPU for the rest of the session.
 
-## 13. Full-resolution decode, export and the iOS limits
+## 13. Full-resolution decode and export
 
-iOS Safari invalidates any single canvas over 16,777,216 px and limits total canvas memory to 384 MB (224 MB on older devices) per the research's verified sources. The export worker never needs one canvas for the whole image.
+The first release targets desktop browsers and uses native browser canvas APIs for decode and encode (the iOS > 16.78 MP path is deferred to section 16.2).
 
-**Decode to an `RgbaImage` at source size**, in this order, with spike S2 confirming which works on iOS:
+**Decode to an `RgbaImage` at render/export size:**
 
-1. `createImageBitmap(blob, {imageOrientation: 'from-image', colorSpaceConversion: 'default'})`, then copy it out in tiles of at most 4,096 × 4,096 px: draw each tile onto one reused `OffscreenCanvas` of that size, `getImageData`, copy into the big buffer. Release the bitmap with `close()` and shrink the canvas to 1 × 1 afterwards.
-2. If step 1 fails for images over the canvas limit, decode per tile with `createImageBitmap(blob, sx, sy, sw, sh, options)`.
-3. If that fails for JPEG, decode with a WebAssembly JPEG decoder loaded on demand (candidate `@jsquash/jpeg`; licence and size to be checked in S2).
+- `createImageBitmap(blob, {imageOrientation: 'from-image', colorSpaceConversion: 'default'})` (with `resizeWidth` / `resizeHeight` when scaling down for 1/2, 1/4, or custom export sizes), draw onto a reused `OffscreenCanvas`, read with `getImageData`, release the bitmap with `close()`, and shrink the canvas to `1 × 1` afterwards.
+- `ImageDecoder` (WebCodecs) is not used.
 
-`ImageDecoder` (WebCodecs) is not used: the research found it unsupported in shipping Safari, with the exact version unverified.
+**Encode** (native canvas encoders only):
 
-**Encode**, by format:
+| Format | Encoder |
+|---|---|
+| PNG | `OffscreenCanvas.convertToBlob({type: 'image/png'})` |
+| JPEG | `OffscreenCanvas.convertToBlob({type: 'image/jpeg', quality})` |
+| WebP | `OffscreenCanvas.convertToBlob({type: 'image/webp', quality})`, offered only when a startup probe returns `blob.type === 'image/webp'` (Chrome, Edge, Firefox) |
 
-| Format | Area within the platform canvas limit | Area over the limit (iOS over 16.78 MP) |
-|---|---|---|
-| PNG | Our PNG writer (below) or `OffscreenCanvas.convertToBlob({type: 'image/png'})`, whichever S2 measures faster per browser | Our PNG writer |
-| JPEG | `OffscreenCanvas.convertToBlob({type: 'image/jpeg', quality})` | WebAssembly JPEG encoder loaded on demand (candidate `@jsquash/jpeg`) |
-| WebP | `convertToBlob({type: 'image/webp', quality})`, offered only when a startup probe returns `blob.type === 'image/webp'` (Chrome, Edge, Firefox 96+; not Safari) | not offered |
-
-Every native encode checks `blob.type` against the requested MIME type, because unsupported types fall back to PNG silently. The platform canvas limit is 16,777,216 px on iOS and iPadOS WebKit (detected by `navigator.maxTouchPoints > 1` with a WebKit user agent) and 268,435,456 px elsewhere; if a native encode throws or returns the wrong size, the worker retries with the fallback column.
-
-**Our PNG writer** (`src/codec/png-writer.ts`): 8-bit, colour type 2 (RGB) when every alpha is 255, else 6 (RGBA); each row filtered with filter type 1 (Sub); compressed with `fflate` deflate in streaming mode at level 6 (level chosen in S2); standard IHDR, IDAT chunks of at most 1 MiB, IEND; CRC-32 from a 256-entry table. No ancillary chunks (no gamma, ICC, text or time), so files carry no metadata.
+Every native encode checks `blob.type` against the requested MIME type, because unsupported types fall back to PNG silently. Encoding from raw RGBA canvas pixels carries no EXIF, GPS, or ICC metadata from the source file.
 
 ## 14. Testing
 
@@ -607,15 +576,14 @@ Run with `vp test run` in Node. Required per module:
 - `random.ts`: fixed vectors (`hash32(0)`, `hash32(1, 2, 3)` and 8 more) so the function can never change silently; `intIn` stays within bounds over 100,000 draws.
 - `params.ts`: every validation rule of section 3.
 - `pipeline.ts`: disabled instances skipped; unknown types skipped with a warning; mix and blend formulas on hand-computed pixels; debug view stops the pipeline at its instance.
-- `png-writer.ts`: round trip through a reference decoder (`fast-png`, dev dependency) for RGB and RGBA images of sizes 1 × 1, 3 × 2 and 300 × 200.
 
 ### 14.2 Golden images
 
 - Inputs are synthetic images generated in code by `tests/fixtures/synthetic.ts` from `hash32`, so no photos are needed in the repository: `gradient-64x48` (diagonal colour gradient), `noise-97x61` (hashed RGB noise, odd size), `bands-80x80` (horizontal bands of 8 grey levels with 1 px black separators), `alpha-32x32` (gradient with a transparent quarter).
-- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` and `tests/golden/<type>/<case>.png` holding the expected output, written by our PNG writer and decoded with `fast-png` in tests.
+- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (a dev dependency that task `T2.7` adds) in Node tests.
 - The test renders the case at `scale` and compares bytes exactly. On mismatch it writes `<case>.actual.png` and a diff image to `tests/golden/.out/` (git-ignored) and reports the count of differing pixels.
 - `vp run golden:update` rewrites expected images and is never run by CI.
-- Minimum cases for `pixelSort`: every interval mode; every sort key at angle 0; every order; every fill; angles 0, 30, 45, 90, 180, 270, 333.3; `invert`; `maxLength` with and without jitter; `skipChance` 0.5; `discretize` 4; selection debug view; the `alpha-32x32` input; scale 0.5. Each other effect: defaults, two non-default settings, scale 0.5.
+- Minimum cases for `pixelSort`: every interval mode; every sort key at angle 0; every order; every fill; angles 0, 30, 45, 90, 180, 270, 333.3; `invert`; `maxLength` with and without jitter; `skipChance` 0.5; `discretize` 4; selection debug view; the `alpha-32x32` input; scale 0.5. For `channelShift`: defaults, two non-default settings, scale 0.5.
 
 ### 14.3 Property tests
 
@@ -625,7 +593,7 @@ With `fast-check`, at least 200 runs each, on random images up to 64 × 64 and r
 2. `pixelSort` with `fill = sort`: each line's multiset of RGBA values is unchanged; unselected pixels are unchanged; within every non-skipped interval with `order` ascending or descending, comparison keys are monotonic in the stated direction.
 3. `pixelSort` with angle `θ` and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct.
 4. Every effect: output size equals input size; input buffer is unchanged after `render`; rendering twice gives identical bytes; `mix = 0` returns the input exactly.
-5. `channelSwap` `rgb` and `blockShuffle` with `amount = 0` are the identity; `channelShift` with all offsets 0 is the identity.
+5. `channelShift` with all offsets 0 is the identity.
 6. Stack: `JSON.parse(JSON.stringify(stack))` renders identically; `validateParams` is idempotent; migrations of every version produce parameters that pass validation.
 
 ### 14.4 Benchmarks
@@ -648,9 +616,9 @@ src/engine/            pure TypeScript, no DOM
   resample.ts          box downscale for the drag proxy and masks
   effects/index.ts     the registered list
   effects/pixel-sort/  index.ts, select.ts, edges.ts, fill.ts
-  effects/channel-shift.ts, slice-shift.ts, block-shuffle.ts, channel-swap.ts
+  effects/channel-shift.ts
   gpu/                 later
-src/codec/             decode.ts, encode.ts, png-writer.ts (worker-side, uses OffscreenCanvas)
+src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts
 src/render/            coordinator.ts (main thread: generations, scheduling, crash restart)
 src/presets/           builtin.ts
@@ -659,3 +627,68 @@ tests/golden/          golden cases
 tests/fixtures/        synthetic.ts
 scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 ```
+
+## 16. Later
+
+Specifications preserved here for deferred work. None of section 16 is implemented in the first release.
+
+### 16.1 Deferred glitch effects
+
+#### `sliceShift` (version 1, glitch): "Shift random bands of the image sideways."
+
+| Param | Kind | Default | Range | Group |
+|---|---|---|---|---|
+| `axis` | enum | `horizontal` | `horizontal` "Rows", `vertical` "Columns" | Slices |
+| `sliceMin` | integer (px) | 4 | 1..2048 | Slices |
+| `sliceMax` | integer (px) | 48 | 1..2048 | Slices |
+| `probability` | number (ratio) | 0.3 | 0..1, step 0.01 | Slices |
+| `maxOffset` | integer (px) | 80 | 0..4096 | Offset |
+| `edge` | enum | `wrap` | `wrap`, `clamp` | Offset |
+| `seed` | seed | random | | Seed |
+
+Slices are defined in source space so the preview and export match. For `horizontal`, slices partition source rows `0..Hs-1` (for `vertical`, swap rows and columns, and `x` and `y` below). Let `lo = sliceMin`, `hi = max(sliceMin, sliceMax)`. Starting at `y0 = 0` with `i = 0`: slice `i` covers source rows `[y0, y0 + h)` with `h = intIn(lo, hi, seed, 1, i)`; it is active when `unit(seed, 2, i) < probability`; its offset is `o = intIn(-maxOffset, maxOffset, seed, 3, i)` when active, else 0; then `y0 += h`, `i += 1`, until `y0 >= Hs`.
+
+Render: for render row `y`, find the slice containing `ys = clamp(ctx.toSource(y), 0, Hs - 1)`, let `or = ctx.px(o)`, and set `out(x, y) = in(E(x - or, W), y)` for all four channels, with `E` as in 6.1.
+
+#### `blockShuffle` (version 1, glitch): "Swap square tiles around the image."
+
+| Param | Kind | Default | Range | Group |
+|---|---|---|---|---|
+| `tileSize` | integer (px) | 64 | 4..1024 | Tiles |
+| `amount` | number (ratio) | 0.15 | 0..1, step 0.01 | Tiles |
+| `seed` | seed | random | | Seed |
+
+Source grid: `T = tileSize`, `cols = floor(Ws / T)`, `rows = floor(Hs / T)`, `N = cols * rows` full tiles; the right and bottom remainders never move. If `N < 2`, output equals input. Permutation `π` starts as the identity; for `t` from 0 to `N - 1`, if `unit(seed, 1, t) < amount`, swap `π[t]` and `π[intIn(0, N - 1, seed, 2, t)]`.
+
+Render pixel `(x, y)`: `xs = (x + 0.5) / scale`, `ys = (y + 0.5) / scale`, `tx = floor(xs / T)`, `ty = floor(ys / T)`. If `tx < cols` and `ty < rows`: `t2 = π[ty * cols + tx]`, `xs2 = xs + (t2 % cols - tx) * T`, `ys2 = ys + (floor(t2 / cols) - ty) * T`, and `out(x, y) = in(clamp(floor(xs2 * scale), 0, W - 1), clamp(floor(ys2 * scale), 0, H - 1))`. Otherwise `out(x, y) = in(x, y)`. At scale 1 this is an exact tile swap.
+
+#### `channelSwap` (version 1, color): "Swap the red, green and blue channels."
+
+One parameter `order`, enum, default `gbr`, options `rgb`, `rbg`, `grb`, `gbr`, `brg`, `bgr`. The three letters name the input channel written to output R, G and B: `gbr` means `outR = inG`, `outG = inB`, `outB = inR`.
+
+#### Deferred built-in presets
+
+| Id | Name | Instances |
+|---|---|---|
+| `builtin:vhs-split` | VHS split | `sliceShift` defaults with seed 7; then `channelShift` defaults |
+| `builtin:tile-scramble` | Tile scramble | `blockShuffle` `tileSize` 96, `amount` 0.25, seed 3; then `channelSwap` `gbr` |
+
+### 16.2 iOS canvas-limit decode and export path
+
+Needed when mobile/Safari acceptance is added or when packaging for iOS/macOS with Tauri (which uses WebKit).
+
+iOS Safari invalidates any single canvas over 16,777,216 px and limits total canvas memory to 384 MB (224 MB on older devices) per the research's verified sources.
+
+**Mobile preview caps (later):** phone `drag` starts at 0.5 MP (524,288, down to 0.125 MP), `settle` at 2 MP (2,097,152), `full` up to 24 MP (25,165,824 px) on phones and tablets.
+
+**Tiled decode to an `RgbaImage` at source size (later):**
+
+1. `createImageBitmap(blob, {imageOrientation: 'from-image', colorSpaceConversion: 'default'})`, then copy it out in tiles of at most 4,096 × 4,096 px: draw each tile onto one reused `OffscreenCanvas` of that size, `getImageData`, copy into the big buffer. Release the bitmap with `close()` and shrink the canvas to 1 × 1 afterwards.
+2. If step 1 fails for images over the canvas limit, decode per tile with `createImageBitmap(blob, sx, sy, sw, sh, options)`.
+3. If that fails for JPEG, decode with a WebAssembly JPEG decoder loaded on demand (candidate `@jsquash/jpeg`).
+
+**Encode above 16,777,216 px on iOS/iPadOS WebKit (later):**
+
+- **PNG (`src/codec/png-writer.ts`):** 8-bit, colour type 2 (RGB) when every alpha is 255, else 6 (RGBA); each row filtered with filter type 1 (Sub); compressed with `fflate` deflate in streaming mode at level 6; standard IHDR, IDAT chunks of at most 1 MiB, IEND; CRC-32 from a 256-entry table. No ancillary chunks (no gamma, ICC, text or time), so files carry no metadata.
+- **JPEG:** WebAssembly JPEG encoder loaded on demand (candidate `@jsquash/jpeg`).
+- **WebP:** not offered on Safari unless native or via Wasm encoder.

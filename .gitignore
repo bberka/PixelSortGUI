@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output and caches
+dist/
+.dev/
+*.tsbuildinfo
+coverage/
+
+# Logs
+logs/
+*.log
+
+# Scratch and proof artifacts
+/tmp/
+.pi/
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Agent skills and worktrees are per machine
+/.agents/
+/.claude/worktrees/

@@ -1,65 +1,65 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # PixelSortGUI decisions and open questions
 
-Status: draft for owner review, 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [persistence.md](persistence.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md).
+Status: settled for first release (one optional tooling question remains open), 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [persistence.md](persistence.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md).
 
-**Answer to native versus web:** Start web-first, not native-first. A static web app backed by a TypeScript Web Worker sorting engine satisfies the offline, local-only, phone/tablet/desktop goals without depending on GPU availability, and keeping the image engine pure TypeScript lets the same codebase be packaged later with Tauri (desktop) or Capacitor (mobile). Revisit native-first only if Spike S2 proves that iOS Safari's verified 16.78 MP single-canvas limit and 384 MB canvas memory cap prevent reliable full-resolution mobile exports even with tiled decode and Wasm/JS encoders.
+**Answer to native versus web:** Start web-first, not native-first. A static web app hosted on GitHub Pages (`glitch.bbay.dev`) and backed by a TypeScript Web Worker sorting engine satisfies the offline, local-only goals on desktop browsers without depending on GPU availability, and keeping the image engine pure TypeScript lets the same codebase be packaged later with Tauri (see D13 for the system-webview caveat).
 
 ---
 
 ## Architecture and product decisions
 
-### D1. Web-first versus native-first
+### D1. Web-first versus native-first (settled 2026-11-24)
 
-- **Options considered:** (a) Static web app / PWA first, native packaging later if needed; (b) Native desktop/mobile app first (Rust/Swift/Kotlin or Tauri/Capacitor from day one).
-- **Choice:** Web-first static PWA, with a DOM-free TypeScript engine (`src/engine/`) that can later sit inside Tauri or Capacitor.
-- **Reason:** Matches the owner's primary request (static-hostable, offline, local-only, runs on phone/tablet/desktop with zero store friction) and avoids maintaining platform-specific UI and distribution pipelines before the core editor is proven.
-- **Revisit if:** Spike S2 fails to deliver acceptable 24 MP mobile exports on iOS Safari and the owner rejects capping iOS export at ≤ 16.78 MP, or if deep OS file/background workflows become mandatory.
+- **Options considered:** (a) Static web app / PWA first, native packaging later; (b) Native desktop/mobile app first (Rust/Swift/Kotlin or Tauri from day one).
+- **Choice:** Web-first static PWA targeting desktop browsers in the first release (with responsive layouts at phone, tablet, and desktop widths), and a DOM-free TypeScript engine (`src/engine/`) that can later be packaged with Tauri (D13).
+- **Reason:** Matches the owner's primary request (static-hostable, offline, local-only, zero store friction) and avoids maintaining platform-specific UI and distribution pipelines before the core editor is proven.
+- **Revisit if:** Deep OS file or background workflows become mandatory, or when moving to native packaging with Tauri (D13).
 
-### D2. Compute path
+### D2. Compute path (settled 2026-11-24)
 
 - **Options considered:** (a) TypeScript typed-array kernels in a Web Worker; (b) Rust/Wasm SIMD + threads; (c) WebGPU compute shaders as primary engine; (d) WebGL2 fragment shader ping-pong passes.
-- **Choice:** TypeScript typed-array kernels in a Web Worker as the baseline and reference implementation; optional WebGPU acceleration later (`src/engine/gpu/`), single-thread Wasm SIMD only if Spike S1 shows a CPU bottleneck.
-- **Reason:** Pixel sorting constructs variable-length runs along arbitrary angles and paths, which fit CPU typed-array code cleanly and give exact cross-browser determinism. WebGPU now ships in modern Chrome, Android Chrome 121+, Safari 26+, and Windows/Apple Silicon Firefox 141+/145+, but Linux, Intel Mac Firefox, Firefox Android, older iOS (< 26), and older Android still require a CPU fallback. Avoiding Wasm threads avoids `SharedArrayBuffer` and cross-origin isolation (D6).
-- **Revisit if:** Spike S1 misses interactive latency budgets on reference phones by a wide margin even with adaptive `drag` caps, in which case single-thread Wasm SIMD (no COOP/COEP required) is evaluated next.
+- **Choice:** Our own TypeScript typed-array kernels in Web Workers as the baseline and reference implementation; optional WebGPU acceleration later (`src/engine/gpu/`). WebAssembly is considered only if benchmark spike S1 misses its budget.
+- **Reason:** Pixel sorting constructs variable-length runs along arbitrary angles and paths, which fit CPU typed-array code cleanly and give exact cross-browser determinism. WebGPU still requires a CPU fallback across browsers and GPUs. Avoiding Wasm threads avoids `SharedArrayBuffer` and cross-origin isolation (D6).
+- **Revisit if:** Spike S1 misses interactive latency budgets on the reference laptop by a wide margin even with adaptive `drag` caps, in which case single-thread Wasm SIMD (no COOP/COEP required) is evaluated next.
 
-### D3. UI framework, styling, and state library
+### D3. UI framework, styling, and state library (settled 2026-11-24)
 
 - **Options considered:** (a) React 19 + TypeScript + Tailwind 4 + shadcn/ui + Zustand; (b) Solid/Svelte/Preact with custom UI components; (c) React Context + `useReducer` without an external store.
 - **Choice:** React 19, TypeScript, Tailwind 4, shadcn/ui (`new-york`, Radix primitives, `lucide-react`), and Zustand for app state, with imperative canvas drawing outside React state.
-- **Reason:** The owner requested Tailwind and shadcn components, and shadcn's canonical ecosystem is React. In a photo editor, pixel processing dominates runtime cost; keeping transient drag state and canvas redraws out of React prevents framework overhead. Zustand gives fine-grained subscriptions for sliders, stack items, and progress without provider nesting.
+- **Reason:** Matches the owner's settled stack. In a photo editor, pixel processing dominates runtime cost; keeping transient drag state and canvas redraws out of React prevents framework overhead. Zustand gives fine-grained subscriptions for sliders, stack items, and progress without provider nesting.
 - **Revisit if:** Profiling shows React reconciliation during slider drags causes main-thread tasks > 50 ms (mitigate by isolating transient values into refs/Zustand transient subscribers before reconsidering the framework).
 
 ### D4. Persistence and storage architecture
 
 - **Options considered:** (a) IndexedDB as primary catalog and blob store + `localStorage` theme mirror; (b) OPFS for blobs + IndexedDB for metadata; (c) File System Access API handles referencing files on disk.
 - **Choice:** IndexedDB (`pixelsortgui`) for all source blobs, projects, thumbnails, history, presets, and app state, with SHA-256 source deduplication, parameter-snapshot history (up to 200 undoable commits), and a single `localStorage` key (`psg:theme`) for zero-flash theme boot.
-- **Reason:** IndexedDB works uniformly across Chrome, Firefox, and Safari/iOS with atomic transactions and schema upgrades. File System Access pickers are Chromium-only and handles can be revoked. OPFS shares the exact same origin quota and eviction rules as IndexedDB, so adding a second persistence system for v1 adds recovery complexity without solving eviction.
+- **Reason:** IndexedDB works uniformly across Chromium and Firefox (and best-effort Safari) with atomic transactions and schema upgrades. File System Access pickers are Chromium-only and handles can be revoked. OPFS shares the exact same origin quota and eviction rules as IndexedDB, so adding a second persistence system for v1 adds recovery complexity without solving eviction.
 - **Revisit if:** Future video/animation workflows or large painted mask layers require streaming random-access scratch files where worker-side OPFS `FileSystemSyncAccessHandle` measurably cuts peak RAM.
 
-### D5. Clean-room own engine versus porting surveyed projects
+### D5. Clean-room own engine versus porting surveyed projects (updated 2026-11-24)
 
 - **Options considered:** (a) Port `notlauren/pxlsort` or `Krzysztofz01/pixel-sorter`; (b) Port parts of MIT surveyed repos (`satyarth/pixelsort`, `czycha/pxlsrt`, `GarrettGunnell/Pixel-Sorting`, `ruccho/BitonicPixelSorter`); (c) Write a clean-room TypeScript engine from our own spec formulas.
-- **Choice:** Clean-room own implementation for the first release (`engine.md`). Direct code reuse is forbidden from unlicensed (`pxlsort`, `ASDFPixelSort`, `Pixel Sortium`, etc.), CC BY-NC-SA (`jeffThompson`), and GPL-3.0 (`pixel-sorter`, `rkargon/pixelsorter`) projects; MIT-attributed porting is reserved for non-obvious later additions (such as `ruccho/BitonicPixelSorter`'s WebGPU bitonic scan shader).
-- **Reason:** Neither tool the owner originally named can be ported safely (`pxlsort` has no licence; `pixel-sorter` is GPL-3.0). Writing from exact formulas in `engine.md` guarantees licence clarity regardless of which project licence the owner selects (Q2) and avoids inheriting known defects from the reference CLIs.
-- **Revisit if:** Never for unlicensed or GPL-3.0 code (unless the owner chooses GPL-3.0 for PixelSortGUI). For MIT repos, reuse is already permitted whenever it saves non-trivial work and its notice is added to `THIRD-PARTY-NOTICES.md`.
+- **Choice:** Clean-room own implementation for the first release (`engine.md`). With the project licensed under MIT (D15), code may be copied from the four MIT-licensed surveyed projects with attribution (`THIRD-PARTY-NOTICES.md`); the clean-room rule forbidding copying from unlicensed (`pxlsort`, `ASDFPixelSort`, `Pixel Sortium`, etc.), CC BY-NC-SA (`jeffThompson`), and GPL-3.0 (`pixel-sorter`, `rkargon/pixelsorter`) projects stays.
+- **Reason:** Neither tool originally named can be copied safely (`pxlsort` has no licence; `pixel-sorter` is GPL-3.0). Writing from exact formulas in `engine.md` keeps the codebase clean under MIT and avoids inheriting known defects from the reference CLIs.
+- **Revisit if:** Never for unlicensed, CC BY-NC-SA, or GPL-3.0 code. For the four MIT repos, reuse with attribution is permitted whenever it saves non-trivial work (such as `ruccho/BitonicPixelSorter`'s WebGPU bitonic scan shader later).
 
 ### D6. PWA offline support without cross-origin isolation (COOP/COEP)
 
 - **Options considered:** (a) Standard static PWA with Workbox precaching and no COOP/COEP headers; (b) Require COOP/COEP (`Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`) for `SharedArrayBuffer` cancellation flags and Wasm threads, using Cloudflare headers or `coi-serviceworker` on GitHub Pages.
 - **Choice:** Standard static PWA with **no** cross-origin isolation requirement. Preview worker cancellation uses cooperative 8 ms `MessageChannel` time slicing (`engine.md` section 8.4) and export cancellation uses `worker.terminate()`.
-- **Reason:** GitHub Pages cannot natively serve custom HTTP response headers, and `coi-serviceworker` requires an extra reload on first visit and imposes strict CORP friction. Removing the COOP/COEP dependency keeps `dist/` portable to any static host, local `vp run gui`, and future Tauri/Capacitor shells.
-- **Revisit if:** Multi-threaded Wasm proves necessary for video/high-MP exports and deployment settles on a host that sets COOP/COEP natively (such as Cloudflare Pages).
+- **Reason:** GitHub Pages (D16) cannot natively serve custom HTTP response headers, and `coi-serviceworker` requires an extra reload on first visit and imposes strict CORP friction. Removing the COOP/COEP dependency keeps `dist/` portable to GitHub Pages, local `vp run gui`, and future Tauri shells.
+- **Revisit if:** Multi-threaded Wasm proves necessary for video/high-MP exports and hosting changes to a provider that sets COOP/COEP natively.
 
-### D7. Export encoders and iOS canvas-limit strategy
+### D7. Export encoders (updated 2026-11-24)
 
-- **Options considered:** (a) Single-canvas `convertToBlob` for all formats and sizes; (b) Native `convertToBlob` within platform canvas limits + custom streaming `fflate` PNG writer + on-demand Wasm JPEG (`@jsquash/jpeg`) above iOS's 16.78 MP limit; (c) Bundle Wasm encoders for PNG, JPEG, WebP, and AVIF on all platforms in v1.
-- **Choice:** Option (b): native `convertToBlob` within canvas limits (with `blob.type` verification so silent PNG fallbacks are caught; WebP offered only where probed native); custom `fflate` streaming PNG writer (zero EXIF/ICC chunks) and lazy-loaded Wasm JPEG above iOS's 16.78 MP cap; no `ImageDecoder` (WebCodecs stable Safari version unverified), no Safari WebP or AVIF in v1.
-- **Reason:** Verified research established that iOS Safari invalidates any single canvas > 16,777,216 px and caps cumulative canvas memory at 384 MB (224 MB older devices), Safari lacks native WebP encoding, and no major browser natively encodes AVIF. Option (b) keeps the initial bundle small while supporting 24 MP mobile export (pending Spike S2) and reusing `fflate` for ZIP backups.
-- **Spec author's note:** `engine.md` section 13 also allows using our `fflate` PNG writer below the canvas limit if S2 measures it faster than `convertToBlob`. Even if native PNG is slightly faster, using our PNG writer unconditionally for PNG export guarantees zero ancillary metadata chunks across every browser; S2 should confirm whether `convertToBlob` on Safari/Chrome strips all metadata before choosing native PNG. Choice left as specified in `engine.md`.
-- **Revisit if:** Spike S2 shows `@jsquash/jpeg` exceeds memory or bundle budgets on iOS, or if Safari ships native WebP/AVIF encoding or raises the 16.78 MP canvas cap.
+- **Options considered:** (a) Native `OffscreenCanvas.convertToBlob` for all formats and sizes; (b) Native `convertToBlob` within platform canvas limits + custom streaming `fflate` PNG writer + on-demand Wasm JPEG (`@jsquash/jpeg`) above iOS's 16.78 MP limit; (c) Bundle Wasm encoders for PNG, JPEG, WebP, and AVIF on all platforms in v1.
+- **Choice:** Option (a) for the first release: native `OffscreenCanvas.convertToBlob` for PNG, JPEG, and WebP (offered only where a startup probe confirms `blob.type === 'image/webp'`), with `blob.type` verification on every encode. No `ImageDecoder` and no AVIF in v1.
+- **History / deferred path:** Because the first release targets desktop Chromium and Firefox only (D17) and cuts the iOS > 16.78 MP path and spike S2 (D18), the tiled decode, custom streaming `fflate` PNG writer, and on-demand `@jsquash/jpeg` Wasm encoder from option (b) are deferred to Later (`engine.md` section 16.2).
+- **Revisit if:** Mobile/Safari acceptance is scheduled or Tauri native packaging targets iOS/macOS (D13), where WebKit's 16.78 MP single-canvas limit applies and the deferred path in `engine.md` section 16.2 is needed.
 
 ### D8. Arbitrary-angle sorting via integer line partition (no image rotation)
 
@@ -69,19 +69,18 @@ Status: draft for owner review, 2026-11-24. Companion specs: [product.md](produc
 - **Spec author's note:** Direct line partition produces subtle stair-stepping on diagonal streaks compared with anti-aliased rotation, which is authentic to pixel art and preserves sharp pixel colours. Leaving the choice as specified in `engine.md` is the right fit for determinism and memory (no rotated scratch copy).
 - **Revisit if:** Users explicitly ask for a smooth anti-aliased rotated-sort mode as an optional flag in `pixelSort` v2.
 
-### D9. Three-level preview and cooperative cancellation
+### D9. Three-level preview and cooperative cancellation (updated 2026-11-24)
 
-- **Options considered:** (a) Always render full resolution in a worker; (b) Two-level preview (`drag` + `full`); (c) Three-level preview (`drag` adaptive 0.125–1 MP, `settle` 2 MP phone / 4 MP tablet & desktop, tiled `full` on zoom > 1.25×) with cooperative 8 ms `MessageChannel` yields in the preview worker and termination in the export worker.
+- **Options considered:** (a) Always render full resolution in a worker; (b) Two-level preview (`drag` + `full`); (c) Three-level preview (`drag` adaptive 0.125–1 MP, `settle` 4 MP on desktop, tiled `full` on zoom > 1.25× up to 50 MP) with cooperative 8 ms `MessageChannel` yields in the preview worker and termination in the export worker.
 - **Choice:** Option (c) (`engine.md` section 8).
-- **Reason:** Full-res 12–48 MP renders cannot hit 50–80 ms drag latency on phones, while `drag`-only proxies look soft when tuning fine thresholds. Tiled `2,048 × 2,048` `ImageBitmap`s keep zoomed-in `full` views well below iOS's 16.78 MP single-canvas limit.
+- **Reason:** Full-res 12–50 MP renders cannot hit 50 ms drag latency, while `drag`-only proxies look soft when tuning fine thresholds. Tiled `2,048 × 2,048` `ImageBitmap`s draw only visible tiles when zoomed in and remain compatible with future mobile/WebKit builds.
 - **Revisit if:** WebGPU acceleration makes full-resolution real-time rendering fast enough to skip `drag` downscaling on capable GPUs.
 
-### D10. Schema-driven effect interface and static build-time registry
+### D10. Schema-driven effect interface, static registry, and reserved on-canvas tool slot (updated 2026-11-24)
 
-- **Options considered:** (a) Hand-written React panel per effect + optional runtime plug-ins; (b) Declarative `ParamSpec` schema per effect + static `src/engine/effects/index.ts` registry (`engine.md` sections 3 and 4).
-- **Choice:** Declarative `ParamSpec` schema and static registry; no runtime plug-in loading.
-- **Reason:** Makes adding a custom effect a self-contained engine-only change (zero UI or persistence boilerplate), guarantees consistent validation/clamping/reset/keyboard accessibility across all effects, and avoids untrusted code execution or CSP issues.
-- **Revisit if:** A future effect needs a bespoke canvas interaction (such as painting masks or dragging curve points) that cannot be expressed as a parameter control; add an optional UI extension slot without breaking schema-driven effects.
+- **Options considered:** (a) Hand-written React panel per effect + optional runtime plug-ins; (b) Declarative `ParamSpec` schema per effect + static `src/engine/effects/index.ts` registry, plus a reserved optional slot for on-canvas tools (`engine.md` sections 3, 4.6, 4.7; `DESIGN.md` section 7.1).
+- **Choice:** Declarative `ParamSpec` schema and static registry; no runtime plug-in loading. Reserve an optional UI-side on-canvas tool slot (for example painting a mask or drawing a sort path) so interactive canvas tools can be added later without changing `EffectDefinition` or breaking schema-driven effects. The slot is designed now, not built in the first release, and has no pre-v0.1.0 roadmap task.
+- **Reason:** Makes adding a custom effect a self-contained engine-only change (zero UI or persistence boilerplate), guarantees consistent validation/clamping/reset/keyboard accessibility across all effects, and avoids untrusted code execution or CSP issues, while keeping a clean seam for future mask/path tools.
 
 ### D11. Counter-based seeded randomness keyed to source coordinates
 
@@ -90,82 +89,66 @@ Status: draft for owner review, 2026-11-24. Companion specs: [product.md](produc
 - **Reason:** Sequential PRNGs change output whenever render resolution, tile order, or parallelism changes. Counter-based hashing guarantees that `settle` previews match `full` exports structurally (resolution independence) and remains deterministic if work is later split across multiple workers or GPU threads.
 - **Revisit if:** Never unless a cryptographic guarantee is needed (not applicable to glitch art).
 
-### D12. Tooling stack and repository structure
+### D12. Tooling stack and settled defaults (updated 2026-11-24; formerly Q7, Q8, Q9)
 
-- **Options considered:** (a) Monorepo with `apps/` + `packages/` and oxlint; (b) Single app at repo root with Vite+ (`vp`), pnpm 12, XO + Prettier, `tsgo -b`, Vitest, `vp hooks`, and ZeroVer (`0.<minor>.<patch>`).
-- **Choice:** Single app at the repository root using Vite+, pnpm 12, XO + Prettier, `tsgo -b`, Vitest, `vp hooks`, and ZeroVer (`docs/agents/tooling.md`).
-- **Reason:** Directly matches the owner's stack request and avoids monorepo overhead while there is only one deployable app. (Note: `vite.config.ts` `run.tasks` for `dev` and `gui` is untested in research and will be verified in `T0.1`.)
-- **Revisit if:** Packaging with Tauri/Capacitor or adding a companion site later warrants splitting into a pnpm workspace.
+- **Choice:** Single app at the repository root using Vite+ (`vp`), pnpm 12, XO + Prettier, `tsgo -b`, Vitest, `vp hooks`, and ZeroVer (`0.<minor>.<patch>`). Settled defaults (`docs/agents/tooling.md`):
+  - `vp run dev` runs the dev server; `vp run gui` builds production `dist/` and serves it locally at `http://localhost:4173`.
+  - Proof screenshots are uploaded into the pull request (`scripts/publish-evidence.ts`).
+  - Code comments follow the prose rule (no comment that restates the code; put reasons inside lint/type directives), with no lint ban or comment ratchet.
+- **Reason:** Directly matches the owner's stack and tooling decisions and avoids monorepo overhead while there is only one deployable app. (Note: `vite.config.ts` `run.tasks` for `dev` and `gui` is untested in research and will be verified in `T0.1`.)
+- **Revisit if:** Packaging with Tauri or adding a companion site later warrants splitting into a pnpm workspace.
+
+### D13. Tauri for later native packaging (2026-11-24)
+
+- **Choice:** Packaging with **Tauri** is the intended later route to native desktop and mobile apps from the same web build (`dist/`).
+- **Caveat:** Tauri uses the platform's system webview — WebKit on iOS and macOS, WebKitGTK on Linux, WebView2 on Windows. On iOS (and macOS WebKit where applicable), the iOS 16.78 MP single-canvas limit and 384 MB cumulative canvas memory cap will still apply inside Tauri, so the deferred iOS decode/export path (`engine.md` section 16.2: tiled decode, streaming `fflate` PNG writer, on-demand Wasm JPEG encoder) will be needed when shipping Apple native builds.
+
+### D14. Themes (formerly Q1, settled 2026-11-24)
+
+- **Choice:** Two themes — **Light** (`#fafafa`) and **True Black** (`#000000`) — defaulting to **System** (`prefers-color-scheme`), with a toggle in the toolbar and Settings (`F14`, `DESIGN.md` section 2).
+
+### D15. Project licence (formerly Q2, settled 2026-11-24)
+
+- **Choice:** **MIT**. A `LICENSE` file exists at the repository root and `package.json` declares `"license": "MIT"`. Code may be copied from the four MIT-licensed surveyed projects with attribution; the clean-room rule for unlicensed, GPL-3.0, and non-commercial projects stays (`docs/agents/licensing.md`).
+
+### D16. Hosting and custom domain (formerly Q3, settled 2026-11-24)
+
+- **Choice:** **GitHub Pages** on the custom domain **`glitch.bbay.dev`**. The production build (`dist/`) must work when served from the domain root (`/`), and the deploy writes a `CNAME` file containing `glitch.bbay.dev` into the published output (`docs/agents/tooling.md`, roadmap `T0.5`).
+
+### D17. First-release platforms, browser floor, and reference device (formerly Q5 and Q6, settled 2026-11-24)
+
+- **Choice:** Desktop only for first-release acceptance. Accepted browsers are Chromium-based browsers (Chrome and Edge 120 or later) and Firefox 128 or later on a 2020 or newer laptop (Apple M1 or Intel i5 11th gen class).
+- **Best effort & deferred platforms:** Safari on any platform is best effort (nothing may be built that knowingly breaks it, but it is not tested and not an acceptance target). Phones and tablets are not acceptance targets in the first release.
+- **Responsive layouts:** Layouts stay responsive at phone, tablet, and desktop widths so a later port needs no layout rework, and UI changes are checked in a desktop browser at `390 × 844`, `820 × 1180`, and `1440 × 900`. That checks layout only and does not reproduce mobile canvas, memory, or storage limits.
+
+### D18. First-release scope cuts and 50 MP image limit (formerly Q4, settled 2026-11-24)
+
+- **Image size:** **50 MP** (`50,000,000` px) is the guaranteed maximum on the accepted desktop browsers. Larger images (within 16,384 px longest side and 200 MB file size) are offered a downscaled import to 50 MP, replacing the 24 MP mobile limit and its dialog.
+- **Deferred to Later:** ZIP backup and restore (`F17`); three glitch effects (`sliceShift`, `blockShuffle`, `channelSwap`, plus the `vhs-split` and `tile-scramble` presets — `channelShift` stays alongside `pixelSort`); the iOS canvas-limit path (tiled decode, custom streaming PNG writer, WebAssembly JPEG encoder, 24 MP mobile dialog, spike `S2`); Safari 7-day storage eviction warnings and Home Screen exemption; phone and tablet acceptance criteria and reference devices.
+- **Kept in first release:** Offline PWA support and installability (`F15`), storage-full handling, and private-browsing handling (`F16`).
+
+### D19. Merging policy (settled 2026-11-24)
+
+- **Choice:** For now, the **lead agent merges**, using squash merge, one pull request per task. A pull request merges when CI is green and a review agent running a different model from the author has approved it (before CI exists during scaffolding, review approval alone is the gate). `main` is protected so nothing is pushed to it directly. The owner reviews at each milestone and can revert.
+
+### D20. Model roster (settled 2026-11-24)
+
+- **Choice:** Due to limited remaining Claude usage, Claude Sonnet and Claude Haiku are not used for now. The active roster (`docs/agents/roster.md`) is:
+  - **Light tasks** (small edits, single-file changes, mechanical work, reviews of small diffs): **GPT Luna**.
+  - **Standard and larger tasks:** **Gemini 4 Neon on Antigravity** (thought level low or medium).
+  - **Big tasks** (cross-cutting design, the hardest engine work, anything a Gemini 4 Neon attempt failed at): **Claude Fable** (low or medium effort), used sparingly.
+  - **Research and bulk reading:** **deepseek-flash**.
+- The rule that a reviewer runs a different model from the author stays.
 
 ---
 
 ## Open questions for the owner
 
-Every spec currently builds on the **Current default** below. Please confirm or change each before scaffolding (`M0`) or release (`M6`).
-
-### Q1. Theme reading ("light black theme")
-
-- **Question:** You asked for a "light black theme". Should the app ship **two themes** (Light and True Black `#000000`, with a toggle and System default), or a **single** soft dark / charcoal theme (for example `#141416`)?
-- **Current default:** Two themes: **Light** (`#fafafa`) and **True Black** (`#000000`), defaulting to **System**, with a toggle in the toolbar and Settings (F14, `DESIGN.md` section 2).
-
-### Q2. Project licence
-
-- **Question:** Which licence should PixelSortGUI use? No `LICENSE` file or header will be added until you decide (`docs/agents/licensing.md`).
-- **Options and implications** (given that all first-release code is our own clean-room implementation, all npm dependencies are permissive MIT/ISC/BSD/Apache-2.0, and four surveyed pixel-sorting projects are MIT):
-
-| Option | Allows copying from the 4 MIT surveyed repos (with notice)? | Allows porting GPL-3.0 repos (`pixel-sorter`, `rkargon`)? | Allows closed/commercial derivatives? | Key obligation |
-|---|---|---|---|---|
-| **MIT** | Yes (keep copyright + notice) | No | Yes | Minimal; anyone may reuse with attribution. |
-| **Apache-2.0** | Yes (keep notice) | No | Yes | Adds explicit patent grant and NOTICE file handling. |
-| **MPL-2.0** | Yes (keep notice) | No | Yes (file-level copyleft) | Changes to MPL files stay open; compatible with larger apps. |
-| **GPL-3.0** | Yes (keep notice) | Yes | Copyleft (must share source under GPL-3.0) | Hosted JS bundle is distribution, so source must be offered to users. |
-| **All rights reserved / Proprietary** | Yes (MIT permits closed use with notice in app UI) | No | Owner-only | No public reuse rights; notices still shown in About. |
-
-- **Current default:** Unchosen (no `LICENSE` file; clean-room engine + permissive deps keep every option above open).
-
-### Q3. Deployment target
-
-- **Question:** Deploy the static `dist/` build to **GitHub Pages** or **Cloudflare Pages**? (`docs/agents/tooling.md` #1.)
-- **Trade-off:** Both host static PWAs over HTTPS with zero server cost. Cloudflare Pages supports custom HTTP response headers (`_headers`), which would unlock COOP/COEP if Wasm threads are ever wanted later; GitHub Pages needs no extra account or Cloudflare secrets.
-- **Current default:** GitHub Pages (with `dist/` kept portable to any base path and host).
-
-### Q4. Upper image size on phones for the first release
-
-- **Question:** Should the first release guarantee **24 MP** on phones (requiring tiled decode + our PNG writer + on-demand Wasm JPEG on iOS to stay under Safari's 16.78 MP single-canvas limit), or cap phones at **16 MP** (≤ 16,777,216 px) to use native canvas encoders everywhere?
-- **Current default:** **24 MP** guaranteed on phones and tablets (with an `"Import at 24 MP"` / `"Import anyway"` dialog for 24–64 MP images), pending Spike S2. If Spike S2 fails on an iPhone, fall back to **≤ 16.78 MP** (`product.md` section 4 & AC-F12.5).
-
-### Q5. Reference devices for performance budgets and release acceptance
-
-- **Question:** Are the reference devices in `product.md` section 8 the right bar for signing off `v0.1.0`?
-- **Current default:**
-  - Desktop: 2020+ laptop (Apple M1 or Intel i5 11th gen class), current Chrome, Firefox, Safari.
-  - Tablet: iPad 9th gen or newer, Safari 17+.
-  - Phone (iOS): iPhone 12 or newer, Safari 17+ (tab and Home Screen).
-  - Phone (Android): Pixel 6a/7a or Galaxy A54 class, current Chrome (tab and installed).
-
-### Q6. Browser version floor
-
-- **Question:** Is the tested browser floor right, or do you need older Safari/iOS (e.g. iOS 16.4+) or older Chrome/Firefox?
-- **Current default:** Chrome/Edge 120+, Firefox 128+, Safari/iOS/iPadOS 17+ (Safari 17+ gives `navigator.storage.persist()`, 60% origin quota, and `OffscreenCanvas`; `product.md` section 4).
-
-### Q7. Proof screenshots in pull requests
-
-- **Question:** Should subagents upload proof screenshots into pull requests (TabLodge style, via `scripts/publish-evidence.ts`) or keep them in a git-ignored local folder and embed them in chat only (mediastash style)? (`docs/agents/tooling.md` #2.)
-- **Current default:** Upload via `vp run evidence` and embed in the final chat report (matches global rule in `tooling-reference.md`; until `T0.4` lands, list local paths and write `screenshots not uploaded`).
-
-### Q8. Code comment ban and ratchet
-
-- **Question:** Should `xo.config.ts` include TabLodge's `local/no-comments` lint rule and comment ratchet, or rely on code review only? (`docs/agents/tooling.md` #3.)
-- **Current default:** No automated comment ban/ratchet yet; prose rule forbids comments that restate code and requires reasons inside lint/type directives.
-
-### Q9. Meaning of `vp run gui`
-
-- **Question:** Should `vp run gui` build the production bundle and serve it locally (so the PWA service worker and offline mode can be tested), or simply open the dev server, or wait for a future desktop shell? (`product.md` section 4, `tooling-reference.md` section 5.)
-- **Current default:** Build production `dist/` and serve it locally via `vp preview` (default `http://localhost:4173`).
+Questions Q1 through Q9 are settled above (2026-11-24). One optional tooling question remains open:
 
 ### Q10. Optional pre-commit guards and skills management
 
-- **Question:** Should scaffolding add (a) mediastash's pre-commit em-dash rejection check, (b) mediastash's Claude Code Stop hook requiring proof screenshots before stopping on UI edits, and (c) `skills-lock.json` restored via `vp run skills:install` versus vendoring skills? (`docs/agents/tooling.md` #5, `tooling-reference.md` section 9.)
+- **Question:** Should scaffolding add (a) mediastash's pre-commit em-dash rejection check, (b) mediastash's Claude Code Stop hook requiring proof screenshots before stopping on UI edits, and (c) `skills-lock.json` restored via `vp run skills:install` versus vendoring skills? (`docs/agents/tooling.md`.)
 - **Current default:** No em-dash hook and no Stop hook unless requested; lock file (`skills-lock.json`) with `vp run skills:install` rather than vendoring.
 
 ---

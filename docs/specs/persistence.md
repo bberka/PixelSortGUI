@@ -1,8 +1,9 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # PixelSortGUI persistence spec
 
-Status: draft for owner review, 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md), [decisions.md](decisions.md). Terms follow [product.md section 2](product.md#2-terms). Effect stack types follow [engine.md section 2.2](engine.md#22-effect-stack).
+Status: settled for first release, 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md), [decisions.md](decisions.md). Terms follow [product.md section 2](product.md#2-terms). Effect stack types follow [engine.md section 2.2](engine.md#22-effect-stack).
 
 ## 1. Scope and storage architecture
 
@@ -36,7 +37,7 @@ All records are structured-cloneable plain objects (plus `Blob` in `sources` and
 ```ts
 type SourceRecord = {
 	sha256: string; // 64 lowercase hex characters, SHA-256 of `blob` bytes
-	blob: Blob; // original file bytes (or downscaled copy when mobile "Import at 24 MP" was chosen)
+	blob: Blob; // original file bytes (or downscaled copy when "Import at 50 MP" was chosen)
 	mimeType: string; // e.g. 'image/jpeg', 'image/png', 'image/webp'
 	byteLength: number; // exact blob.size
 	width: number; // display width in px after EXIF orientation normalization, 1..16384
@@ -115,9 +116,6 @@ type AppStateRecord = {
 	activeProjectId: string | null; // null when user is on the Library screen
 	theme: ThemePreference; // default 'system'
 	compareMode: CompareMode; // default 'toggle'
-	lastBackupAt: number | null; // Unix epoch ms of last full-library backup export
-	safariEvictionBannerDismissedAt: number | null; // Unix epoch ms
-	backupReminderDismissedAt: number | null; // Unix epoch ms
 };
 
 type SchemaInfoRecord = {
@@ -149,12 +147,12 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Zoom, pan, split position, select instance (F3, F11, F13) | `projects` | Debounced 200 ms; flushed on `visibilitychange` (`hidden`) and `pagehide` | Updates `viewState` and `selectedInstanceId` on `ProjectRecord`. Restores zoom and centre within 1 source px (AC-F3.3) and split position (AC-F11.3). |
 | Open project / Return to library (F2, F3) | `projects`, `meta` | Immediate | Opening a project sets `projects.openedAt = Date.now()` and `meta.appState.activeProjectId = id`, updating URL hash to `#/p/<id>`. Returning to library sets `activeProjectId = null` and hash to `#/` (AC-F3.4). |
 | Change export settings (F12) | `projects` | Immediate on export start or dialog close | Saves `exportSettings` on `ProjectRecord` (AC-F12.7). |
-| Generate result thumbnail (F2) | `thumbnails` | Within 500 ms after `settle` render of a commit or initial import | Worker or OffscreenCanvas scales the `settle` bitmap to longest side ≤ 512 px, encodes WebP (or JPEG q=0.80 if Safari/no WebP), writes `ThumbnailRecord`. Must finish within 5 s of commit (AC-F2.2). |
+| Generate result thumbnail (F2) | `thumbnails` | Within 500 ms after `settle` render of a commit or initial import | Worker or OffscreenCanvas scales the `settle` bitmap to longest side ≤ 512 px, encodes WebP (or JPEG q=0.80 where WebP encoding is unavailable), writes `ThumbnailRecord`. Must finish within 5 s of commit (AC-F2.2). |
 | Rename project (F2) | `projects` | Immediate | Validates 1..120 chars trimmed, updates `name` and `updatedAt` (AC-F2.3). |
 | Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState`, same `stack` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
-| Change theme / compare mode / dismiss banner (F14, F16, F17) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('psg:theme', theme)` synchronously. |
+| Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('psg:theme', theme)` synchronously. |
 
 ## 5. Private browsing and storage unavailability
 
@@ -166,17 +164,17 @@ If `indexedDB.open('pixelsortgui', 1)` throws or fires `error` (for example, sto
 
 1. Switch the storage repository to `MemoryStorageAdapter`, which implements the exact same async repository interface backed by `Map`s in RAM.
 2. Set `storageUnavailable = true` in app state so the UI displays the persistent, non-dismissable banner: `"Storage unavailable: nothing will be saved after you close this tab."` (AC-F16.4).
-3. All editing, undo/redo, presets, and exports continue to work normally for the duration of the tab. Backup export remains available so the user can save their work to disk.
+3. All editing, undo/redo, presets, and exports continue to work normally for the duration of the tab.
 
 ### 5.2 Private browsing (Incognito / Private Window)
 
-Per the verified research ([engine-architecture.md section 4](../research/engine-architecture.md)), Chrome Incognito, Firefox Private Browsing, and Safari Private Browsing generally allow IndexedDB inside an ephemeral temporary sandbox during the session, deny `navigator.storage.persist()` (or treat it as non-durable), and **wipe all stored data when the private session closes**. Exact per-browser private-mode byte caps are **unverified** because browsers leave them implementation-defined based on device RAM and version.
+Per the verified research ([engine-architecture.md section 4](../research/engine-architecture.md)), Chrome Incognito and Firefox Private Browsing allow IndexedDB inside an ephemeral temporary sandbox during the session, deny `navigator.storage.persist()` (or treat it as non-durable), and **wipe all stored data when the private session closes**. Exact per-browser private-mode byte caps are **unverified** because browsers leave them implementation-defined based on device RAM and version.
 
 Behaviour:
 
 - Do not rely on fragile browser-sniffing tricks to guess private mode.
 - Let normal IndexedDB operations run; if quota runs out earlier than on a normal window, the standard quota-full flow (section 7) handles it without losing existing projects.
-- In Settings under Storage, always note that Private Browsing windows clear all data when closed and that browser storage is never a substitute for backups.
+- In Settings under Storage, always note that Private Browsing windows clear all data when closed.
 
 ### 5.3 Orphaned source cleanup
 
@@ -200,9 +198,9 @@ Three independent version numbers govern stored data:
    - Defined in [engine.md section 4.4](engine.md#44-versions-and-migration).
    - **Current project stack:** When a project opens, any instance whose `version` is lower than its registered `EffectDefinition.version` is migrated sequentially through `def.migrations` and validated with `validateParams`. The migrated instance is marked for write-back and saved with the new `version` on the next save of that project (never creating a synthetic undo entry on open).
    - **Stored history entries:** Entries in the `history` store keep their original `version` on disk. When the user steps to an older entry via Undo or Redo, its instances are migrated lazily in memory before rendering.
-   - **Unknown types and newer versions (AC-F4.6):** Any `EffectInstance` whose `type` is not in the registry or whose `version > def.version` is kept byte-for-byte unchanged in memory, skipped during rendering, and written back verbatim on every save and backup export.
+   - **Unknown types and newer versions (AC-F4.6):** Any `EffectInstance` whose `type` is not in the registry or whose `version > def.version` is kept byte-for-byte unchanged in memory, skipped during rendering, and written back verbatim on every save.
 
-## 7. Quota, eviction and what the user is told
+## 7. Quota and what the user is told
 
 ### 7.1 Browser quota rules (verified baseline)
 
@@ -210,8 +208,6 @@ Per [engine-architecture.md section 4](../research/engine-architecture.md):
 
 - **Chrome / Edge:** up to 60% of total disk space per origin; LRU eviction of best-effort origins starts when total browser storage exceeds 80% of disk space or under disk pressure.
 - **Firefox:** best-effort pool ~10% of total disk per group, expanding up to ~50% when persistent storage is granted; LRU eviction under low disk space.
-- **Safari / iOS / iPadOS (17+):** up to 60% of total disk space per origin for Safari and Home Screen web apps (15% for embedded web views), up to 80% globally.
-- **Safari 7-day ITP eviction rule:** WebKit deletes all script-writable storage (IndexedDB, Cache API, OPFS, Service Workers, `localStorage`) for an origin after **7 days of browser use without user interaction** in a Safari tab. Adding the app to the **Home Screen** (iOS/iPadOS) or Dock (macOS) exempts the standalone web app from Safari's browser-tab 7-day cap.
 
 ### 7.2 Storage status in Settings (AC-F16.1)
 
@@ -219,36 +215,29 @@ Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted
 
 - **Usage line:** `"Using <used> of <quota>"`. Format numbers ≥ 1,000,000,000 bytes in GB rounded to `0.1 GB` (for example `"Using 1.2 GB of 24.5 GB"`), and smaller values in MB rounded to `1 MB` (for example `"Using 42 MB of 512 MB"`, minimum `"0 MB"`). If `estimate()` is unavailable or returns undefined fields, show `"Storage usage unavailable"`.
 - **Persistence line:** `"Storage protection: Persistent"` when `persisted()` is `true`, otherwise `"Storage protection: Best-effort (browser may clear data when space is low)"` with a `"Request protection"` button.
-- **Last backup line:** `"Last backup: <YYYY-MM-DD>"` or `"Last backup: Never"`.
 
 ### 7.3 Requesting persistent storage
 
 - Call `navigator.storage.persist()` automatically once after the user's first successful image import (and when the user clicks `"Request protection"` in Settings).
-- Firefox displays a native permission prompt; Chrome/Edge and Safari decide silently via browser heuristics (engagement, bookmarks, PWA install). Never assume `persist()` succeeded; always read `navigator.storage.persisted()`.
+- Firefox displays a native permission prompt; Chrome/Edge decides silently via browser heuristics (engagement, bookmarks, PWA install). Never assume `persist()` succeeded; always read `navigator.storage.persisted()`.
 
 ### 7.4 Storage full and quota errors (AC-F16.2)
 
-- **Pre-flight check (import and backup import):** When `navigator.storage.estimate()` returns finite `usage` and `quota`, require `quota - usage >= incomingBytes * 1.15` (15% headroom for metadata, history, and thumbnails). If insufficient, do not start the write.
+- **Pre-flight check (import):** When `navigator.storage.estimate()` returns finite `usage` and `quota`, require `quota - usage >= incomingBytes * 1.15` (15% headroom for metadata, history, and thumbnails). If insufficient, do not start the write.
 - **Transaction failure fallback:** Catch `QuotaExceededError` on any IndexedDB write. Because imports and commits run inside atomic transactions, IndexedDB aborts the transaction cleanly, leaving zero partial projects and preserving the last committed state.
-- **User prompt:** Open the `"Storage is full"` dialog explaining that this device's browser storage does not have enough free space, with two actions: `"Manage library"` (closes dialog and navigates to Library) and `"Export backup"` (opens the backup export dialog).
+- **User prompt:** Open the `"Storage is full"` dialog explaining that this device's browser storage does not have enough free space, with `"Manage library"` (closes dialog and navigates to Library).
 
-### 7.5 Safari 7-day eviction banner (AC-F16.3)
+## 8. Later: Backup export and import (F17) and eviction warnings
 
-- **Detection:** `isIosSafariTab` is true when the user agent is iOS or iPadOS WebKit (including iPadOS desktop-class UA: `navigator.maxTouchPoints > 1` with Safari/WebKit and not CriOS/FxiOS/EdgiOS) AND the app is NOT running standalone (`window.navigator.standalone !== true` and `!window.matchMedia('(display-mode: standalone)').matches`).
-- **Display trigger:** Shown once after the user's first image import, provided `safariEvictionBannerDismissedAt` is `null` or older than **30 days** (`30 * 86_400_000 ms`).
-- **Never shown** when running inside an installed Home Screen web app.
-- **Copy:** Explains that Safari clears saved photos and edits after 7 days without use in a browser tab, and instructs: tap Share, then **Add to Home Screen** to keep projects safe. Includes a `"Dismiss"` button that writes `safariEvictionBannerDismissedAt = Date.now()`.
+Not built in the first release. Kept here so the archive format and eviction-warning design are ready when scheduled.
 
-### 7.6 Backup reminder (AC-F17.4)
+### 8.0 Safari 7-day eviction warning (later)
 
-- Shown as a dismissable banner in the Library when the library contains at least 1 project AND more than **30 days** have passed since `lastBackupAt` (or since the oldest project's `createdAt` if `lastBackupAt === null`) AND `backupReminderDismissedAt` is `null` or older than 7 days.
-- Offers `"Export backup"` and `"Dismiss"`.
+When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
 
-## 8. Backup export and import
+### 8.1 Archive format (`backupVersion: 1`, later)
 
-Backups let the user archive projects or move them between browsers and devices (for example desktop Chrome to iPhone Safari, AC-F17.1). Backups are standard ZIP files built and read with `fflate` (MIT, already bundled for `src/codec/png-writer.ts`).
-
-### 8.1 Archive format (`backupVersion: 1`)
+Backups let the user archive projects or move them between browsers and devices (F17, later). Backups are standard ZIP files built and read with `fflate` (MIT). When implemented, add `lastBackupAt` and `backupReminderDismissedAt` to `AppStateRecord` and add a 30-day Library backup reminder banner (7-day dismiss cooldown).
 
 File naming:
 
@@ -328,7 +317,7 @@ Import runs in two phases: **strict validation first** (zero DB writes), then **
 
 ## 9. Restore sequence on startup
 
-Startup is designed so that with 50 projects stored, the Library (or the reopened project with a visual placeholder) is visible within 1 s on a reference laptop and 2 s on a reference phone (AC-F3.7).
+Startup is designed so that with 50 projects stored, the Library (or the reopened project with a visual placeholder) is visible within 1 s on a reference laptop (AC-F3.7).
 
 1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('psg:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
 2. **Step 1 (Secure context gate):** Check `window.isSecureContext`. If `false`, render the secure-context error screen (DESIGN.md section 9) and stop (product.md section 4).
@@ -356,25 +345,24 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
    - If restored `viewState` zooms past 1.25 device px per `settle` proxy pixel and proxy scale < 1, schedule the background `full` render per [engine.md section 8.3](engine.md#83-scheduling).
 8. **Step 7 (Idle housekeeping):**
    - Call `navigator.storage.estimate()` and `navigator.storage.persisted()` to populate Settings state.
-   - Evaluate the Safari 7-day eviction banner (section 7.5) and 30-day backup reminder (section 7.6).
    - Run the orphaned-source cleanup sweep (section 5.3).
 
 ## 10. Module layout and testing
 
 ```
 src/storage/
-  types.ts             Record interfaces, BackupManifest, repository interface
+  types.ts             Record interfaces, repository interface
   db.ts                IndexedDB open, schema creation, dbMigrations
   repository.ts        IndexedDB implementation (atomic transactions, ref-counted delete, history pruning)
   memory-adapter.ts    In-memory fallback when IndexedDB is unavailable
-  quota.ts             estimate(), persist(), Safari tab detection, banner/reminder eligibility
-  backup.ts            fflate ZIP backup export and validated, deduplicated import
+  quota.ts             estimate(), persist(), pre-flight quota check
   restore.ts           Startup restore coordinator (steps 1 to 7)
 tests/storage/
   repository.test.ts   CRUD, SHA-256 dedup, ref-counted delete, 201-entry history cap, atomicity
   migrations.test.ts   DB version upgrades, EffectStack and EffectInstance write-back, unknown effects
-  backup.test.ts       ZIP round-trip, double-import dedup, corrupt ZIP and newer-version rejection
   restore.test.ts      Route resolution, deleted-project hash, fallback to MemoryStorageAdapter
 ```
+
+(`backup.ts` and `backup.test.ts` are added when F17 is scheduled.)
 
 Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev dependency). Real-browser persistence, quota exhaustion, private browsing, and offline PWA restore are verified in Spike S3 and the Playwright E2E suite ([roadmap.md](roadmap.md)).

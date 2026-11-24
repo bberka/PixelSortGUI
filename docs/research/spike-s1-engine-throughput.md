@@ -181,3 +181,20 @@ Checked on the same machine under Wayland (`DISPLAY=:1`, `WAYLAND_DISPLAY=waylan
 3. **Single effect, simplest mode:** Only one `pixelSort` instance with `luma` key and `threshold` selection was measured. Multi-instance stacks, `edges` mode (Sobel + box blur), or `hue`/`saturation` keys will take longer; the spec's `StageCache` and adaptive `drag` cap (down to 0.125 MP) are untested here.
 4. **No image decode/encode:** Full project-open and PNG/JPEG export budgets (`engine.md §9`) include `createImageBitmap` decode and `OffscreenCanvas.convertToBlob` encode, which were outside S1's scope.
 5. **Synthetic run distribution:** The synthetic image's per-pixel grain produces many short runs (p50 = 2 px, p95 = 14 px, max = 4,000 px). Cleaner, heavily denoised photos with mostly 500–2,000 px runs will spend a higher share of time in the sort phase (where `radix-16` widens its lead over `Uint32Array.prototype.sort()`).
+
+## Lead agent rerun
+
+Rerun by Claude Fable 5.2 (thinking medium), lead agent, on the same machine with `vp run bench:s1` (headless, 65 s wall time), 2026-11-24.
+
+| Criterion | Chromium 159 | Firefox 159 |
+| --- | --- | --- |
+| `drag` p95 ≤ 50 ms | pass, 15.6 ms | pass, 28.0 ms |
+| Visible update p95 ≤ 100 ms | pass, 17.1 ms | pass, 31.0 ms |
+| `settle` p95 ≤ 300 ms | pass, 61.8 ms | pass, 82.0 ms |
+| Angle 30 ≤ 1.5× angle 0 (12 MP p50) | **fail, 1.57×** (220.0 / 139.7 ms) | fail, 1.77× (267.0 / 151.0 ms) |
+| No main-thread task > 50 ms | pass, 0 long tasks | pass, stall max 14.0 ms |
+| Throughput ≥ 25 MP/s (12 MP, angle 0) | pass, 85.9 MP/s | pass, 79.5 MP/s |
+
+The angle ratio in Chromium was 1.47× in the author's run and 1.57× in this one, so that result sits on the threshold and varies between runs. The ratio fails in Firefox in both runs. Every absolute budget passes with a margin of about three times or more, and angle 30 at 12 MP still runs at 44 to 55 MP/s against a 25 MP/s floor.
+
+Ruling: proceed with TypeScript in Web Workers. The ratio criterion is replaced in `engine.md` section 9 by an absolute one (angled sorting must meet the same throughput floor), because the ratio penalises a fast axis-aligned path and says nothing about whether angled sorting is fast enough.

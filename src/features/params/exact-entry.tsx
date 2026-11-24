@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type KeyboardEvent} from 'react';
+import {useRef, useState, type KeyboardEvent} from 'react';
 import {Input} from '@/components/ui/input';
 import {cn} from '@/lib/utils';
 
@@ -33,13 +33,14 @@ export function ExactEntry({
 	inputMode = 'decimal',
 	className,
 }: ExactEntryProps) {
-	const [draft, setDraft] = useState<string | null>(null);
-	const skipBlurCommitRef = useRef(false);
 	const formatted = format(value);
-
-	useEffect(() => {
+	const [draft, setDraft] = useState<string | null>(null);
+	const [shown, setShown] = useState(formatted);
+	const skipBlurCommitRef = useRef(false);
+	if (shown !== formatted) {
+		setShown(formatted);
 		setDraft(null);
-	}, [formatted]);
+	}
 
 	const commit = () => {
 		if (draft === null) {

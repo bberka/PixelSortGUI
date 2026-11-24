@@ -4,12 +4,12 @@ import {boxDownscale} from '../../src/engine/resample.ts';
 import type {RgbaImage} from '../../src/engine/types.ts';
 import {bytes, image, noiseImage} from './sample-effects.ts';
 
-// A grey image: every channel of a pixel holds the same value.
+// An opaque grey image: R, G and B hold the same value, alpha is 255.
 function grey(width: number, height: number, values: number[]): RgbaImage {
 	return image(
 		width,
 		height,
-		values.flatMap((v) => [v, v, v, v]),
+		values.flatMap((v) => [v, v, v, 255]),
 	);
 }
 
@@ -17,7 +17,20 @@ function greyValues(img: RgbaImage): number[] {
 	return bytes(img).filter((_, index) => index % 4 === 0);
 }
 
-function referenceDownscale(
+function opaqueNoiseImage(
+	width: number,
+	height: number,
+	seed: number,
+): RgbaImage {
+	const img = noiseImage(width, height, seed);
+	for (let i = 3; i < img.data.length; i += 4) {
+		img.data[i] = 255;
+	}
+
+	return img;
+}
+
+function straightReferenceDownscale(
 	source: RgbaImage,
 	width: number,
 	height: number,
@@ -47,6 +60,62 @@ function referenceDownscale(
 				}
 
 				result.push(Number((2n * sum + sw * sh) / (2n * sw * sh)));
+			}
+		}
+	}
+
+	return result;
+}
+
+function referenceDownscale(
+	source: RgbaImage,
+	width: number,
+	height: number,
+): number[] {
+	if (width === source.width && height === source.height) {
+		return bytes(source);
+	}
+
+	const sw = BigInt(source.width);
+	const sh = BigInt(source.height);
+	const dw = BigInt(width);
+	const dh = BigInt(height);
+	const max = (a: bigint, b: bigint) => (a > b ? a : b);
+	const min = (a: bigint, b: bigint) => (a < b ? a : b);
+	const result: number[] = [];
+	for (let dy = 0n; dy < dh; dy++) {
+		for (let dx = 0n; dx < dw; dx++) {
+			let sumR = 0n;
+			let sumG = 0n;
+			let sumB = 0n;
+			let sumA = 0n;
+			for (let sy = 0n; sy < sh; sy++) {
+				const wy = min((sy + 1n) * dh, (dy + 1n) * sh) - max(sy * dh, dy * sh);
+				for (let sx = 0n; sx < sw; sx++) {
+					const wx =
+						min((sx + 1n) * dw, (dx + 1n) * sw) - max(sx * dw, dx * sw);
+					if (wx <= 0n || wy <= 0n) {
+						continue;
+					}
+
+					const p = Number(4n * (sy * sw + sx));
+					const wa = wx * wy * BigInt(source.data[p + 3]);
+					sumR += wa * BigInt(source.data[p]);
+					sumG += wa * BigInt(source.data[p + 1]);
+					sumB += wa * BigInt(source.data[p + 2]);
+					sumA += wa;
+				}
+			}
+
+			if (sumA === 0n) {
+				result.push(0, 0, 0, 0);
+			} else {
+				result.push(
+					Number((2n * sumR + sumA) / (2n * sumA)),
+					Number((2n * sumG + sumA) / (2n * sumA)),
+					Number((2n * sumB + sumA) / (2n * sumA)),
+					Number((2n * sumA + sw * sh) / (2n * sw * sh)),
+				);
 			}
 		}
 	}
@@ -106,9 +175,47 @@ describe('boxDownscale', () => {
 		expect(greyValues(boxDownscale(source, 2, 2))).toEqual([10, 110, 70, 170]);
 	});
 
-	it('averages R, G, B and A each on their own', () => {
+	it('does not bleed colour from a transparent pixel into an opaque neighbour', () => {
 		const source = image(2, 1, [255, 0, 10, 255, 0, 100, 20, 0]);
-		expect(bytes(boxDownscale(source, 1, 1))).toEqual([128, 50, 15, 128]);
+		expect(bytes(boxDownscale(source, 1, 1))).toEqual([255, 0, 10, 128]);
+	});
+
+	it('outputs transparent black when all contributing pixels have zero alpha', () => {
+		const source = image(2, 1, [100, 150, 200, 0, 50, 60, 70, 0]);
+		expect(bytes(boxDownscale(source, 1, 1))).toEqual([0, 0, 0, 0]);
+	});
+
+	it('weights colour channels by partial alpha and rounds halves up', () => {
+		// SumA = 50 + 150 = 200; R = (50*200)/200 = 50; G = (150*200)/200 = 150; A = 200/2 = 100
+		const partial = image(2, 1, [200, 0, 0, 50, 0, 200, 0, 150]);
+		expect(bytes(boxDownscale(partial, 1, 1))).toEqual([50, 150, 0, 100]);
+
+		// Half-up rounding on colour channel: sumA = 2, sumR = 1 -> (2*1 + 2)/4 = 1
+		const halfUp = image(2, 1, [1, 0, 0, 1, 0, 0, 0, 1]);
+		expect(bytes(boxDownscale(halfUp, 1, 1))).toEqual([1, 0, 0, 1]);
+	});
+
+	it('is bit-identical to straight-alpha averaging on random opaque images', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({min: 1, max: 24}),
+				fc.integer({min: 1, max: 24}),
+				fc.integer({min: 1, max: 24}),
+				fc.integer({min: 1, max: 24}),
+				fc.integer({min: 0, max: 1000}),
+				(a, b, c, d, seed) => {
+					const sw = Math.max(a, b);
+					const dw = Math.min(a, b);
+					const sh = Math.max(c, d);
+					const dh = Math.min(c, d);
+					const source = opaqueNoiseImage(sw, sh, seed);
+					expect(bytes(boxDownscale(source, dw, dh))).toEqual(
+						straightReferenceDownscale(source, dw, dh),
+					);
+				},
+			),
+			{numRuns: 200},
+		);
 	});
 
 	it('returns a copy when the size is unchanged', () => {

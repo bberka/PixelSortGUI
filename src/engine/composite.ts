@@ -40,27 +40,57 @@ export function compositeRows(
 
 	switch (blend) {
 		case 'lighten': {
-			for (let p = start; p < end; p++) {
-				const b = p % 4 === 3 ? to[p] : Math.max(from[p], to[p]);
-				to[p] = MIXED[from[p] * keep + b * m];
+			for (let p = start; p < end; p += 4) {
+				const r0 = from[p];
+				const g0 = from[p + 1];
+				const b0 = from[p + 2];
+				const a0 = from[p + 3];
+				const r1 = to[p];
+				const g1 = to[p + 1];
+				const b1 = to[p + 2];
+				const a1 = to[p + 3];
+				to[p] = MIXED[r0 * keep + Math.max(r0, r1) * m];
+				to[p + 1] = MIXED[g0 * keep + Math.max(g0, g1) * m];
+				to[p + 2] = MIXED[b0 * keep + Math.max(b0, b1) * m];
+				to[p + 3] = MIXED[a0 * keep + a1 * m];
 			}
 
 			break;
 		}
 
 		case 'darken': {
-			for (let p = start; p < end; p++) {
-				const b = p % 4 === 3 ? to[p] : Math.min(from[p], to[p]);
-				to[p] = MIXED[from[p] * keep + b * m];
+			for (let p = start; p < end; p += 4) {
+				const r0 = from[p];
+				const g0 = from[p + 1];
+				const b0 = from[p + 2];
+				const a0 = from[p + 3];
+				const r1 = to[p];
+				const g1 = to[p + 1];
+				const b1 = to[p + 2];
+				const a1 = to[p + 3];
+				to[p] = MIXED[r0 * keep + Math.min(r0, r1) * m];
+				to[p + 1] = MIXED[g0 * keep + Math.min(g0, g1) * m];
+				to[p + 2] = MIXED[b0 * keep + Math.min(b0, b1) * m];
+				to[p + 3] = MIXED[a0 * keep + a1 * m];
 			}
 
 			break;
 		}
 
 		case 'difference': {
-			for (let p = start; p < end; p++) {
-				const b = p % 4 === 3 ? to[p] : Math.abs(from[p] - to[p]);
-				to[p] = MIXED[from[p] * keep + b * m];
+			for (let p = start; p < end; p += 4) {
+				const r0 = from[p];
+				const g0 = from[p + 1];
+				const b0 = from[p + 2];
+				const a0 = from[p + 3];
+				const r1 = to[p];
+				const g1 = to[p + 1];
+				const b1 = to[p + 2];
+				const a1 = to[p + 3];
+				to[p] = MIXED[r0 * keep + Math.abs(r0 - r1) * m];
+				to[p + 1] = MIXED[g0 * keep + Math.abs(g0 - g1) * m];
+				to[p + 2] = MIXED[b0 * keep + Math.abs(b0 - b1) * m];
+				to[p + 3] = MIXED[a0 * keep + a1 * m];
 			}
 
 			break;

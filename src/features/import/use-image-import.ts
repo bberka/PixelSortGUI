@@ -68,6 +68,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const importImages = useAppStore((state) => state.importImages);
 	const probe = options.probe ?? probeImageDimensions;
 	const downscale = options.downscale ?? downscaleToPixelCap;
+	const [running, setRunning] = useState(false);
 	const [progress, setProgress] = useState<ImportProgress | null>(null);
 	const [problems, setProblems] = useState<readonly ImportProblem[]>([]);
 	const [prompt, setPrompt] = useState<LargeImagePrompt | null>(null);
@@ -141,6 +142,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		let sourceHeight = height;
 
 		if (probed.value.exceedsGuaranteedArea) {
+			update(null);
 			const choice = await askLargeImage({
 				fileName: file.name,
 				width,
@@ -183,6 +185,10 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		}
 
 		busyRef.current = true;
+		if (aliveRef.current) {
+			setRunning(true);
+		}
+
 		void (async () => {
 			const accepted: CreateProjectInput[] = [];
 			const found: ImportProblem[] = [];
@@ -231,9 +237,12 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 				}
 			} finally {
 				busyRef.current = false;
-				update(null);
-				if (aliveRef.current && found.length > 0) {
-					setProblems(found);
+				if (aliveRef.current) {
+					setRunning(false);
+					setProgress(null);
+					if (found.length > 0) {
+						setProblems(found);
+					}
 				}
 			}
 		})();
@@ -246,7 +255,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	};
 
 	return {
-		busy: progress !== null,
+		busy: running,
 		progress,
 		problems,
 		prompt,

@@ -289,6 +289,7 @@ describe('images over 50 MP', () => {
 		);
 
 		expect(bodyText()).toContain('mural.png is 8000 × 8000 px');
+		expect(bodyText()).not.toContain('Checking mural.png');
 		expect(
 			[...document.querySelectorAll('button')].map((b) => b.textContent),
 		).toEqual(

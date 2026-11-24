@@ -70,7 +70,7 @@ Image size limits for the first release:
 |---|---|
 | Accepted input formats | Whatever the browser decodes with `createImageBitmap`: JPEG, PNG, WebP, GIF (first frame), BMP, AVIF in the accepted desktop browsers. The app bundles no extra decoders. |
 | Longest side | 16,384 px. Larger files are rejected with a message. |
-| Area | 50 MP (50,000,000 px) is the guaranteed maximum on the accepted desktop browsers. Larger images within the longest-side and file-size limits are offered a downscaled import: "Import at 50 MP" (stores a downscaled copy as the source image) or "Import anyway" (may fail on export). |
+| Area | 50 MP (50,000,000 px) is the guaranteed maximum on the accepted desktop browsers. Larger images within the longest-side and file-size limits are offered a downscaled import: "Import at 50 MP" (stores a downscaled copy as the source image) or "Import anyway" (best effort: the image is stored at its original size, and preview or export may fail with an out-of-memory error, which is shown as an error message and leaves the project intact). |
 | File size | 200 MB per file. |
 
 ## 5. First release: must-have features
@@ -241,7 +241,7 @@ Settings shows the storage used by the app and the browser's quota (from `naviga
 
 The editor and library adapt to the three viewport classes as specified in [DESIGN.md section 6](../../DESIGN.md#6-layout): below 640 px width (phone layout) parameters live in a bottom sheet over the canvas and the stack is a horizontal strip; at 640 to 1023 px (tablet layout) a docked bottom panel holds the stack and parameters side by side; at 1024 px and wider (desktop layout) a right sidebar holds both. Checked in a desktop browser at `390 × 844`, `820 × 1180`, and `1440 × 900` for layout only.
 
-- AC-F18.1: At 390 × 844, 820 × 1180 and 1440 × 900 CSS px in a desktop browser, every first-release feature is usable without horizontal page scrolling.
+- AC-F18.1: At 390 × 844, 820 × 1180 and 1440 × 900 CSS px in a desktop browser, every screen lays out without horizontal page scrolling and no control is clipped or overlapped. This is a layout check only; features are accepted functionally at desktop width.
 - AC-F18.2: Resizing the browser viewport across layout classes keeps the open project, selection and zoom.
 - AC-F18.3: Interactive targets are at least 24 × 24 CSS px on desktop (`@media (pointer: fine)`) and at least 44 × 44 CSS px under `@media (pointer: coarse)`.
 

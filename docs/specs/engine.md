@@ -580,7 +580,7 @@ Run with `vp test run` in Node. Required per module:
 ### 14.2 Golden images
 
 - Inputs are synthetic images generated in code by `tests/fixtures/synthetic.ts` from `hash32`, so no photos are needed in the repository: `gradient-64x48` (diagonal colour gradient), `noise-97x61` (hashed RGB noise, odd size), `bands-80x80` (horizontal bands of 8 grey levels with 1 px black separators), `alpha-32x32` (gradient with a transparent quarter).
-- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (dev dependency) in Node tests.
+- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (a dev dependency that task `T2.7` adds) in Node tests.
 - The test renders the case at `scale` and compares bytes exactly. On mismatch it writes `<case>.actual.png` and a diff image to `tests/golden/.out/` (git-ignored) and reports the count of differing pixels.
 - `vp run golden:update` rewrites expected images and is never run by CI.
 - Minimum cases for `pixelSort`: every interval mode; every sort key at angle 0; every order; every fill; angles 0, 30, 45, 90, 180, 270, 333.3; `invert`; `maxLength` with and without jitter; `skipChance` 0.5; `discretize` 4; selection debug view; the `alpha-32x32` input; scale 0.5. For `channelShift`: defaults, two non-default settings, scale 0.5.

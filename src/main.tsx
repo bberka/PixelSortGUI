@@ -1,30 +1,23 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import './styles/app.css';
-import {Toaster} from '@/components/ui/sonner';
-import {TooltipProvider} from '@/components/ui/tooltip';
-import {ComponentGallery} from '@/features/gallery/component-gallery';
+import {App} from '@/app/app.tsx';
+import {announce} from '@/app/announcer';
 import {bootAppRuntime, type AppRuntime} from '@/state/index';
 
 declare global {
 	var __psgRuntime: AppRuntime | undefined;
+	var __psgAnnounce: ((message: string) => void) | undefined;
 }
 
 const runtime = bootAppRuntime();
-Object.defineProperty(globalThis, '__psgRuntime', {
-	value: runtime,
-	writable: true,
-	configurable: true,
-});
 
-function App() {
-	return (
-		<TooltipProvider>
-			<ComponentGallery />
-			<Toaster />
-		</TooltipProvider>
-	);
-}
+// Test hooks for the end-to-end suite. Nothing in the app reads either global:
+// components take the runtime from React context (`src/app/runtime-context.tsx`).
+Object.defineProperties(globalThis, {
+	__psgRuntime: {value: runtime, writable: true, configurable: true},
+	__psgAnnounce: {value: announce, writable: true, configurable: true},
+});
 
 const rootElement = document.querySelector('#root');
 if (!rootElement) {
@@ -33,6 +26,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
 	<StrictMode>
-		<App />
+		<App runtime={runtime} />
 	</StrictMode>,
 );

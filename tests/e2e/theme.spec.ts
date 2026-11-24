@@ -2,6 +2,8 @@ import {expect, test} from '@playwright/test';
 import {assertNoA11yViolations} from './axe.ts';
 import {PROOF_VIEWPORTS} from './viewports.ts';
 
+const GALLERY_PATH = '/#/dev/gallery';
+
 const LIGHT_BG = 'rgb(250, 250, 250)';
 const TRUE_BLACK_BG = 'rgb(0, 0, 0)';
 const LIGHT_RING = 'rgb(37, 99, 235)';
@@ -25,7 +27,7 @@ for (const theme of THEMES) {
 				width: viewport.width,
 				height: viewport.height,
 			});
-			await page.goto('/');
+			await page.goto(GALLERY_PATH);
 
 			await expect(
 				page.getByRole('heading', {level: 1, name: 'PixelSortGUI'}),
@@ -52,7 +54,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	page,
 }) => {
 	await page.emulateMedia({colorScheme: 'light'});
-	await page.goto('/');
+	await page.goto(GALLERY_PATH);
 
 	const themeGroup = page.getByRole('radiogroup', {name: 'Theme'}).first();
 	await themeGroup.getByRole('radio', {name: 'True Black'}).click();
@@ -111,7 +113,7 @@ test('System theme follows emulated OS colour scheme changes without reload', as
 	page,
 }) => {
 	await page.emulateMedia({colorScheme: 'light'});
-	await page.goto('/');
+	await page.goto(GALLERY_PATH);
 
 	expect(
 		await page.evaluate(
@@ -152,7 +154,7 @@ test('reloading Light on dark OS and True Black on light OS applies theme before
 		{os: 'light' as const, chosen: 'dark' as const, expectedBg: TRUE_BLACK_BG},
 	]) {
 		await page.emulateMedia({colorScheme: scenario.os});
-		await page.goto('/');
+		await page.goto(GALLERY_PATH);
 		await page.evaluate((value) => {
 			globalThis.localStorage.setItem('psg:theme', value);
 		}, scenario.chosen);
@@ -212,7 +214,7 @@ for (const theme of THEMES) {
 		await page.addInitScript((value) => {
 			globalThis.localStorage.setItem('psg:theme', value);
 		}, theme.name);
-		await page.goto('/');
+		await page.goto(GALLERY_PATH);
 
 		const assertFocusRing = async (
 			locator: ReturnType<typeof page.locator>,

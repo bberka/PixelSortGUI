@@ -66,6 +66,7 @@
 		"fake-indexeddb": "^6.2.8",
 		"fast-check": "^4.11.0",
 		"fast-png": "^8.0.0",
+		"happy-dom": "^21.0.4",
 		"tailwindcss": "4.3.5",
 		"typescript": "^6.0.3",
 		"vite": "catalog:",

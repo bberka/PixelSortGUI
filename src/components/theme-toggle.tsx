@@ -40,10 +40,26 @@ function labelForTheme(theme: ThemePreference): string {
 	return match ? match.label : 'System';
 }
 
-export function ThemeToggle() {
+export type ThemeToggleProps = {
+	/**
+	 Called instead of writing the theme store directly, so the app shell can keep
+	 the stored app state in step.
+	 */
+	readonly onSelect?: (theme: ThemePreference) => void;
+};
+
+export function ThemeToggle({onSelect}: ThemeToggleProps = {}) {
 	const theme = useThemeStore((state) => state.theme);
 	const setTheme = useThemeStore((state) => state.setTheme);
 	const activeLabel = labelForTheme(theme);
+	const selectTheme = (next: ThemePreference) => {
+		if (onSelect) {
+			onSelect(next);
+			return;
+		}
+
+		setTheme(next);
+	};
 
 	return (
 		<DropdownMenu>
@@ -67,7 +83,7 @@ export function ThemeToggle() {
 					<DropdownMenuItem
 						key={option.value}
 						onSelect={() => {
-							setTheme(option.value);
+							selectTheme(option.value);
 						}}
 					>
 						<ThemeIcon theme={option.value} />

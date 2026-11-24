@@ -3,7 +3,7 @@ import {assertNoA11yViolations} from './axe.ts';
 import {PROOF_VIEWPORTS} from './viewports.ts';
 
 for (const viewport of PROOF_VIEWPORTS) {
-	test(`placeholder page renders cleanly at ${viewport.name} (${viewport.width}x${viewport.height}) @a11y`, async ({
+	test(`library screen renders cleanly at ${viewport.name} (${viewport.width}x${viewport.height}) @a11y`, async ({
 		page,
 	}) => {
 		const consoleErrors: string[] = [];

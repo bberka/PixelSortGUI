@@ -1,0 +1,53 @@
+name: Agent context
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'CONTEXT.md'
+      - 'docs/agents/**'
+      - 'scripts/agent-context*'
+      - '.github/workflows/agent-context.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-context-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  budget:
+    name: Agent instructions size
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ALLOW_INCREASE: ${{ contains(github.event.pull_request.labels.*.name, 'agent-context-increase') }}
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Check whether agent-context script exists
+        id: check
+        run: |
+          if node -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts['check:agent-context'] ? 0 : 1)"; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "check:agent-context script is not yet present (tracked in T0.2); skipping."
+          fi
+      - name: Install dependencies
+        if: steps.check.outputs.available == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Fetch base branch
+        if: steps.check.outputs.available == 'true'
+        run: git fetch --quiet --depth=1 origin "$BASE_REF"
+      - name: Run agent-context budget check
+        if: steps.check.outputs.available == 'true'
+        run: pnpm exec vp run check:agent-context -- --base FETCH_HEAD

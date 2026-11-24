@@ -27,7 +27,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run typecheck` | `tsgo -b` |
 | `vp run test`, `vp run test:watch` | `vp test run`, `vp test` |
 | `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite (planned) |
-| `vp run version:next` | Print the next release version (planned) |
+| `vp run version:next` | Print the next release version |
 | `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` (planned) |
 | `vp run skills:install` | Restore the agent skills listed in `skills-lock.json` (planned, optional) |
 
@@ -53,7 +53,7 @@ The branch checks share one helper, `scripts/git-hooks/protected-branch.sh` (pla
 
 Hooks do not stop a server-side merge from adding a trailer. The owner turns off any GitHub setting that adds co-authors to merge commits, and the lead checks the message on `main` after each merge.
 
-## CI (GitHub Actions, planned)
+## CI (GitHub Actions)
 
 Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref with `cancel-in-progress`, steps `actions/checkout`, `pnpm/action-setup`, `actions/setup-node` (Node 24, `cache: pnpm`), `pnpm install --frozen-lockfile`. Call `vp` through `pnpm exec` so the pinned version runs.
 
@@ -65,6 +65,7 @@ Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref
 | `typecheck` | `pnpm exec tsgo -b` |
 | `unit` | `pnpm exec vp test run` |
 | `hooks` | `sh .hooks/test-commit-msg.sh` |
+| `commit-messages` | Runs `.hooks/commit-msg` on every commit in a pull request |
 | `build` | `pnpm exec vp run build` |
 | `test` | The required gate. `needs` all jobs above, `if: always()`, fails if any result is `failure` or `cancelled`. Keep its name stable, because the branch ruleset requires it. |
 
@@ -83,9 +84,9 @@ Goal: the always-loaded files stay small as the docs grow.
 - The pre-commit hook runs the check when any measured file is staged.
 - The script gets a test file in `scripts/`, run by `vp test run`.
 
-## Deployment and release (planned)
+## Deployment and release
 
-Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`pages.yml`). The production build (`dist/`) must work when served from the domain root (`/`), and the published output must include a `CNAME` file containing `glitch.bbay.dev`.
+Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`pages.yml`, planned). The production build (`dist/`) must work when served from the domain root (`/`), and the published output must include a `CNAME` file containing `glitch.bbay.dev`.
 
 ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 

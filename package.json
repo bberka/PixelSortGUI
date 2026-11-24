@@ -26,6 +26,7 @@
 		"lint:fix": "xo --fix",
 		"format": "xo --fix",
 		"check": "xo && tsgo -b && vp test run",
+		"version:next": "node scripts/release-version.ts next",
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
 	},
 	"dependencies": {

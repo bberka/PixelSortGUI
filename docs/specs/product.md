@@ -1,6 +1,7 @@
 Written by Claude Opus 5.5 (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
+Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI product spec
 
@@ -71,7 +72,7 @@ Image size limits for the first release:
 | Accepted input formats | Whatever the browser decodes with `createImageBitmap`: JPEG, PNG, WebP, GIF (first frame), BMP, AVIF in the accepted desktop browsers. The app bundles no extra decoders. |
 | Longest side | 16,384 px. Larger files are rejected with a message. |
 | Area | 50 MP (50,000,000 px) is the guaranteed maximum on the accepted desktop browsers. Larger images within the longest-side and file-size limits are offered a downscaled import: "Import at 50 MP" (stores a downscaled copy as the source image) or "Import anyway" (best effort: the image is stored at its original size, and preview or export may fail with an out-of-memory error, which is shown as an error message and leaves the project intact). |
-| File size | 200 MB per file. |
+| File size | 200 MB per file (209,715,200 bytes). |
 
 ## 5. First release: must-have features
 
@@ -196,7 +197,7 @@ The Compare button toggles between the result and the source image (keyboard: `\
 
 ### F12. Export
 
-The export dialog offers format (PNG, JPEG, and WebP only where the browser's native encoder produces WebP), quality for JPEG and WebP (50 to 100, default 92), size (Full, 1/2, 1/4, or a custom longest side, never larger than the source), and the file name (default `<project name>-<YYYYMMDD-HHmmss>.<ext>`). Export renders at the chosen size in a separate worker with a progress bar and Cancel. On browsers that support sharing files (`navigator.canShare({files})`), a Share button is shown next to Download. Exported files carry no EXIF, GPS or ICC metadata and are sRGB.
+The export dialog offers format (PNG, JPEG, and WebP only where the browser's native encoder produces WebP), quality for JPEG and WebP (50 to 100, default 92, divided by 100 for the encoder), size (Full, 1/2, 1/4, or a custom longest side, never larger than the source), and the file name (default `<project name>-<YYYYMMDD-HHmmss>.<ext>`). Transparent pixels are flattened onto white for JPEG. A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of such images is later work. Export renders at the chosen size in a separate worker with a progress bar and Cancel. On browsers that support sharing files (`navigator.canShare({files})`), a Share button is shown next to Download. Exported files carry no EXIF, GPS or ICC metadata and are sRGB.
 
 - AC-F12.1: Exporting a 12 MP project as PNG at Full size downloads a PNG of exactly the source dimensions within 5 s on a reference laptop.
 - AC-F12.2: WebP appears in the format list only when the startup `convertToBlob` probe confirms the browser encodes WebP (offered in Chrome, Edge and Firefox).

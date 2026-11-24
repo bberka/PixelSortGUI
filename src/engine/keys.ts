@@ -25,7 +25,7 @@ export const SORT_KEYS: readonly SortKey[] = [
 
 export function lumaKey16(r: number, g: number, b: number): number {
 	const y = 2126 * r + 7152 * g + 722 * b;
-	return floorDiv(y * 131_070 + 2_550_000, 5_100_000);
+	return Math.floor((257 * y + 5000) / 10_000);
 }
 
 export function lightnessKey16(r: number, g: number, b: number): number {

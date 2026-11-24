@@ -673,7 +673,7 @@ export function ExportDialog({
 			</div>
 
 			<p className="text-xs leading-4 text-muted-foreground">
-				Exported files are sRGB and carry no EXIF, GPS, or ICC metadata.
+				Exported files are sRGB and carry no EXIF or GPS metadata.
 				{effectiveFormat === 'jpeg'
 					? ' Transparent pixels are flattened onto white.'
 					: ''}

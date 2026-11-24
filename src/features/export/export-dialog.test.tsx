@@ -297,7 +297,7 @@ describe('ExportDialog', () => {
 
 		expect(document.body.textContent).not.toContain('Quality');
 		expect(document.body.textContent).toContain(
-			'Exported files are sRGB and carry no EXIF, GPS, or ICC metadata.',
+			'Exported files are sRGB and carry no EXIF or GPS metadata.',
 		);
 
 		act(() => {

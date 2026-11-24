@@ -4,6 +4,18 @@ import './styles/app.css';
 import {Toaster} from '@/components/ui/sonner';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import {ComponentGallery} from '@/features/gallery/component-gallery';
+import {bootAppRuntime, type AppRuntime} from '@/state/index';
+
+declare global {
+	var __psgRuntime: AppRuntime | undefined;
+}
+
+const runtime = bootAppRuntime();
+Object.defineProperty(globalThis, '__psgRuntime', {
+	value: runtime,
+	writable: true,
+	configurable: true,
+});
 
 function App() {
 	return (

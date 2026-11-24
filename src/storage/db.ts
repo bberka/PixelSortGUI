@@ -61,6 +61,7 @@ export type OpenDatabaseOptions = {
 	name?: string;
 	version?: number;
 	migrations?: Readonly<Record<number, DbMigration>>;
+	onVersionChange?: (event: IDBVersionChangeEvent) => void;
 };
 
 export function openDatabase(
@@ -111,7 +112,12 @@ export function openDatabase(
 		});
 
 		request.addEventListener('success', () => {
-			resolve(request.result);
+			const database = request.result;
+			database.addEventListener('versionchange', (event) => {
+				database.close();
+				options.onVersionChange?.(event);
+			});
+			resolve(database);
 		});
 
 		request.addEventListener('error', () => {

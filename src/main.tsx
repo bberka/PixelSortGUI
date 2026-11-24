@@ -38,8 +38,6 @@ if (!rootElement) {
 	throw new Error('Root element #root not found');
 }
 
-console.error('CI e2e failure probe');
-
 createRoot(rootElement).render(
 	<StrictMode>
 		<App />

@@ -1,6 +1,7 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI persistence spec
 
@@ -141,7 +142,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 
 | User action | Stores written | Timing | Exact behaviour |
 |---|---|---|---|
-| Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack` and `historyHeadSeq: 0`; insert `history` entry `(projectId, 0)` with label `"Initial"`; set `meta.appState.activeProjectId` to the first imported project. |
+| Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack`, `historyHeadSeq: 0`, and default `viewState` (`fitMode: 'fit'`, `zoom: 1`, centred at `(width / 2, height / 2)`, `splitPosition: 0.5`); insert `history` entry `(projectId, 0)` with label `"Initial"`; in a multi-file import, set `meta.appState.activeProjectId` to the first imported project. |
 | Drag slider / dial / divider | none | Never during drag | Transient value updates worker preview only. |
 | Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
 | Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `historyHeadSeq`, `updatedAt`). Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
@@ -214,7 +215,7 @@ Per [engine-architecture.md section 4](../research/engine-architecture.md):
 
 Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted()` whenever opened:
 
-- **Usage line:** `"Using <used> of <quota>"`. Format numbers ≥ 1,000,000,000 bytes in GB rounded to `0.1 GB` (for example `"Using 1.2 GB of 24.5 GB"`), and smaller values in MB rounded to `1 MB` (for example `"Using 42 MB of 512 MB"`, minimum `"0 MB"`). If `estimate()` is unavailable or returns undefined fields, show `"Storage usage unavailable"`. Do not rely on `estimate().usageDetails`, which is absent in Firefox ([spike S3](../research/spike-s3-persistence.md)).
+- **Usage line:** `"Using <used> of <quota>"`. Sizes are shown in decimal megabytes (`1,000,000` bytes) and gigabytes (`1,000,000,000` bytes): format numbers ≥ 1,000,000,000 bytes in GB rounded to `0.1 GB` (for example `"Using 1.2 GB of 24.5 GB"`), and smaller values in MB rounded to `1 MB` (for example `"Using 42 MB of 512 MB"`, minimum `"0 MB"`). If `estimate()` is unavailable or returns undefined fields, show `"Storage usage unavailable"`. Do not rely on `estimate().usageDetails`, which is absent in Firefox ([spike S3](../research/spike-s3-persistence.md)).
 - **Persistence line:** `"Storage protection: Persistent"` when `persisted()` is `true`, otherwise `"Storage protection: Best-effort (browser may clear data when space is low)"` with a `"Request protection"` button.
 
 ### 7.3 Requesting persistent storage

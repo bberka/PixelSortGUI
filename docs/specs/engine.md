@@ -3,6 +3,7 @@ Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine foundation review by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI engine spec
 
@@ -249,23 +250,23 @@ Designed now so future interactive canvas tools (such as painting a mask or draw
 
 ### 5.1 Parameters
 
-| Param | Kind | Default | Range or options | Group | Visible when |
-|---|---|---|---|---|---|
-| `angle` | angle | 0 | [0, 360), step 0.1; snaps 0, 45, 90, 135, 180, 225, 270, 315 | Direction | always |
-| `intervalMode` | enum | `threshold` | `threshold` "Threshold", `edges` "Edges", `whole` "Whole line" | Selection | always |
-| `selectKey` | enum | `luma` | the 8 keys of section 5.3 | Selection | `intervalMode` = `threshold` |
-| `threshold` | range | [0.25, 0.80] | 0..1, step 0.001 | Selection | `intervalMode` = `threshold` |
-| `edgeThreshold` | number (ratio) | 0.20 | 0..1, step 0.01 | Selection | `intervalMode` = `edges` |
-| `edgeBlur` | integer (px) | 1 | 0..8 | Selection | `intervalMode` = `edges` |
-| `invert` | boolean | false | | Selection | `intervalMode` ≠ `whole` |
-| `maxLength` | integer (px) | 0 | 0..16384; 0 means no limit | Length | always |
-| `lengthJitter` | number (ratio) | 0 | 0..1, step 0.01 | Length | `maxLength` ≠ 0 |
-| `skipChance` | number (ratio) | 0 | 0..1, step 0.01 | Length | always |
-| `sortKey` | enum | `luma` | the 8 keys of section 5.3 | Order | always |
-| `order` | enum | `ascending` | `ascending`, `descending`, `shuffle`, `random` ("Random direction") | Order | always |
-| `discretize` | integer | 0 | 0..64 | Order | `fill` ≠ `average` |
-| `fill` | enum | `sort` | `sort` "Sort", `average` "Average", `gradient` "Gradient" | Output | always |
-| `seed` | seed | random | uint32 | Seed | always |
+| Param | Label | Kind | Default | Range or options | Group | Visible when | Help |
+|---|---|---|---|---|---|---|---|
+| `angle` | Angle | angle | 0 | [0, 360), step 0.1; snaps 0, 45, 90, 135, 180, 225, 270, 315 | Direction | always | Degrees counter-clockwise from rightward: 0 sorts left to right, 90 bottom to top, 180 right to left, 270 top to bottom. |
+| `intervalMode` | Interval mode | enum | `threshold` | `threshold` "Threshold", `edges` "Edges", `whole` "Whole line" | Selection | always | How pixels are selected for sorting: by a threshold on a key, between edges, or the whole line. |
+| `selectKey` | Selection key | enum | `luma` | the 8 keys of section 5.3 | Selection | `intervalMode` = `threshold` | The key the threshold range is compared against. |
+| `threshold` | Threshold range | range | [0.25, 0.80] | 0..1, step 0.001 | Selection | `intervalMode` = `threshold` | Pixels whose selection key lies in this range, inclusive at both ends, are selected. |
+| `edgeThreshold` | Edge threshold | number (ratio) | 0.20 | 0..1, step 0.01 | Selection | `intervalMode` = `edges` | Edge strength, as a fraction of the maximum single-axis gradient, at which a pixel counts as an edge. Pixels that are not edges are selected. |
+| `edgeBlur` | Edge blur | integer (px) | 1 | 0..8 | Selection | `intervalMode` = `edges` | Box blur radius applied before edge detection. |
+| `invert` | Invert | boolean | false | | Selection | `intervalMode` ≠ `whole` | Select the pixels that would not be selected, and the other way round. |
+| `maxLength` | Maximum interval length | integer (px) | 0 | 0..16384; 0 means no limit | Length | always | Splits each run into intervals of at most this length. 0 means no limit. |
+| `lengthJitter` | Length jitter | number (ratio) | 0 | 0..1, step 0.01 | Length | `maxLength` ≠ 0 | Random variation of each interval length around the maximum. |
+| `skipChance` | Skip chance | number (ratio) | 0 | 0..1, step 0.01 | Length | always | Chance that an interval is left unchanged. |
+| `sortKey` | Sort key | enum | `luma` | the 8 keys of section 5.3 | Order | always | The key each interval is sorted by. |
+| `order` | Order | enum | `ascending` | `ascending` "Ascending", `descending` "Descending", `shuffle` "Shuffle", `random` "Random direction" | Order | always | Ascending puts the smallest key first along the line direction. Random direction picks ascending or descending per interval. |
+| `discretize` | Discretize | integer | 0 | 0..64 | Order | `fill` ≠ `average` | Colours within about this many 8-bit steps compare equal and keep their order, giving clumpier streaks. 0 turns it off. |
+| `fill` | Fill | enum | `sort` | `sort` "Sort", `average` "Average", `gradient` "Gradient" | Output | always | Sort moves the pixels; average paints each interval with its mean colour; gradient blends from its first ordered pixel to its last. |
+| `seed` | Seed | seed | random | uint32 | Seed | always | Drives length jitter, skipping, shuffle and random direction. |
 
 The effect runs in three steps per line: select pixels (5.4), split selected pixels into intervals (5.4), then reorder or repaint each interval (5.5).
 
@@ -311,7 +312,7 @@ For each line, with pixels `p[0..n-1]` in line order:
 
 **1. Selection.** Compute `selected[j]` for every pixel:
 
-- A pixel with alpha 0 is never selected, in every mode.
+- A pixel with alpha 0 is never selected, in every mode; this check is applied after `invert`, and transparent pixels still feed the edge detector (their RGB values participate in `Y8`, blur, and Sobel).
 - `threshold`: `lo16 = Math.floor(threshold[0] * 65535 + 0.5)`, `hi16 = Math.floor(threshold[1] * 65535 + 0.5)`. `inBand = lo16 <= selectKey16(p) <= hi16` (inclusive at both ends). `selected = inBand !== invert`.
 - `edges`: computed on the instance's input at render size.
   1. `Y8 = floorDiv(2126*R + 7152*G + 722*B + 5000, 10000)` for every pixel.
@@ -353,7 +354,7 @@ Implementation note (informed by [spike S1](../research/spike-s1-engine-throughp
 
 - `sort`: write the ordered pixels back into the interval's positions in line order. All four channels move together. The output of the interval is a permutation of its input.
 - `average`: every pixel of the interval becomes the channel-wise mean, `floorDiv(2 * sum + n, 2 * n)` for each of R, G, B, A. Order and discretize do not affect it.
-- `gradient`: order the pixels as above, take the first ordered pixel `s` and the last `e`, and set pixel `j` (0-based in line order) of the interval to `floorDiv(2 * (s * (n - 1 - j) + e * j) + (n - 1), 2 * (n - 1))` per channel. Output colours are interpolated and are not a permutation.
+- `gradient`: order the pixels as above, take the first ordered pixel `s` and the last `e`, and set pixel `j` (0-based in line order) of the interval to `floorDiv(2 * (s * (n - 1 - j) + e * j) + (n - 1), 2 * (n - 1))` per channel. Output colours are interpolated and are not a permutation. With `shuffle` order, `s` and `e` are the first and last shuffled pixels; with tied keys, `s` and `e` come from the stable order (earliest and latest in the interval).
 
 ### 5.6 Masks (later; semantics fixed now)
 
@@ -377,12 +378,12 @@ Keeps alpha from the input pixel at the same `(x, y)`.
 
 ### 6.1 `channelShift` (version 1, glitch): "Offset the red, green and blue channels."
 
-| Param | Kind | Default | Range | Group |
-|---|---|---|---|---|
-| `redX`, `redY` | integer (px) | 6, 0 | −1024..1024 | Red |
-| `greenX`, `greenY` | integer (px) | 0, 0 | −1024..1024 | Green |
-| `blueX`, `blueY` | integer (px) | −6, 0 | −1024..1024 | Blue |
-| `edge` | enum | `clamp` | `clamp` "Stretch edge", `wrap` "Wrap around" | Edges |
+| Param | Label | Kind | Default | Range | Group |
+|---|---|---|---|---|---|
+| `redX`, `redY` | Red X, Red Y | integer (px) | 6, 0 | −1024..1024 | Red |
+| `greenX`, `greenY` | Green X, Green Y | integer (px) | 0, 0 | −1024..1024 | Green |
+| `blueX`, `blueY` | Blue X, Blue Y | integer (px) | −6, 0 | −1024..1024 | Blue |
+| `edge` | Edge mode | enum | `clamp` | `clamp` "Stretch edge", `wrap` "Wrap around" | Edges |
 
 For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) = in.c(E(x - dx, W), E(y - dy, H))`, where `E` is `clamp(v, 0, n - 1)` for `clamp` and `wrap(v, n)` for `wrap`. Positive `X` moves the channel right, positive `Y` down.
 
@@ -509,7 +510,7 @@ For identical input pixels, an identical effect stack (after migration and valid
 ### 10.3 Resolution independence
 
 - Spatial parameters are source pixels converted with `ctx.px` and `ctx.pxLength`.
-- Random keys use source-space ids (`ctx.toSource` of line indices and positions, source tile and slice indices), so a choice made for a region at the `settle` level is the same choice the export makes for that region.
+- Random keys use source-space ids (`ctx.toSource` of line indices and positions, source tile and slice indices). Because `toSource` maps a render pixel's centre to source coordinates, a proxy render and an export make the same random choice only when keyed to the same source line and position; a half-size preview of a stack that uses random order, skip chance, length jitter, or shuffle is therefore similar to, not identical with, the export.
 - Pixel sort selection depends on pixel content, which the proxy approximates; intervals in the preview are therefore close to, not identical to, the export's.
 
 ## 11. Worker protocol
@@ -583,6 +584,13 @@ The first release targets desktop browsers and uses native browser canvas APIs f
 
 Every native encode checks `blob.type` against the requested MIME type, because unsupported types fall back to PNG silently. Encoding from raw RGBA canvas pixels carries no EXIF, GPS, or ICC metadata from the source file.
 
+Limits and codec details:
+
+- The 200 MB input file size limit is 209,715,200 bytes (`200 * 1024 * 1024`).
+- Export quality is given as 50 to 100 and divided by 100 for `convertToBlob`.
+- Transparent pixels are flattened onto white (`#ffffff`) before JPEG encoding.
+- A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of partially transparent PNGs is later work.
+
 ## 14. Testing
 
 ### 14.1 Unit tests
@@ -609,7 +617,7 @@ With `fast-check`, at least 200 runs each, on random images up to 64 × 64 and r
 
 1. Lines: every pixel appears in exactly one line; consecutive pixels are 8-connected; line length ≤ `max(W, H)`.
 2. `pixelSort` with `fill = sort`: each line's multiset of RGBA values is unchanged; unselected pixels are unchanged; within every non-skipped interval with `order` ascending or descending, comparison keys are monotonic in the stated direction.
-3. `pixelSort` with angle `θ` and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct.
+3. `pixelSort` with angle `θ` and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct and `maxLength` is 0, `skipChance` is 0, and `discretize` is 0.
 4. Every effect: output size equals input size; input buffer is unchanged after `render`; rendering twice gives identical bytes; `mix = 0` returns the input exactly.
 5. `channelShift` with all offsets 0 is the identity.
 6. Stack: `JSON.parse(JSON.stringify(stack))` renders identically; `validateParams` is idempotent; migrations of every version produce parameters that pass validation.

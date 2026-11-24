@@ -490,4 +490,16 @@ describe('sort and selection keys (engine.md section 5.3)', () => {
 			prev = h;
 		}
 	});
+
+	it('reduced luma formula matches the spec formula for every Y from 0 to 2,550,000', () => {
+		for (let y = 0; y <= 2_550_000; y++) {
+			const original = Math.floor((y * 131_070 + 2_550_000) / 5_100_000);
+			const reduced = Math.floor((257 * y + 5000) / 10_000);
+			if (reduced !== original) {
+				expect.fail(
+					`Mismatch at Y=${y}: reduced=${reduced}, original=${original}`,
+				);
+			}
+		}
+	});
 });

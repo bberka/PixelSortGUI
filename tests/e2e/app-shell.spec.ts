@@ -248,14 +248,24 @@ test('keyboard: the first Tab reaches a visible control and focus follows the vi
 
 	const backBox = await backButton.boundingBox();
 	await page.keyboard.press('Tab');
+	const exportButton = page.getByRole('button', {name: 'Export'});
+	await expect(exportButton).toBeFocused();
+	const exportBox = await exportButton.boundingBox();
+	await page.keyboard.press('Tab');
+	const settingsButton = page.getByRole('button', {name: 'Settings'});
+	await expect(settingsButton).toBeFocused();
+	const settingsBox = await settingsButton.boundingBox();
+	await page.keyboard.press('Tab');
 	const themeButton = page.getByRole('button', {name: /^Theme: /});
 	await expect(themeButton).toBeFocused();
 	const themeBox = await themeButton.boundingBox();
-	if (!backBox || !themeBox) {
-		throw new Error('Both app bar controls must have a layout box');
+	if (!backBox || !exportBox || !settingsBox || !themeBox) {
+		throw new Error('All app bar controls must have a layout box');
 	}
 
-	expect(backBox.x).toBeLessThan(themeBox.x);
+	expect(backBox.x).toBeLessThan(exportBox.x);
+	expect(exportBox.x).toBeLessThan(settingsBox.x);
+	expect(settingsBox.x).toBeLessThan(themeBox.x);
 });
 
 test('the component gallery is still reachable at its dev route', async ({

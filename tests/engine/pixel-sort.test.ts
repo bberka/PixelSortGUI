@@ -5,10 +5,11 @@ import {
 	pixelSortEffect,
 	type PixelSortParams,
 } from '../../src/engine/effects/pixel-sort/index.ts';
-import {SORT_KEYS} from '../../src/engine/keys.ts';
+import {fillKeys} from '../../src/engine/effects/pixel-sort/select.ts';
+import {computeKey16, SORT_KEYS} from '../../src/engine/keys.ts';
 import {validateParams} from '../../src/engine/params.ts';
 import {renderStack} from '../../src/engine/pipeline.ts';
-import {intIn, unit} from '../../src/engine/random.ts';
+import {hash32, intIn, unit} from '../../src/engine/random.ts';
 import {
 	Cancelled,
 	copyImage,
@@ -205,6 +206,47 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 
 	it('has defaults that validation leaves unchanged', () => {
 		expect(validateParams(pixelSortEffect.params, defaults)).toEqual(defaults);
+	});
+});
+
+describe('pixelSort line keys', () => {
+	it('fills the same key16 as keys.ts for every key', () => {
+		const colours: number[] = [];
+		for (let r = 0; r < 256; r++) {
+			for (let g = 0; g < 256; g++) {
+				colours.push(r, g, 0, 255, r, g, 128, 255, r, g, 255, 255);
+			}
+		}
+
+		for (let i = 0; i < 200_000; i++) {
+			const h = hash32(9, i);
+			colours.push(h & 255, (h >>> 8) & 255, (h >>> 16) & 255, h >>> 24);
+		}
+
+		const bytes = new Uint8Array(colours);
+		const count = bytes.length / 4;
+		const out = new Uint16Array(count);
+		for (const key of SORT_KEYS) {
+			fillKeys(key, bytes, 0, count, out);
+			let mismatches = 0;
+			for (let i = 0; i < count; i++) {
+				if (
+					out[i] !==
+					computeKey16(key, bytes[4 * i], bytes[4 * i + 1], bytes[4 * i + 2])
+				) {
+					mismatches++;
+				}
+			}
+
+			expect(mismatches, key).toBe(0);
+		}
+	});
+
+	it('fills only the requested part of the line', () => {
+		const bytes = new Uint8Array([1, 2, 3, 255, 40, 50, 60, 255, 7, 8, 9, 255]);
+		const out = new Uint16Array([111, 222, 333]);
+		fillKeys('red', bytes, 1, 2, out);
+		expect([...out]).toEqual([111, 40 * 257, 333]);
 	});
 });
 
@@ -1086,6 +1128,24 @@ describe('pixelSort in the pipeline', () => {
 			options(input),
 		);
 		expect([...result.image.data]).toEqual([...input.data]);
+	});
+
+	it('renders the same from buffers that are not 4-byte aligned', async () => {
+		const offset = (data: Uint8ClampedArray) => {
+			const backing = new Uint8ClampedArray(data.length + 1);
+			backing.set(data, 1);
+			return backing.subarray(1);
+		};
+
+		const unaligned = {...input, data: offset(input.data)};
+		const output = {
+			...input,
+			data: offset(new Uint8ClampedArray(input.data.length)),
+		};
+		const params = withParams({angle: 30});
+		await pixelSortEffect.render(unaligned, output, params, contextFor(input));
+		expect([...output.data]).toEqual([...(await run(input, params)).data]);
+		expect([...unaligned.data]).toEqual([...input.data]);
 	});
 
 	it('renders the same after a saved-project round trip', async () => {

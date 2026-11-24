@@ -1,6 +1,7 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
+Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI decisions and open questions
 
@@ -19,12 +20,13 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** Matches the owner's primary request (static-hostable, offline, local-only, zero store friction) and avoids maintaining platform-specific UI and distribution pipelines before the core editor is proven.
 - **Revisit if:** Deep OS file or background workflows become mandatory, or when moving to native packaging with Tauri (D13).
 
-### D2. Compute path (settled 2026-11-24)
+### D2. Compute path (confirmed by spike S1, 2026-11-24)
 
 - **Options considered:** (a) TypeScript typed-array kernels in a Web Worker; (b) Rust/Wasm SIMD + threads; (c) WebGPU compute shaders as primary engine; (d) WebGL2 fragment shader ping-pong passes.
-- **Choice:** Our own TypeScript typed-array kernels in Web Workers as the baseline and reference implementation; optional WebGPU acceleration later (`src/engine/gpu/`). WebAssembly is considered only if benchmark spike S1 misses its budget.
+- **Choice:** Our own TypeScript typed-array kernels in Web Workers as the baseline and reference implementation; optional WebGPU acceleration later (`src/engine/gpu/`). Confirmed for the first release by [spike S1](../research/spike-s1-engine-throughput.md) (2026-11-24); WebAssembly is not needed.
+- **Spike S1 result (2026-11-24):** 12 MP angle 0 ran at 83.3 / 85.9 MP/s in Chromium and 78.9 / 79.5 MP/s in Firefox (angle 30: 44–56.5 MP/s against the 25 MP/s floor), with `drag` p95 15.6–28.0 ms, `settle` p95 60.0–97.0 ms, and zero main-thread long tasks > 50 ms. Limits: measured on one Linux desktop laptop, headless, on a synthetic image with a single `pixelSort` effect; says nothing about phones, tablets, or multi-effect stacks.
 - **Reason:** Pixel sorting constructs variable-length runs along arbitrary angles and paths, which fit CPU typed-array code cleanly and give exact cross-browser determinism. WebGPU still requires a CPU fallback across browsers and GPUs. Avoiding Wasm threads avoids `SharedArrayBuffer` and cross-origin isolation (D6).
-- **Revisit if:** Spike S1 misses interactive latency budgets on the reference laptop by a wide margin even with adaptive `drag` caps, in which case single-thread Wasm SIMD (no COOP/COEP required) is evaluated next.
+- **Revisit if:** Real-world multi-effect stacks or later mobile targets miss interactive latency budgets even with adaptive `drag` caps, in which case single-thread Wasm SIMD (no COOP/COEP required) or WebGPU is evaluated next.
 
 ### D3. UI framework, styling, and state library (settled 2026-11-24)
 
@@ -33,10 +35,11 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** Matches the owner's settled stack. In a photo editor, pixel processing dominates runtime cost; keeping transient drag state and canvas redraws out of React prevents framework overhead. Zustand gives fine-grained subscriptions for sliders, stack items, and progress without provider nesting.
 - **Revisit if:** Profiling shows React reconciliation during slider drags causes main-thread tasks > 50 ms (mitigate by isolating transient values into refs/Zustand transient subscribers before reconsidering the framework).
 
-### D4. Persistence and storage architecture
+### D4. Persistence and storage architecture (confirmed by spike S3, 2026-11-24)
 
 - **Options considered:** (a) IndexedDB as primary catalog and blob store + `localStorage` theme mirror; (b) OPFS for blobs + IndexedDB for metadata; (c) File System Access API handles referencing files on disk.
 - **Choice:** IndexedDB (`pixelsortgui`) for all source blobs, projects, thumbnails, history, presets, and app state, with SHA-256 source deduplication, parameter-snapshot history (up to 200 undoable commits), and a single `localStorage` key (`psg:theme`) for zero-flash theme boot.
+- **Spike S3 result (2026-11-24):** Confirmed in headless Chromium `159.0.8154.6` and Firefox `159.0` on one Linux desktop machine ([spike-s3-persistence.md](../research/spike-s3-persistence.md)): `Blob` round-trips up to 50 MiB, transaction rollback/mid-write kill safety, v1→v2 migration/`VersionError`, offline reload, and Chromium `QuotaExceededError` rollback all passed. Caveats: `navigator.storage.persist()` does not settle in Firefox until the user answers the prompt (never awaited on import/startup), `estimate().usageDetails` is absent in Firefox, real Firefox Private Browsing and native `persist()`/`QuotaExceededError` need manual checks, and nothing was tested on phones.
 - **Reason:** IndexedDB works uniformly across Chromium and Firefox (and best-effort Safari) with atomic transactions and schema upgrades. File System Access pickers are Chromium-only and handles can be revoked. OPFS shares the exact same origin quota and eviction rules as IndexedDB, so adding a second persistence system for v1 adds recovery complexity without solving eviction.
 - **Revisit if:** Future video/animation workflows or large painted mask layers require streaming random-access scratch files where worker-side OPFS `FileSystemSyncAccessHandle` measurably cuts peak RAM.
 

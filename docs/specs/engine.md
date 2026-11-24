@@ -1,6 +1,7 @@
 Written by Claude Opus 5.5 (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
+Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI engine spec
 
@@ -342,7 +343,7 @@ For each interval that is not skipped, with `q` its pixels in line order (`q.len
 - `random`: per interval, ascending if `unit(seed, P_ORDER, lineId, toSource(first position)) < 0.5`, else descending.
 - `shuffle`: Fisher–Yates on the interval: for `j` from `n - 1` down to 1, swap `q[j]` with `q[t]` where `t = intIn(0, j, seed, P_SHUFFLE, lineId, toSource(first position), j)`. `c` is not used.
 
-Implementation hint: build a `Uint32Array` of `c * 65536 + localIndex` (local index < 65,536 because lines are at most 16,384 px), sort it with the built-in numeric typed-array sort, and read local indices from the low 16 bits. Values are unique, so the result equals a stable sort on every engine. For `n <= 24`, insertion sort on the same values is faster.
+Implementation note (informed by [spike S1](../research/spike-s1-engine-throughput.md)): pack `c * 65536 + localIndex` into a `Uint32Array` (local index < 65,536 because lines are at most 16,384 px); values are unique, so sorting them equals a stable sort on every engine. Spike S1 compared three approaches: the built-in `Uint32Array.prototype.sort()`, an exact 2-pass 8-bit LSD 16-bit radix sort (`radix-16`), and a 1-pass 8-bit counting sort (`counting-8`) that quantises keys. `radix-16` was fastest in Chromium by 1.60× at angle 0 (144.1 ms vs 231.2 ms) and 1.43× at angle 30 (212.4 ms vs 304.1 ms), while `Uint32Array.prototype.sort()` was slightly faster in Firefox by 1.11× at angle 0 (152.0 ms vs 168.0 ms) and 1.03× at angle 30 (270.0 ms vs 277.0 ms). The 8-bit counting sort is not exact and must not be used, because quantising keys breaks the determinism guarantee (section 10.2) and golden tests. Recommended choice: exact 16-bit radix sort (`radix-16`) with insertion sort for short runs (`n <= 32`). Both exact approaches produce bit-identical output, and the choice between them is an implementation detail that tests must not depend on.
 
 **Fill.**
 
@@ -443,21 +444,23 @@ The preview worker caches pipeline stage outputs so editing instance `j` re-rend
 
 ## 9. Performance budgets
 
-Unbenchmarked engineering targets, not measurements: spike S1 (roadmap.md) measures them on the reference laptop; misses are reported with numbers. Reference device: product.md section 8 (desktop laptop only in the first release). Workload unless stated: one `pixelSort` instance with defaults at angle 0, on a representative 4:3 JPEG photo.
+Reference device: product.md section 8 (desktop laptop only in the first release). Workload unless stated: one `pixelSort` instance with defaults at angle 0, on a representative 4:3 JPEG photo. Angled sorting uses the same 25 MP/s throughput floor at 12 MP rather than a relative ratio to angle 0, because a ratio penalises a fast axis-aligned path and does not say whether angled sorting is fast enough.
 
-| Measure | Reference laptop (unbenchmarked target) |
-|---|---|
-| `drag` render at its starting cap (1 MP), p95 | ≤ 50 ms |
-| Visible update after a change (input to pixels on screen), p95 | ≤ 100 ms |
-| `settle` render (4 MP), p95 | ≤ 300 ms |
-| Same, angle 30 | ≤ 1.5× the angle-0 time |
-| `pixelSort` kernel throughput, angle 0, single thread | ≥ 25 MP/s |
-| Project open: decode + first `settle` render, 12 MP source | ≤ 1.0 s |
-| Export 12 MP, PNG, full size, including decode and encode | ≤ 2 s (engineering target, not yet benchmarked) |
-| Export 24 MP, same | ≤ 5 s |
-| Export 50 MP, same | ≤ 12 s |
-| Main-thread long tasks during any render | none over 50 ms |
-| Peak worker memory for a `full` render of `P` pixels | ≤ `3 × 4P + 2P` bytes plus encoder output |
+Measured values below come from [spike S1](../research/spike-s1-engine-throughput.md) on one Linux desktop laptop (13th Gen Intel Core i7-13650HX, 62 GiB RAM, CachyOS Linux) in headless Chromium `159.0.8154.6` and Firefox `159.0` on a synthetic image (author run / lead rerun where both were run).
+
+| Measure | Reference laptop (engineering target) | Measured in S1 (one machine, headless) |
+|---|---|---|
+| `drag` render at its starting cap (1 MP), p95 | ≤ 50 ms | Chromium: 19.2 ms / 15.6 ms; Firefox: 21.0 ms / 28.0 ms |
+| Visible update after a change (input to pixels on screen), p95 | ≤ 100 ms | Chromium: 20.0 ms / 17.1 ms; Firefox: 25.0 ms / 31.0 ms |
+| `settle` render (4 MP), p95 | ≤ 300 ms | Chromium: 60.0 ms / 61.8 ms; Firefox: 97.0 ms / 82.0 ms |
+| `pixelSort` kernel throughput, angle 0, single thread (12 MP, p50) | ≥ 25 MP/s | Chromium: 83.3 / 85.9 MP/s (`radix-16`); Firefox: 78.9 / 79.5 MP/s (`typed-array`; `radix-16`: 71.4 MP/s) |
+| `pixelSort` kernel throughput, angle 30, single thread (12 MP, p50) | ≥ 25 MP/s | Chromium: 56.5 MP/s (212.4 ms) / 54.5 MP/s (220.0 ms); Firefox: 44.4 MP/s (270.0 ms) / 44.9 MP/s (267.0 ms) |
+| Project open: decode + first `settle` render, 12 MP source | ≤ 1.0 s | not measured in S1 (unbenchmarked) |
+| Export 12 MP, PNG, full size, including decode and encode | ≤ 2 s (unbenchmarked target) | not measured in S1 (kernel only: 144.1 / 139.7 ms Chromium, 152.0 / 151.0 ms Firefox) |
+| Export 24 MP, same | ≤ 5 s (unbenchmarked target) | not measured in S1 (kernel only: 288.9 ms Chromium, 306.0 ms Firefox) |
+| Export 50 MP, same | ≤ 12 s (unbenchmarked target) | not measured in S1 (kernel only: 581.0 ms Chromium, 624.0 ms Firefox) |
+| Main-thread long tasks during any render | none over 50 ms | Chromium: 0 long tasks (0.0 ms); Firefox: stall probe max 12.0 ms / 14.0 ms (Long Tasks API unsupported) |
+| Peak worker memory for a `full` render of `P` pixels | ≤ `3 × 4P + 2P` bytes plus encoder output | not directly measured (50 MP peak process-tree RSS: 889.8 MiB Chromium, 1,333.2 MiB Firefox) |
 
 Several figures above are unbenchmarked engineering targets that are tighter than a product.md acceptance criterion. The acceptance limit is the product.md number; missing the engineering target alone does not fail acceptance:
 

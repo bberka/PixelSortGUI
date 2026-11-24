@@ -1,5 +1,6 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
+Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 
 # PixelSortGUI persistence spec
 
@@ -213,13 +214,14 @@ Per [engine-architecture.md section 4](../research/engine-architecture.md):
 
 Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted()` whenever opened:
 
-- **Usage line:** `"Using <used> of <quota>"`. Format numbers ≥ 1,000,000,000 bytes in GB rounded to `0.1 GB` (for example `"Using 1.2 GB of 24.5 GB"`), and smaller values in MB rounded to `1 MB` (for example `"Using 42 MB of 512 MB"`, minimum `"0 MB"`). If `estimate()` is unavailable or returns undefined fields, show `"Storage usage unavailable"`.
+- **Usage line:** `"Using <used> of <quota>"`. Format numbers ≥ 1,000,000,000 bytes in GB rounded to `0.1 GB` (for example `"Using 1.2 GB of 24.5 GB"`), and smaller values in MB rounded to `1 MB` (for example `"Using 42 MB of 512 MB"`, minimum `"0 MB"`). If `estimate()` is unavailable or returns undefined fields, show `"Storage usage unavailable"`. Do not rely on `estimate().usageDetails`, which is absent in Firefox ([spike S3](../research/spike-s3-persistence.md)).
 - **Persistence line:** `"Storage protection: Persistent"` when `persisted()` is `true`, otherwise `"Storage protection: Best-effort (browser may clear data when space is low)"` with a `"Request protection"` button.
 
 ### 7.3 Requesting persistent storage
 
 - Call `navigator.storage.persist()` automatically once after the user's first successful image import (and when the user clicks `"Request protection"` in Settings).
-- Firefox displays a native permission prompt; Chrome/Edge decides silently via browser heuristics (engagement, bookmarks, PWA install). Never assume `persist()` succeeded; always read `navigator.storage.persisted()`.
+- Firefox displays a native permission prompt and does not settle the returned promise until the user responds (in headless Firefox it stays pending; [spike S3](../research/spike-s3-persistence.md)). Chrome/Edge decides silently via browser heuristics (engagement, bookmarks, PWA install).
+- Never `await navigator.storage.persist()` on an import or startup path: call it without awaiting after the import transaction commits, and update the Settings persistence indicator when the promise settles. Never assume `persist()` succeeded; always read `navigator.storage.persisted()`.
 
 ### 7.4 Storage full and quota errors (AC-F16.2)
 

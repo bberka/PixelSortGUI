@@ -156,7 +156,7 @@ export function AngleControl({
 						className="pointer-events-none absolute inset-0"
 						style={{rotate: `${-current}deg`}}
 					>
-						<span className="absolute top-1/2 right-1/2 h-0.5 w-[calc(50%-5px)] -translate-y-1/2 rounded-full bg-accent" />
+						<span className="absolute top-1/2 left-1/2 h-0.5 w-[calc(50%-5px)] -translate-y-1/2 rounded-full bg-accent" />
 					</span>
 					<span
 						aria-hidden="true"

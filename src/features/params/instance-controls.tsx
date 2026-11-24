@@ -4,6 +4,7 @@ import {controlId} from './ids.ts';
 import {parseNumericText} from './format.ts';
 import {steppedValue} from './keyboard.ts';
 import {useTransientMix} from './use-drag-value.ts';
+import {sliderThumbTarget} from './slider-thumb.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Label} from '@/components/ui/label';
 import {Slider} from '@/components/ui/slider';
@@ -71,6 +72,7 @@ export function MixControl({instanceId, mix}: MixControlProps) {
 				</span>
 			</div>
 			<Slider
+				className={sliderThumbTarget}
 				max={PERCENT.max}
 				min={PERCENT.min}
 				step={PERCENT.step}

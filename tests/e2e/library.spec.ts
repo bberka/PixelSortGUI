@@ -109,6 +109,9 @@ test('cards show the result thumbnail, name, dimensions and opened date, newest 
 }) => {
 	await page.goto('/');
 	const ids = await seedLibraryProjects(page, ['Alpha', 'Beta', 'Gamma']);
+	// A thumbnail is written after its card mounts, so remount the grid to read
+	// the stored thumbnails, as returning from the editor does.
+	await page.reload();
 
 	await expect(page.getByRole('listitem')).toHaveCount(3);
 	await expect(cardNames(page)).toHaveText(['Gamma', 'Beta', 'Alpha']);

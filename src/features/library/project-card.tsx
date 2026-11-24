@@ -75,7 +75,7 @@ const ProjectCardView = ({
 						{project.name}
 					</span>
 				</button>
-				<div className="flex items-end justify-between gap-1 px-2.5 pt-0.5 pb-1.5">
+				<div className="flex items-center justify-between gap-1 px-2.5 pt-0.5 pb-1.5">
 					<div className="min-w-0">
 						<span className="block text-xs leading-4 text-muted-foreground">
 							{formatDimensions(project.sourceWidth, project.sourceHeight)}
@@ -95,6 +95,7 @@ const ProjectCardView = ({
 										type="button"
 										variant="ghost"
 										size="icon-sm"
+										className="max-lg:size-11"
 										aria-label={`Actions for ${project.name}`}
 									>
 										<EllipsisIcon aria-hidden="true" />

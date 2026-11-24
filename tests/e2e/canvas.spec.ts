@@ -225,6 +225,21 @@ async function readRender(page: Page): Promise<RenderSnapshot> {
 	});
 }
 
+/**
+Writes the pending view-state save to storage, as closing the tab would.
+*/
+async function flushView(page: Page): Promise<void> {
+	await page.evaluate(async () => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		const result = runtime?.result;
+		if (!runtime || !result || result.status !== 'ready') {
+			throw new Error('App is not ready');
+		}
+
+		await result.bundle.store.getState().flushViewState();
+	});
+}
+
 async function waitForSettledFrame(page: Page): Promise<void> {
 	await expect
 		.poll(async () => {
@@ -281,13 +296,6 @@ async function dragBy(
 	}
 
 	await page.mouse.up();
-}
-
-/**
-Waits for the debounced view-state save to reach the store.
-*/
-async function settled(page: Page, ms = 400): Promise<void> {
-	await page.waitForTimeout(ms);
 }
 
 test('the zoom menu offers Fit, 50%, 100%, 200% and 400% (AC-F13.2)', async ({
@@ -368,7 +376,6 @@ test('zooming and panning redraw at frame rate without writing the store or aski
 	await importProject(page, {width: 2000, height: 1500});
 	await waitForSettledFrame(page);
 	await chooseZoom(page, '100%');
-	await settled(page);
 
 	const measured = await page.evaluate(async () => {
 		const canvas = globalThis.document.querySelector('canvas');
@@ -446,7 +453,6 @@ test('ctrl+wheel zooms around the pointer, plain wheel pans', async ({
 	await importProject(page);
 	await expect(page.locator('canvas')).toBeVisible();
 	await chooseZoom(page, '100%');
-	await settled(page);
 
 	const measured = await page.evaluate(async () => {
 		const canvas = globalThis.document.querySelector('canvas');
@@ -467,10 +473,35 @@ test('ctrl+wheel zooms around the pointer, plain wheel pans', async ({
 			return {...project.viewState};
 		};
 
-		const wait = async (ms: number) => {
+		const nextFrame = async () => {
 			await new Promise((resolve) => {
-				setTimeout(resolve, ms);
+				globalThis.requestAnimationFrame(() => {
+					resolve(null);
+				});
 			});
+		};
+
+		// A wheel gesture commits after a pause, so wait for the store to move.
+		const waitForCommit = async (previous: {
+			zoom: number;
+			centerX: number;
+			centerY: number;
+		}) => {
+			const started = performance.now();
+			while (performance.now() - started < 4000) {
+				const current = viewOf();
+				if (
+					current.zoom !== previous.zoom ||
+					current.centerX !== previous.centerX ||
+					current.centerY !== previous.centerY
+				) {
+					return current;
+				}
+
+				await nextFrame();
+			}
+
+			throw new Error('The wheel gesture never reached the store');
 		};
 
 		const rect = canvas.getBoundingClientRect();
@@ -505,16 +536,13 @@ test('ctrl+wheel zooms around the pointer, plain wheel pans', async ({
 		};
 
 		send({deltaY: -100, ctrlKey: true});
-		await wait(300);
-		const zoomed = viewOf();
+		const zoomed = await waitForCommit(before);
 
 		send({deltaY: 120});
-		await wait(300);
-		const panned = viewOf();
+		const panned = await waitForCommit(zoomed);
 
 		send({deltaY: 120, deltaX: 90});
-		await wait(300);
-		const pannedBoth = viewOf();
+		const pannedBoth = await waitForCommit(panned);
 
 		return {anchor, viewport, before, anchorSource, zoomed, panned, pannedBoth};
 	});
@@ -577,7 +605,6 @@ test('arrow keys pan by 10% of the viewport when the canvas has focus', async ({
 	await importProject(page);
 	await expect(page.locator('canvas')).toBeVisible();
 	await chooseZoom(page, '100%');
-	await settled(page);
 
 	const viewport = await canvasViewport(page);
 	const before = await readView(page);
@@ -603,7 +630,6 @@ test('a drag leaves at least 64 CSS px of the image on screen (AC-F13.3)', async
 	await importProject(page);
 	await expect(page.locator('canvas')).toBeVisible();
 	await chooseZoom(page, '400%');
-	await settled(page);
 
 	const box = await canvasBox(page);
 	const viewport = await canvasViewport(page);
@@ -618,7 +644,6 @@ test('a drag leaves at least 64 CSS px of the image on screen (AC-F13.3)', async
 		await dragBy(page, fromLeft, 500);
 	}
 
-	await settled(page);
 	const pulled = await readView(page);
 	const imageLeft = viewport.width / 2 - pulled.centerX * pulled.zoom;
 	expect(imageLeft).toBeCloseTo(viewport.width - 64, 0);
@@ -653,7 +678,6 @@ test('a drag leaves at least 64 CSS px of the image on screen (AC-F13.3)', async
 		await dragBy(page, fromRight, -500);
 	}
 
-	await settled(page);
 	const pulledBack = await readView(page);
 	const pulledLeft = viewport.width / 2 - pulledBack.centerX * pulledBack.zoom;
 	expect(pulledLeft + pulledBack.sourceWidth * pulledBack.zoom).toBeCloseTo(
@@ -689,7 +713,6 @@ test('above 200% zoom the image is drawn without smoothing (DESIGN.md section 7)
 	await importProject(page, {width: 64, height: 64, pattern: 'blocks'});
 	await expect(page.locator('canvas')).toBeVisible();
 	await chooseZoom(page, '400%');
-	await settled(page);
 
 	const colours = await page.evaluate(() => {
 		const canvas = globalThis.document.querySelector('canvas');
@@ -804,7 +827,6 @@ test('the view state is restored after a reload (AC-F3.3)', async ({page}) => {
 	await importProject(page);
 	await expect(page.locator('canvas')).toBeVisible();
 	await chooseZoom(page, '200%');
-	await settled(page);
 
 	const box = await canvasBox(page);
 	await dragBy(
@@ -812,8 +834,8 @@ test('the view state is restored after a reload (AC-F3.3)', async ({page}) => {
 		{x: box.x + box.width / 2, y: box.y + box.height / 2},
 		-120,
 	);
-	await settled(page);
 
+	await flushView(page);
 	const before = await readView(page);
 	await page.reload();
 	await expect(page.locator('canvas')).toBeVisible();
@@ -832,7 +854,6 @@ test('resizing across layout classes keeps the zoom and pan (AC-F18.2)', async (
 	await importProject(page);
 	await expect(page.locator('canvas')).toBeVisible();
 	await chooseZoom(page, '200%');
-	await settled(page);
 	const before = await readView(page);
 
 	const viewports: ProofViewport[] = [...PROOF_VIEWPORTS].toReversed();
@@ -900,9 +921,11 @@ test('a long render shows the progress bar only after 300 ms (AC-F8.3)', async (
 		}
 
 		const {store} = result.bundle;
-		const wait = async (ms: number) => {
+		const nextFrame = async () => {
 			await new Promise((resolve) => {
-				setTimeout(resolve, ms);
+				globalThis.requestAnimationFrame(() => {
+					resolve(null);
+				});
 			});
 		};
 
@@ -918,7 +941,7 @@ test('a long render shows the progress bar only after 300 ms (AC-F8.3)', async (
 				quietSince = performance.now();
 			}
 
-			await wait(25);
+			await nextFrame();
 		}
 
 		await store.getState().commitParam(instanceId, 'angle', 30);
@@ -945,7 +968,7 @@ test('a long render shows the progress bar only after 300 ms (AC-F8.3)', async (
 				return {duration: elapsed - segmentStart, barAt};
 			}
 
-			await wait(10);
+			await nextFrame();
 		}
 
 		return {duration: -1, barAt: null};
@@ -1091,7 +1114,6 @@ for (const theme of THEMES) {
 			await expect(page.locator('canvas')).toBeVisible();
 			await waitForSettledFrame(page);
 			await chooseZoom(page, '200%');
-			await settled(page);
 
 			const metrics = await page.evaluate(() => ({
 				scrollWidth: globalThis.document.documentElement.scrollWidth,

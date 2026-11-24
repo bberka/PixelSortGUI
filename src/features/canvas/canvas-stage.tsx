@@ -1,17 +1,25 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {RotateCwIcon} from 'lucide-react';
 import {drawCanvas} from './draw.ts';
-import {ZoomControl} from './zoom-control.tsx';
+import {createCheckerPattern} from './checker.ts';
+import {
+	arrowPan,
+	beginPinch,
+	commandView,
+	isDoubleTap,
+	isTap,
+	pinchView,
+	viewCommandFor,
+	wheelView,
+	type Pinch,
+} from './gestures.ts';
+import {StageOverlays} from './stage-overlays.tsx';
+import {useDelayedFlag} from './use-delayed-flag.ts';
 import {
 	clampCenter,
-	clampZoom,
 	fitView,
-	fitZoom,
 	formatZoomPercent,
 	panBy,
-	panByKey,
 	resolveView,
-	sourceAt,
 	zoomAt,
 	zoomTo,
 	type CanvasView,
@@ -19,8 +27,6 @@ import {
 	type Size,
 } from './view.ts';
 import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
-import {Button} from '@/components/ui/button';
-import {Progress} from '@/components/ui/progress';
 
 /**
 AC-F8.3: the progress bar appears once a render has run this long.
@@ -31,16 +37,7 @@ A wheel gesture has no release event; the view is saved this long after it.
 */
 export const WHEEL_COMMIT_MS = 200;
 const WHEEL_ZOOM_RATE = 0.0015;
-const TAP_TIMEOUT_MS = 300;
-const TAP_SLOP_PX = 12;
-const CHECKER_TILE_PX = 16;
 const CANVAS_LABEL = 'Image canvas';
-
-type Pinch = {
-	readonly startZoom: number;
-	readonly anchorSource: Point;
-	readonly startDistance: number;
-};
 
 function devicePixelRatio(): number {
 	const ratio = globalThis.devicePixelRatio;
@@ -59,50 +56,6 @@ function isPointerTarget(target: EventTarget | null): boolean {
 		tag === 'SELECT' ||
 		target.isContentEditable
 	);
-}
-
-function createCheckerPattern(
-	context: CanvasRenderingContext2D,
-	first: string,
-	second: string,
-): CanvasPattern | null {
-	const tile = document.createElement('canvas');
-	tile.width = CHECKER_TILE_PX * 2;
-	tile.height = CHECKER_TILE_PX * 2;
-	const tileContext = tile.getContext('2d');
-	if (!tileContext) {
-		return null;
-	}
-
-	tileContext.fillStyle = second;
-	tileContext.fillRect(0, 0, tile.width, tile.height);
-	tileContext.fillStyle = first;
-	tileContext.fillRect(0, 0, CHECKER_TILE_PX, CHECKER_TILE_PX);
-	tileContext.fillRect(
-		CHECKER_TILE_PX,
-		CHECKER_TILE_PX,
-		CHECKER_TILE_PX,
-		CHECKER_TILE_PX,
-	);
-	return context.createPattern(tile, 'repeat');
-}
-
-function useDelayedFlag(active: boolean, delayMs: number): boolean {
-	const [visible, setVisible] = useState(false);
-	useEffect(() => {
-		if (!active) {
-			setVisible(false);
-			return undefined;
-		}
-
-		const timer = globalThis.setTimeout(() => {
-			setVisible(true);
-		}, delayMs);
-		return () => {
-			globalThis.clearTimeout(timer);
-		};
-	}, [active, delayMs]);
-	return visible;
 }
 
 /**
@@ -347,26 +300,17 @@ export function CanvasStage() {
 			}
 
 			event.preventDefault();
-			const viewport = viewportRef.current;
 			const rect = canvas.getBoundingClientRect();
-			const anchor = {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top,
-			};
-
-			if (event.ctrlKey || event.metaKey) {
-				const zoom = clampZoom(
-					current.zoom * Math.exp(-event.deltaY * WHEEL_ZOOM_RATE),
-					fitZoom(source, viewport),
-				);
-				applyLive(zoomAt(current, anchor, zoom, source, viewport));
-			} else {
-				const horizontal =
-					event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX;
-				const vertical =
-					event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY;
-				applyLive(panBy(current, -horizontal, -vertical, source, viewport));
-			}
+			applyLive(
+				wheelView(
+					current,
+					event,
+					{x: event.clientX - rect.left, y: event.clientY - rect.top},
+					source,
+					viewportRef.current,
+					WHEEL_ZOOM_RATE,
+				),
+			);
 
 			clearWheelTimer();
 			wheelTimerRef.current = globalThis.setTimeout(() => {
@@ -424,6 +368,8 @@ export function CanvasStage() {
 		scheduleDraw();
 	}, [scheduleDraw]);
 
+	// The checkerboard colours come from the theme tokens, so it follows a theme
+	// switch or a change to the system preference.
 	useEffect(() => {
 		refreshChecker();
 		if (typeof MutationObserver !== 'function') {
@@ -458,44 +404,15 @@ export function CanvasStage() {
 				return;
 			}
 
+			const command = viewCommandFor(event.key);
 			const {current} = viewRef;
 			const source = sourceRef.current;
-			if (!current || !source) {
+			if (!command || !current || !source) {
 				return;
 			}
 
-			const viewport = viewportRef.current;
-			switch (event.key) {
-				case '+':
-				case '=': {
-					event.preventDefault();
-					commitView(zoomTo(current, current.zoom * 2, source, viewport));
-					break;
-				}
-
-				case '-':
-				case '_': {
-					event.preventDefault();
-					commitView(zoomTo(current, current.zoom / 2, source, viewport));
-					break;
-				}
-
-				case '0': {
-					event.preventDefault();
-					commitView(fitView(source, viewport));
-					break;
-				}
-
-				case '1': {
-					event.preventDefault();
-					commitView(zoomTo(current, 1, source, viewport));
-					break;
-				}
-
-				default: {
-					break;
-				}
-			}
+			event.preventDefault();
+			commitView(commandView(command, current, source, viewportRef.current));
 		};
 
 		globalThis.addEventListener('keydown', handleKeyDown);
@@ -511,60 +428,6 @@ export function CanvasStage() {
 	}): Point => {
 		const rect = event.currentTarget.getBoundingClientRect();
 		return {x: event.clientX - rect.left, y: event.clientY - rect.top};
-	};
-
-	const startPinch = (current: CanvasView) => {
-		const points = [...pointersRef.current.values()];
-		if (points.length < 2) {
-			return;
-		}
-
-		const [first, second] = points;
-		const midpoint = {
-			x: (first.x + second.x) / 2,
-			y: (first.y + second.y) / 2,
-		};
-		pinchRef.current = {
-			startZoom: current.zoom,
-			anchorSource: sourceAt(current, midpoint, viewportRef.current),
-			startDistance: Math.hypot(second.x - first.x, second.y - first.y),
-		};
-	};
-
-	const movePinch = (source: Size): CanvasView | null => {
-		const pinch = pinchRef.current;
-		const points = [...pointersRef.current.values()];
-		if (!pinch || points.length < 2) {
-			return null;
-		}
-
-		const [first, second] = points;
-		const distance = Math.hypot(second.x - first.x, second.y - first.y);
-		if (!(pinch.startDistance > 0) || !(distance > 0)) {
-			return null;
-		}
-
-		const viewport = viewportRef.current;
-		const zoom = clampZoom(
-			(pinch.startZoom * distance) / pinch.startDistance,
-			fitZoom(source, viewport),
-		);
-		const midpoint = {
-			x: (first.x + second.x) / 2,
-			y: (first.y + second.y) / 2,
-		};
-		return clampCenter(
-			{
-				zoom,
-				centerX:
-					pinch.anchorSource.x - (midpoint.x - viewport.width / 2) / zoom,
-				centerY:
-					pinch.anchorSource.y - (midpoint.y - viewport.height / 2) / zoom,
-				fitMode: 'custom',
-			},
-			source,
-			viewport,
-		);
 	};
 
 	const toggleFitAndActual = (anchor: Point) => {
@@ -611,7 +474,11 @@ export function CanvasStage() {
 		}
 
 		if (pointersRef.current.size >= 2) {
-			startPinch(current);
+			pinchRef.current = beginPinch(
+				current,
+				[...pointersRef.current.values()],
+				viewportRef.current,
+			);
 		}
 	};
 
@@ -629,8 +496,14 @@ export function CanvasStage() {
 			return;
 		}
 
-		if (pointersRef.current.size >= 2) {
-			const next = movePinch(source);
+		const points = [...pointersRef.current.values()];
+		if (pinchRef.current && points.length >= 2) {
+			const next = pinchView(
+				pinchRef.current,
+				points,
+				source,
+				viewportRef.current,
+			);
 			if (next) {
 				applyLive(next);
 			}
@@ -678,22 +551,13 @@ export function CanvasStage() {
 			commitView(viewRef.current);
 		}
 
-		const moved =
-			start !== null &&
-			Math.hypot(position.x - start.x, position.y - start.y) > TAP_SLOP_PX;
-		if (!canTap || moved || event.pointerType === 'mouse') {
+		if (!canTap || event.pointerType === 'mouse' || !isTap(position, start)) {
 			lastTapRef.current = null;
 			return;
 		}
 
-		const last = lastTapRef.current;
 		const now = globalThis.performance.now();
-		if (
-			last &&
-			now - last.time <= TAP_TIMEOUT_MS &&
-			Math.hypot(position.x - last.position.x, position.y - last.position.y) <=
-				TAP_SLOP_PX
-		) {
+		if (isDoubleTap(lastTapRef.current, position, now)) {
 			lastTapRef.current = null;
 			toggleFitAndActual(position);
 			return;
@@ -718,28 +582,19 @@ export function CanvasStage() {
 	};
 
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
-		const {key} = event;
-		if (
-			key !== 'ArrowLeft' &&
-			key !== 'ArrowRight' &&
-			key !== 'ArrowUp' &&
-			key !== 'ArrowDown'
-		) {
-			return;
-		}
-
 		const {current} = viewRef;
 		const source = sourceRef.current;
 		if (!current || !source) {
 			return;
 		}
 
-		event.preventDefault();
-		commitView(panByKey(current, key, source, viewportRef.current));
-	};
+		const next = arrowPan(event.key, current, source, viewportRef.current);
+		if (!next) {
+			return;
+		}
 
-	const retry = () => {
-		bundle.coordinator.retry();
+		event.preventDefault();
+		commitView(next);
 	};
 
 	return (
@@ -763,55 +618,30 @@ export function CanvasStage() {
 				T5.2 (compare and split) draws its overlay layers here, using the
 				same `viewRef` and `sourceRef` so both stay aligned under zoom and pan.
 			*/}
-			{progressVisible ? (
-				<div className="pointer-events-none absolute inset-x-0 top-0">
-					<Progress
-						aria-label="Render progress"
-						className="h-0.5 w-full rounded-none bg-accent/20"
-						value={Math.round(progressFraction * 100)}
-					/>
-				</div>
-			) : null}
-			<div className="absolute bottom-2 left-2">
-				<ZoomControl
-					labelRef={labelRef}
-					zoom={labelZoom}
-					onFit={() => {
-						const source = sourceRef.current;
-						if (source) {
-							commitView(fitView(source, viewportRef.current));
-						}
-					}}
-					onZoom={(zoom) => {
-						const {current} = viewRef;
-						const source = sourceRef.current;
-						if (current && source) {
-							commitView(zoomTo(current, zoom, source, viewportRef.current));
-						}
-					}}
-				/>
-			</div>
-			{busy.full ? (
-				<div className="surface-overlay pointer-events-none absolute right-2 bottom-2 rounded-sm px-2 py-1 text-xs leading-4 font-medium">
-					Rendering full resolution
-				</div>
-			) : null}
-			{failed ? (
-				<div
-					role="alert"
-					className="pointer-events-none absolute inset-0 flex items-center justify-center p-4"
-				>
-					<div className="surface-overlay pointer-events-auto flex w-full max-w-[36ch] flex-col items-start gap-3 rounded-lg p-4">
-						<p className="text-sm leading-5 font-medium">
-							Rendering stopped unexpectedly.
-						</p>
-						<Button type="button" variant="outline" size="sm" onClick={retry}>
-							<RotateCwIcon aria-hidden="true" />
-							Retry
-						</Button>
-					</div>
-				</div>
-			) : null}
+			<StageOverlays
+				labelRef={labelRef}
+				zoom={labelZoom}
+				progressVisible={progressVisible}
+				progressFraction={progressFraction}
+				renderingFull={busy.full}
+				failed={failed}
+				onFit={() => {
+					const source = sourceRef.current;
+					if (source) {
+						commitView(fitView(source, viewportRef.current));
+					}
+				}}
+				onZoom={(zoom) => {
+					const {current} = viewRef;
+					const source = sourceRef.current;
+					if (current && source) {
+						commitView(zoomTo(current, zoom, source, viewportRef.current));
+					}
+				}}
+				onRetry={() => {
+					bundle.coordinator.retry();
+				}}
+			/>
 		</div>
 	);
 }

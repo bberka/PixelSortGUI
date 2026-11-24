@@ -38,6 +38,7 @@ Follow the interface in `engine.md` and register the effect the way it says. Kee
 
 - A test per behavior and edge case in the spec's test list. Small fixed pixel arrays with expected output.
 - A determinism test: same input and parameters, same output.
+- A test proving `render` never writes to its `input` buffer (the pipeline does not copy `input` defensively).
 - A test that parameters at each end of their range do not crash and stay in range.
 - A saved-project round trip: the effect and its parameters serialize and load back unchanged.
 - Run them with the check commands in [tooling.md](tooling.md) (planned; not available until scaffolding lands).

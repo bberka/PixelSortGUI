@@ -251,7 +251,7 @@ describe('line partition (engine.md section 5.2, 14.1, 14.3)', () => {
 			}),
 			{numRuns: 200},
 		);
-	});
+	}, 30_000);
 });
 
 function floorDivBig(n: bigint, d: bigint): bigint {

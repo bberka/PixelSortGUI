@@ -18,9 +18,7 @@ import {applyThemePreference, useThemeStore} from '../state/theme.ts';
 import type {ThumbnailGenerator} from '../state/thumbnail.ts';
 import type {TransientStore} from '../state/transient.ts';
 import {
-	IndexedDbRepository,
-	MemoryStorageAdapter,
-	openDatabase,
+	openStorage,
 	type OpenStorageOptions,
 	type OpenStorageResult,
 } from './index.ts';
@@ -107,33 +105,6 @@ function defaultScheduleIdle(callback: () => void): void {
 	globalThis.setTimeout(callback, 0);
 }
 
-async function openStorageWithVersionChangeClose(
-	options: OpenStorageOptions = {},
-): Promise<OpenStorageResult> {
-	try {
-		const database = await openDatabase(options);
-		database.addEventListener('versionchange', () => {
-			database.close();
-		});
-		return {
-			repository: new IndexedDbRepository(database, options),
-			persistence: 'indexeddb',
-			storageUnavailable: false,
-		};
-	} catch (error) {
-		if (error instanceof StorageVersionError) {
-			throw error;
-		}
-
-		return {
-			repository: new MemoryStorageAdapter(options),
-			persistence: 'memory',
-			storageUnavailable: true,
-			error,
-		};
-	}
-}
-
 /**
  Startup restore sequence implementing persistence.md section 9 (steps 1 to 7).
  Step 0 (synchronous theme boot) runs in index.html before first paint.
@@ -147,8 +118,7 @@ export async function restoreStartup(
 		return {status: 'insecure-context'};
 	}
 
-	const openStorageFn =
-		options.openStorageFn ?? openStorageWithVersionChangeClose;
+	const openStorageFn = options.openStorageFn ?? openStorage;
 	const registry = options.registry ?? effectRegistry;
 	const routerEnv = options.routerEnv ?? createBrowserHashRouterEnv();
 	const readLocalTheme = options.readLocalTheme ?? defaultReadLocalTheme;

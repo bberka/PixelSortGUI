@@ -28,6 +28,11 @@
 		"format": "xo --fix",
 		"check": "xo && tsgo -b && vp test run",
 		"version:next": "node scripts/release-version.ts next",
+		"test:e2e": "playwright test",
+		"check:a11y": "playwright test --grep @a11y",
+		"proof:sheet": "node scripts/proof-sheet.ts",
+		"evidence": "node scripts/publish-evidence.ts",
+		"browser:install": "playwright install chromium firefox",
 		"check:agent-context": "node scripts/agent-context.ts",
 		"agent-context:write": "node scripts/agent-context.ts --write",
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
@@ -43,6 +48,8 @@
 		"zustand": "^5.1.0"
 	},
 	"devDependencies": {
+		"@axe-core/playwright": "^4.14.0",
+		"@playwright/test": "^1.65.1",
 		"@tailwindcss/vite": "4.3.5",
 		"@types/node": "^24.19.2",
 		"@types/react": "^19.3.0",

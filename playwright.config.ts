@@ -2,7 +2,8 @@ import process from 'node:process';
 import {defineConfig, devices} from '@playwright/test';
 import {DESKTOP_VIEWPORT} from './tests/e2e/viewports.ts';
 
-const previewUrl = 'http://localhost:4173';
+const previewPort = process.env.PLAYWRIGHT_PORT ?? '4173';
+const previewUrl = `http://localhost:${previewPort}`;
 
 export default defineConfig({
 	testDir: './tests/e2e',
@@ -42,8 +43,7 @@ export default defineConfig({
 		},
 	],
 	webServer: {
-		command:
-			'pnpm exec vp build && pnpm exec vp preview --port 4173 --strictPort',
+		command: `pnpm exec vp build && pnpm exec vp preview --port ${previewPort} --strictPort`,
 		url: previewUrl,
 		reuseExistingServer: false,
 		timeout: 120_000,

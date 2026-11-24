@@ -1,4 +1,5 @@
 Written by Claude Sonnet 5.5 (thinking medium), documentation subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # Tooling and CI: target for the scaffolding task
 
@@ -8,7 +9,9 @@ Once a file or command named here exists, delete "planned" from this document in
 
 ## Stack
 
-Vite+ (`vite-plus` through `vp`), pnpm 12, Node 24 in CI (`engines`: `^22.18.0 || >=24.11.0`), TypeScript with `tsgo -b` as the type checker, React 19, Tailwind 4, shadcn (new-york, lucide icons), xo with Prettier for lint and format, Vitest through `vp test`. Single app at the repository root, no `apps/` folder.
+Vite+ (`vite-plus` through `vp`), pnpm 12, Node 24 in CI (`engines`: `^22.18.0 || >=24.11.0`), TypeScript with `tsgo -b` as the type checker, React 19, Tailwind 4, shadcn (new-york, lucide icons), Zustand, xo with Prettier for lint and format, Vitest through `vp test`. Single app at the repository root, no `apps/` folder.
+
+Code comments follow the prose rule (write no comment that restates the code, and put the reason for a lint or type directive inside the directive), with no lint ban or comment ratchet.
 
 ## Commands
 
@@ -17,7 +20,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | Command | Does |
 | --- | --- |
 | `vp run dev` | Dev server (planned) |
-| `vp run gui` | Production build, then serve it locally (planned) |
+| `vp run gui` | Build production `dist/`, then serve it locally at `http://localhost:4173` (planned) |
 | `vp run build` | Production build into `dist/` (planned) |
 | `vp run check` | `xo`, `tsgo -b`, `vp test run`: what pre-push and CI run (planned) |
 | `vp run lint`, `vp run lint:fix` | xo check, xo with fixes (planned) |
@@ -25,6 +28,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run test`, `vp run test:watch` | `vp test run`, `vp test` (planned) |
 | `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite (planned) |
 | `vp run version:next` | Print the next release version (planned) |
+| `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` (planned) |
 | `vp run skills:install` | Restore the agent skills listed in `skills-lock.json` (planned, optional) |
 
 `vp dev` is a built-in that ignores a `dev` script, so `dev` and `gui` must be defined explicitly. Recommended: `run.tasks` in `vite.config.ts`, with `dev` running `vp dev` and `gui` running `vp build` then `vp preview`, both with caching off. Untested; the scaffolding agent verifies it and records the result here.
@@ -79,24 +83,20 @@ Goal: the always-loaded files stay small as the docs grow.
 - The pre-commit hook runs the check when any measured file is staged.
 - The script gets a test file in `scripts/`, run by `vp test run`.
 
-## Release (planned)
+## Deployment and release (planned)
+
+Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`pages.yml`). The production build (`dist/`) must work when served from the domain root (`/`), and the published output must include a `CNAME` file containing `glitch.bbay.dev`.
 
 ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 
 1. Compute the next patch from the latest `v0.<VERSION>.*` tag (`scripts/release-version.ts next`). Fail if the tag exists.
 2. Run `vp run check` and `vp run build`.
 3. Tag the commit.
-4. Deploy the contents of `dist/` to the hosting target.
+4. Deploy the contents of `dist/` (with `CNAME`) to GitHub Pages.
 5. Create the GitHub release last, so a failed deploy leaves no release.
 
 The source tree keeps no version number; the build stamps it.
 
 ## Open owner decisions
 
-These block parts of the scaffolding. The lead asks the owner before the scaffolding brief goes out.
-
-1. **Deployment target:** GitHub Pages or Cloudflare Pages. Decides `pages.yml` or a Cloudflare job, secrets, and whether custom response headers are possible (some engine options need them; see `docs/research/engine-architecture.md`).
-2. **Proof screenshots:** uploaded into the pull request, or kept local and shown in chat only. Uploading needs a script (`scripts/publish-evidence.ts`, planned). The owner's global rule favors upload.
-3. **Code comments:** whether the ban on code comments from the owner's other project (TabLodge, enforced by a lint rule and a ratchet) applies here. Until decided, write no comment that restates the code, and put the reason for a lint or type directive inside the directive.
-4. **Project licence:** see [licensing.md](licensing.md).
-5. **Optional guards:** whether to add the em dash check in pre-commit that mediastash uses, and a Claude Code Stop hook that holds a UI task until proof screenshots exist.
+1. **Optional guards:** whether to add the em dash check in pre-commit that mediastash uses, a Claude Code Stop hook that holds a UI task until proof screenshots exist, and `skills-lock.json` with `vp run skills:install` versus vendoring skills (Q10 in [decisions.md](../specs/decisions.md#open-questions-for-the-owner)).

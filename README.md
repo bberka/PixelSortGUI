@@ -1,6 +1,8 @@
 # PixelSortGUI
 
-A web editor for glitch art and pixel sorting of still photos. It runs entirely in the browser: static hosting, works offline, no accounts, and everything is saved in browser storage. It is meant to work on phones, tablets, and desktops.
+A web editor for glitch art and pixel sorting of still photos. It runs entirely in the browser: static hosting on GitHub Pages (`https://glitch.bbay.dev`), works offline, no accounts, and everything is saved in browser storage. The first release targets desktop Chromium and Firefox with responsive layouts for phone, tablet, and desktop widths.
+
+Licensed under the [MIT License](LICENSE).
 
 Status: planning. There is no code yet.
 

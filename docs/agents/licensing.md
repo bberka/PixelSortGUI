@@ -1,4 +1,5 @@
 Written by Claude Sonnet 5.5 (thinking medium), documentation subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # Licensing: what code may be copied
 
@@ -6,7 +7,7 @@ Source: `docs/research/ecosystem-survey.md` section 14 and `docs/research/primar
 
 ## The project's own licence
 
-Not chosen. This is an owner decision. Until it is made, do not add a `LICENSE` file, an SPDX header, or a licence field to `package.json`. The decision matters because GPL code in the shipped bundle would force the whole app to be GPL-3.0, and the choice of project licence limits what may be copied.
+MIT. A `LICENSE` file lives at the repository root, and `package.json` declares `"license": "MIT"`. Code may be copied from the four MIT-licensed projects in the first table below with attribution; the clean-room rule for the unlicensed, GPL, and non-commercial projects in the second table stays.
 
 ## Rule
 

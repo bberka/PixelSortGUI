@@ -1,18 +1,18 @@
 # PixelSortGUI
 
-Web GUI editor for glitch art and pixel sorting of still photos. Static-hostable, fully offline, no accounts, all state in browser storage, usable on phone, tablet, and desktop.
-Stack (planned): Vite+ (`vp`), pnpm, TypeScript, React, Tailwind, shadcn, xo. Status: planning. No application code exists yet.
-The owner does not write code. A lead agent splits work into tasks, delegates each to a subagent, and reviews the result.
+Web GUI editor for glitch art and pixel sorting of still photos. Static-hostable (`glitch.bbay.dev`), fully offline, no accounts, all state in browser storage, desktop-first with responsive layouts.
+Stack (planned): Vite+ (`vp`), pnpm, TypeScript, React 19, Tailwind 4, shadcn, Zustand, xo. Status: planning. No application code exists yet.
+The owner does not write code. A lead agent splits work into tasks, delegates each to a subagent, reviews the result, and merges approved pull requests.
 
 ## Hard rules
 
-- Never commit on or push to `main`. Work on a `<type>/<short-topic>` branch in your own git worktree, then open a pull request. The owner merges.
+- Never commit on or push to `main`. Work on a `<type>/<short-topic>` branch in your own git worktree, then open a pull request. The lead agent squash-merges once CI is green and a different-model reviewer approves; the owner reviews at each milestone.
 - Never add a co-author or an attribution line to a commit: no `Co-authored-by` trailer, no "Generated with" line. `.hooks/commit-msg` rejects both. Never bypass hooks (`--no-verify`, `core.hooksPath` changes).
 - Every pull request lists each agent and model that worked on it, with effort or thinking level and what it did. Use the template in `.github/PULL_REQUEST_TEMPLATE.md` and the wording in [roster.md](docs/agents/roster.md).
 - Documents come before code. A feature is specified in `docs/specs/` before it is implemented. A change is not done while a doc still describes the old behavior.
-- Copy code only from projects that [licensing.md](docs/agents/licensing.md) lists as MIT, and keep their notice. Learn from every other surveyed project, never copy. The project's own licence is not chosen yet; do not add a `LICENSE` file or licence headers.
+- Copy code only from projects that [licensing.md](docs/agents/licensing.md) lists as MIT, and keep their notice. Learn from every other surveyed project, never copy. The project's own licence is MIT (`LICENSE` at the repository root).
 - Nothing leaves the browser at runtime: no network calls for app features, no accounts, no analytics, no remote fonts or scripts. Photos stay on the device.
-- A UI change is checked in the running app at phone, tablet, and desktop widths, with screenshots. Report only what you ran, and say what you could not run.
+- A UI change is checked in a desktop browser at 390x844, 820x1180, and 1440x900 widths (layout check only), with screenshots uploaded to the pull request. Report only what you ran, and say what you could not run.
 - Do only the task you were given. Install no tools and add no config unless the task is the scaffolding task.
 
 ## Commands

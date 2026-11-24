@@ -1,14 +1,15 @@
 Written by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
+Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
 # Workflow: task to merged pull request
 
-Every task that changes a file follows these steps. The lead agent writes the brief and reviews. A subagent does the work. The owner merges.
+Every task that changes a file follows these steps. The lead agent writes the brief, arranges an independent review, and merges once the gates pass. A subagent does the work. The owner reviews at each milestone.
 
 ## Roles
 
-- **Owner.** Asks for features and fixes, decides open questions, merges.
-- **Lead agent.** Acts as product manager. Breaks the owner's request into tasks, picks a model for each from [roster.md](roster.md), writes the brief, reviews the result, and reports to the owner. It does not implement what it can delegate.
+- **Owner.** Asks for features and fixes, decides open questions, reviews at each milestone, and can revert.
+- **Lead agent.** Acts as product manager. Breaks the owner's request into tasks, picks a model for each from [roster.md](roster.md), writes the brief, arranges review by a different model, merges approved pull requests, and reports to the owner. It does not implement what it can delegate.
 - **Subagent.** Does one task in one worktree and hands back a pull request. It starts no subagents unless the brief says so.
 
 ## 1. Task brief (lead agent)
@@ -20,7 +21,7 @@ A subagent has no access to the lead's conversation, so the brief must stand alo
 - **Acceptance criteria:** a checkable list. The pull request answers each one with proof.
 - **Scope:** files or areas to touch, and what is out of scope.
 - **Branch:** `<type>/<short-topic>`.
-- **Model and effort:** from the roster, with the reason if it is an Opus-class model.
+- **Model and effort:** from the roster, with the reason if it is a big-task model (Claude Fable).
 - **Checks and proof:** which checks to run and what proof to attach.
 - **Docs to read:** the exact files, for example `AGENTS.md`, the spec, `CONTEXT.md`.
 
@@ -62,30 +63,33 @@ The subagent runs these and reports only what it ran:
 
 ## Proof
 
-- **UI change.** Run the app and check it at three widths: phone 390x844, tablet 820x1180, desktop 1440x900. Take a screenshot at each. Assert in the script what can be asserted (text present, no horizontal scroll, no console errors) and look at the screenshots once, after the last edit. Do not mock the page. A fix shows before and after. A follow-up change after the pull request opens gets fresh screenshots.
+- **UI change.** Run the app in a desktop browser and check it at three viewport widths: 390x844 (phone width), 820x1180 (tablet width), and 1440x900 (desktop width). This checks responsive layout only; it does not reproduce mobile canvas, memory, or storage limits. Take a screenshot at each width. Assert in the script what can be asserted (text present, no horizontal scroll, no console errors) and look at the screenshots once, after the last edit. Do not mock the page. A fix shows before and after. A follow-up change after the pull request opens gets fresh screenshots.
 - **Engine change.** A test over fixed input pixels with expected output, plus a before and after image from a sample photo when the result is visual.
 - **Docs or tooling change.** The command output that shows it works, or the link and path check.
-- **Where screenshots go.** Save them to a local folder that git ignores and embed them in the final chat message by absolute path. Whether they are also uploaded to the pull request is an owner decision (see [tooling.md](tooling.md)). Until it is made, list the file paths in the pull request and write `screenshots not uploaded`.
+- **Where screenshots go.** Save them to a local folder that git ignores, embed them in the final chat message by absolute path, and upload them into the pull request via `scripts/publish-evidence.ts` (planned; until `T0.4` lands, list the local paths in the pull request and write `screenshots not uploaded`).
 - **Not possible.** Say what you tried and write `Validation: not run in app` with the reason.
 
 ## 6. Review (lead agent)
 
-The lead reads the pull request against the brief, not against its own memory of the task.
+The lead reads the pull request against the brief, not against its own memory of the task, and assigns an independent review agent running a different model from the author.
 
 - Each acceptance criterion has proof. Open the screenshots once as a contact sheet or have a reviewer report in text.
 - The diff stays in scope and the spec was updated first.
 - The Agents and models section names every agent that worked on it, in the wording from [roster.md](roster.md), and matches who did what.
 - `git log --format=%B <base>..HEAD` shows no trailers or attribution lines.
 - Licence rule: no code copied from a project that is not on the MIT list in [licensing.md](licensing.md).
-- Where a different model reviews, it reviews the diff only and returns findings, not edits.
+- The independent reviewer reviews the diff only and returns findings, not edits.
 
 Send findings back to the subagent as a list. Allow three fix rounds. After that the lead takes the task over or escalates the model (see [roster.md](roster.md)).
 
 ## 7. Merge
 
-The owner merges. The lead reports with Summary, Evidence, and Merge Danger and waits. A lead merges only a pull request the owner has told it to merge.
+The lead agent merges, one pull request per task, using squash merge. A pull request merges when:
 
-The merge method is an owner setting. Whichever is used, the merge commit message must carry no trailer or attribution line. Check the final message on `main` after each merge.
+1. CI is green (before CI exists during scaffolding, review approval alone is the gate).
+2. A review agent running a different model from the author has approved the pull request.
+
+The `main` branch is protected so nothing is pushed to it directly. The squash merge commit message must carry no trailer or attribution line; check the final message on `main` after each merge. The owner reviews at each milestone and can revert.
 
 ## 8. Clean up
 

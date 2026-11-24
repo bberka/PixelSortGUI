@@ -2,7 +2,7 @@ Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 
 # PixelSortGUI design system
 
-Status: draft for owner review, 2026-11-24. Companion specs: [product.md](docs/specs/product.md), [engine.md](docs/specs/engine.md), [persistence.md](docs/specs/persistence.md), [roadmap.md](docs/specs/roadmap.md), [decisions.md](docs/specs/decisions.md). Source of truth for CSS tokens in code: `src/styles/app.css`.
+Status: settled for first release, 2026-11-24. Companion specs: [product.md](docs/specs/product.md), [engine.md](docs/specs/engine.md), [persistence.md](docs/specs/persistence.md), [roadmap.md](docs/specs/roadmap.md), [decisions.md](docs/specs/decisions.md). Source of truth for CSS tokens in code: `src/styles/app.css`.
 
 ## 1. Design direction and principles
 
@@ -13,11 +13,11 @@ Rules every screen follows:
 - **No decoration or marketing copy.** No hero banners, gradients, background grids, onboarding tours, or explanatory subtitles that restate labels.
 - **No remote assets.** System fonts only, bundled `lucide-react` icons only. Zero network requests at runtime.
 - **Semantic tokens only.** Never write raw hex, `rgb()`, or Tailwind palette color utilities (`bg-zinc-900`, `text-blue-500`) in `.tsx` components. Use semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) mapped in `src/styles/app.css`.
-- **Same features on every screen size.** Phone, tablet, and desktop expose the exact same capabilities (F1 to F19); only chrome placement and target sizing adapt.
+- **Same features on every screen size.** Phone, tablet, and desktop layouts expose the exact same first-release capabilities; only chrome placement and target sizing adapt. First-release acceptance is desktop only; phone and tablet widths are checked in a desktop browser for layout only.
 
 ## 2. Themes and color tokens
 
-The owner's "light black theme" request is implemented as two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default). Open question Q1 in [decisions.md](docs/specs/decisions.md#open-questions-for-the-owner).
+Two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with a toggle in the toolbar and Settings.
 
 ### 2.1 Activation and zero-flash boot
 
@@ -50,7 +50,7 @@ Defined as space-separated RGB triples in `src/styles/app.css` and exposed throu
 | `--destructive` | `#dc2626` / `220 38 38` | `#ef4444` / `239 68 68` | Delete button fill and error indicators |
 | `--destructive-text` | `#b91c1c` / `185 28 28` | `#f87171` / `248 113 113` | Destructive text on `--background` or `--card` (≥ 6.4:1) |
 | `--destructive-foreground` | `#ffffff` / `255 255 255` | `#000000` / `0 0 0` | Text on `--destructive` fill |
-| `--warning` | `#b45309` / `180 83 9` | `#f59e0b` / `245 158 11` | Storage warning and Safari 7-day banner accent |
+| `--warning` | `#b45309` / `180 83 9` | `#f59e0b` / `245 158 11` | Storage warning accent |
 | `--success` | `#15803d` / `21 128 61` | `#22c55e` / `34 197 94` | Persistent storage badge, completed status |
 | `--checker-a` | `#d4d4d8` / `212 212 216` | `#141414` / `20 20 20` | Transparency checkerboard tile A behind RGBA images |
 | `--checker-b` | `#e4e4e7` / `228 228 231` | `#0a0a0a` / `10 10 10` | Transparency checkerboard tile B behind RGBA images |
@@ -70,7 +70,7 @@ System stacks only (zero network requests):
 | Control label / Body | Sans | 14 px / 20 px | 500 (label), 400 (body) | |
 | Metadata (dimensions, dates, helper text) | Sans | 12 px / 16 px | 400 | `text-muted-foreground` |
 | Numeric readouts & inputs (desktop) | Mono | 13 px / 18 px | 400 | `font-variant-numeric: tabular-nums` |
-| Text and numeric inputs (touch devices) | Mono / Sans | **16 px** / 22 px | 400 | Enforced under `@media (pointer: coarse)` so iOS Safari never auto-zooms on focus (AC-F18.4) |
+| Text and numeric inputs (coarse pointer) | Mono / Sans | **16 px** / 22 px | 400 | Enforced under `@media (pointer: coarse)` so mobile browsers do not auto-zoom on focus |
 | Status pill (`Off`, `Original`, `100%`) | Mono / Sans | 12 px / 16 px | 500 | `tabular-nums` for percentages |
 
 ## 4. Spacing, radii and elevation
@@ -82,8 +82,8 @@ System stacks only (zero network requests):
   - Desktop right sidebar width: `340 px` (fixed).
   - Tablet docked bottom panel height: `360 px` default, resizable by pointer/keyboard handle between `240 px` and `50%` of viewport height, collapsible to a `48 px` header strip.
   - Phone bottom sheet detents: **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half** (`44%` viewport height), **Expanded** (`80%` viewport height).
-- **Interactive target minimums (AC-F18.3):**
-  - Touch (`@media (pointer: coarse)` or phone/tablet viewport class): `44 × 44 CSS px` minimum hit area for every button, slider thumb, toggle, chip, and menu trigger.
+- **Interactive target minimums:**
+  - Coarse pointer (`@media (pointer: coarse)` or phone/tablet viewport class): `44 × 44 CSS px` minimum hit area for every button, slider thumb, toggle, chip, and menu trigger.
   - Desktop (`@media (pointer: fine)` and desktop class): `24 × 24 CSS px` minimum (`32 px` standard toolbar buttons).
 - **Elevation:** Flat hierarchy using `1 px solid rgb(var(--border))` and `--background` → `--card` → `--popover` steps. Only overlays (`Dialog`, `Popover`, `DropdownMenu`, `Sheet`) carry a subtle shadow in Light mode (`0 8px 24px rgb(0 0 0 / 0.10)`); in True Black mode they rely on a crisp `1 px solid rgb(var(--input))` border instead of diffuse shadow.
 
@@ -101,7 +101,7 @@ Every control renders a visible `<label>` (equal to its accessible name, AC-F5.6
 | `integer` | `Slider` + numeric `Input` (`inputMode="numeric"`) | Same as `number`; displays `px` suffix when `unit === 'px'`. |
 | `boolean` | `Switch` | Toggles immediately; 1 commit per toggle. |
 | `enum` (≤ 4 options) | `ToggleGroup` (`type="single"`) | Segmented toggle buttons; active option uses high-contrast fill. |
-| `enum` (> 4 options) | `Select` (`SelectTrigger`, `SelectContent`, `SelectItem`) | Dropdown list (used for 8 sort/selection keys and 6 `channelSwap` orders). |
+| `enum` (> 4 options) | `Select` (`SelectTrigger`, `SelectContent`, `SelectItem`) | Dropdown list (used for 8 sort/selection keys). |
 | `range` | Two-thumb `Slider` (`minStepsBetweenThumbs={0}`) + two numeric `Input`s (`Low`, `High`) | Thumbs cannot cross; typing `lo > hi` swaps them to match `validateParams` (engine.md section 3). |
 | `angle` | Custom `AngleDial` + numeric `Input` (unit `°`, step `0.1`) | 44 × 44 px circular dial with pointer/touch drag; snaps within `±4°` to `spec.snaps` (`0, 45, 90, 135, 180, 225, 270, 315`), Shift bypasses snap. Keyboard on dial: Arrow ±1°, Shift+Arrow ±15°, Home 0°. |
 | `seed` | Numeric `Input` (`inputMode="numeric"`, uint32) + `"New seed"` `Button` (`Dices` icon) | `"New seed"` writes a random uint32 from `crypto.getRandomValues` as 1 commit. |
@@ -124,13 +124,13 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 | Card actions / Instance actions / Zoom menu | F2, F4, F13 | `DropdownMenu` | Keyboard-navigable menus |
 | Add effect picker | F4 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lists all registered effects with label and 1-line description (AC-F4.1) |
 | Stack / Presets switcher | F4, F10 | `Tabs` (`TabsList`, `TabsTrigger`, `TabsContent`) | Switches sidebar or panel between Stack and Presets |
-| Export / Backup / Save preset / Settings / About | F10, F12, F16, F17 | `Dialog` (desktop/tablet) / full-height `Sheet` (phone) | Focus-trapped modals |
-| Delete project / Storage full / Mobile 24 MP choice | F1, F2, F16 | `AlertDialog` | Explicit confirmation or blocking choice |
+| Export / Save preset / Settings / About | F10, F12, F16 | `Dialog` (desktop/tablet) / full-height `Sheet` (phone) | Focus-trapped modals |
+| Delete project / Storage full / Large image (> 50 MP) choice | F1, F2, F16 | `AlertDialog` | Explicit confirmation or blocking choice |
 | Phone parameter panel | F18 | Custom detent bottom sheet (Radix `Dialog` non-modal or pointer-tracked region) | Drag handle + detent cycle button; never blocks canvas gestures while collapsed/half |
 | Render & export progress | F8, F12 | `Progress` | `2 px` top bar on canvas (> 300 ms renders); labeled bar with Cancel in Export dialog |
 | Status tags (`Off`, `Original`, `Persistent`) | F4, F11, F16 | `Badge` | Text + icon, never colour alone |
-| Update ready / Import summary / Deleted project | F3, F15, F17 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
-| Persistent warnings (Storage unavailable, Safari 7-day, Backup reminder) | F16, F17 | Inline alert bar (`role="status"` or `role="alert"`) | Docked directly under the top bar; never overlays canvas controls |
+| Update ready / Deleted project | F3, F15 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
+| Persistent warning (Storage unavailable) | F16 | Inline alert bar (`role="status"` or `role="alert"`) | Docked directly under the top bar; never overlays canvas controls |
 
 ## 6. Layout
 
@@ -140,15 +140,17 @@ Viewport classes match [product.md section 4](docs/specs/product.md#4-platforms-
 - **Tablet:** width `640` to `1023 CSS px` (and height ≥ 500 px). Proof viewport: **`820 × 1180`**.
 - **Desktop:** width `≥ 1024 CSS px` (and height ≥ 500 px). Proof viewport: **`1440 × 900`**.
 
-All screens use `100dvh` height and `overflow-x: hidden` on the root shell so horizontal page scroll never occurs at any width (AC-F18.1). Rotating a phone or tablet preserves the open project, selected instance, zoom, and pan without tearing down the canvas worker (AC-F18.2).
+All three layouts are built and checked at these viewport sizes in a desktop browser so a later mobile port needs no layout rework. Checking `390 × 844` and `820 × 1180` in a desktop browser verifies layout only and does not reproduce mobile canvas, memory, or storage limits.
+
+All screens use `100dvh` height and `overflow-x: hidden` on the root shell so horizontal page scroll never occurs at any width (AC-F18.1). Resizing across viewport classes preserves the open project, selected instance, zoom, and pan without tearing down the canvas worker (AC-F18.2).
 
 ### 6.1 Library screen (all widths)
 
 ```
 +-------------------------------------------------------------------+
-| PixelSortGUI            [Open images]  [Backup] [Theme] [Settings]|  <- 48/52 px
+| PixelSortGUI            [Open images]          [Theme] [Settings] |  <- 48/52 px
 +-------------------------------------------------------------------+
-| [Optional banner: Safari 7-day / Backup reminder / Storage error] |
+| [Optional banner: Storage unavailable]                            |
 +-------------------------------------------------------------------+
 |  +---------------+  +---------------+  +---------------+          |
 |  |  [thumbnail]  |  |  [thumbnail]  |  |  [thumbnail]  |          |
@@ -161,7 +163,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 - **Grid columns:** Phone (`390 × 844`): 2 columns, `12 px` gap, `12 px` page padding. Tablet (`820 × 1180`): 3 columns, `16 px` gap, `16 px` padding. Desktop (`1440 × 900`): `repeat(auto-fill, minmax(220px, 1fr))`, `16 px` gap, `24 px` padding.
 - **Drag and drop (desktop, AC-F1.2):** Dragging files over the window displays a high-contrast dashed overlay (`"Drop images to open"`).
-- **Card interaction (AC-F2.7):** Card body is a focusable button (`Enter` / `Space` opens project); overflow `⋯` button sits in the card footer with `Open`, `Rename`, `Duplicate`, `Export backup`, `Delete`.
+- **Card interaction (AC-F2.7):** Card body is a focusable button (`Enter` / `Space` opens project); overflow `⋯` button sits in the card footer with `Open`, `Rename`, `Duplicate`, `Delete`.
 
 ### 6.2 Editor screen: Desktop (`1440 × 900`)
 
@@ -242,16 +244,24 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 - **Selection debug view (F6):** While `"Show selection"` is on for a `pixelSort` instance, show a top-left pill `"Selection preview (not exported)"`.
 - **Effect stack row (F4):** Shows drag grip (`GripVertical`), effect label, enabled `Switch`, and when off displays BOTH an `EyeOff` icon and the text `"Off"` (AC-F4.2). An unknown or newer-version instance renders with a dashed border, label `"Unsupported effect (<type> v<version>)"`, no parameter controls, and only Move up / Move down / Remove menu items (AC-F4.6).
 - **Export dialog (F12):**
-  - Format: `ToggleGroup` showing `PNG`, `JPEG`, and `WebP` (omitted when startup `convertToBlob` probe fails, e.g. Safari, AC-F12.2).
+  - Format: `ToggleGroup` showing `PNG`, `JPEG`, and `WebP` (omitted when startup `convertToBlob` probe fails, AC-F12.2).
   - Quality: `Slider` + `Input` (`50` to `100`, default `92`), hidden when `PNG` is selected.
   - Size: `ToggleGroup` (`Full`, `1/2`, `1/4`, `Custom`). Choosing `Custom` reveals a `"Longest side (px)"` numeric input capped at `max(sourceWidth, sourceHeight)`. Below the control, display exact output dimensions computed by `renderSize` (e.g. `"2000 × 1500 px"`).
   - Filename: text `Input` prefilled `<project name>-<YYYYMMDD-HHmmss>.<ext>`.
   - Actions: `"Download"` primary button, `"Share"` secondary button (shown only when `navigator.canShare?.({files: [...]})` is true), and during export a `Progress` bar with stage label (`Decoding`, `Rendering`, `Encoding`) and `"Cancel"` button (AC-F12.4).
-- **Settings and About (F14, F15, F16, F17):**
+- **Settings and About (F14, F15, F16):**
   - Appearance: Theme `ToggleGroup` (`System`, `Light`, `True Black`).
-  - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, `"Last backup"` date, `"Export backup"` and `"Import backup"` buttons, and a short note that Private Browsing does not retain data after closing.
-  - App installation: `"Install app"` button when `beforeinstallprompt` is captured (Android Chrome / desktop Chromium), or brief `"Add to Home Screen"` instructions on iOS Safari tabs.
+  - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, and a short note that Private Browsing does not retain data after closing.
+  - App installation: `"Install app"` button when `beforeinstallprompt` is captured (desktop Chromium).
   - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section / dialog listing bundled MIT notices when present.
+
+### 7.1 On-canvas tool slot (reserved for later)
+
+Designed now so future interactive tools (such as painting a mask or drawing a sort path) plug in without changing the parameter panel or the three responsive layouts. Not built in the first release.
+
+- **Placement:** An optional floating tool strip docked inside the canvas stage (top-left on desktop and tablet, above the stack strip on phone), rendered only when the selected effect instance has a registered canvas tool binding ([engine.md section 4.7](docs/specs/engine.md#47-on-canvas-tool-slot-reserved-for-later)).
+- **Overlay and input:** The canvas stage reserves a transparent pointer-event overlay layer aligned to the same zoom and pan transform as the photo canvas. When an on-canvas tool is active, pointer events route to the tool handler; holding `Space` (or switching back to the pan/hand tool) temporarily restores canvas pan.
+- **No impact on schema-driven effects:** Effects without a registered canvas tool render no tool strip and keep the default pan-on-drag canvas behaviour.
 
 ## 8. Interaction: touch, pointer and keyboard
 
@@ -298,21 +308,18 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 
 | State | Trigger | Presentation and exact copy | Actions |
 |---|---|---|---|
-| Empty library (AC-F2.1) | 0 projects stored | Centered column: heading `"No projects yet"`, note `"Images stay on this device."` | `"Open images"` (primary), `"Import backup"` (secondary) |
+| Empty library (AC-F2.1) | 0 projects stored | Centered column: heading `"No projects yet"`, note `"Images stay on this device."` | `"Open images"` (primary) |
 | Empty effect stack | New project or all effects removed | Centered note in stack panel: `"No effects yet"` | `"Add effect"`, `"Browse presets"` |
 | Render in progress (AC-F8.3) | Preview render running > 300 ms | Thin `2 px` `--accent` progress bar pinned to top of canvas stage | Disappears on finish or cancel |
 | Full-resolution render (AC-F8.4) | Zoom > 1.25× settle proxy | Compact pill at bottom-left of canvas: `"Rendering full resolution"` | Disappears on finish or cancel (AC-F8.5) |
 | Worker crash (engine.md section 11) | 2nd worker crash within 60 s | Centered error card over canvas stage: `"Rendering stopped unexpectedly."` | `"Retry"`, `"Reset effects"` |
 | Insecure context (product.md section 4) | `!window.isSecureContext` | Full-screen blocking card: `"Secure connection required"` + `"Open PixelSortGUI over HTTPS or http://localhost so browser storage and offline features can work."` | none |
 | Unsupported image format (AC-F1.3) | Browser cannot decode file | Error toast / dialog: `"Can't open <file name>: the browser can't read this image format."` | `"Dismiss"` |
-| Image too large (AC-F1.4) | Longest side > 16,384 px (or > 64 MP desktop / > 200 MB) | Error dialog: `"Image too large: the longest side is <N> px; the limit is 16,384 px."` (or area / file-size equivalent) | `"Dismiss"` |
-| Mobile large image (AC-F1.5) | Phone/tablet import between 24 MP and 64 MP | `AlertDialog`: explains 24 MP guaranteed mobile limit and that larger files may fail to export | `"Import at 24 MP"` (primary), `"Import anyway"` (secondary), `"Cancel"` |
+| Image too large (AC-F1.4) | Longest side > 16,384 px or file size > 200 MB | Error dialog: `"Image too large: the longest side is <N> px; the limit is 16,384 px."` (or file-size equivalent) | `"Dismiss"` |
+| Large image over 50 MP (AC-F1.5) | Image > 50 MP (50,000,000 px) within longest-side and file-size limits | `AlertDialog`: explains the 50 MP guaranteed maximum and that larger files may fail to export | `"Import at 50 MP"` (primary), `"Import anyway"` (secondary), `"Cancel"` |
 | Deleted project link (AC-F3.5) | Open `#/p/<deleted-id>` | Library screen + toast: `"That project no longer exists."` | none |
-| Storage full (AC-F16.2) | Quota pre-flight fail or `QuotaExceededError` | `AlertDialog`: `"Storage is full"` + explanation that no partial project was saved | `"Manage library"`, `"Export backup"` |
-| Storage unavailable (AC-F16.4) | IndexedDB cannot open | Persistent top banner: `"Storage unavailable: nothing will be saved after you close this tab."` | `"Export backup"` |
-| Safari 7-day eviction (AC-F16.3) | iOS/iPadOS Safari tab after 1st import | Dismissable top banner explaining 7-day tab data deletion and Share → **Add to Home Screen** | `"Dismiss"` (hides 30 days) |
-| Backup reminder (AC-F17.4) | ≥ 1 project and > 30 days since backup | Dismissable banner on Library screen: `"You haven't backed up your projects in 30 days."` | `"Export backup"`, `"Dismiss"` |
-| Damaged or newer backup (AC-F17.3) | Backup import fails validation | Error dialog naming the exact failure (persistence.md section 8.3); imports nothing | `"Dismiss"` |
+| Storage full (AC-F16.2) | Quota pre-flight fail or `QuotaExceededError` | `AlertDialog`: `"Storage is full"` + explanation that no partial project was saved | `"Manage library"` |
+| Storage unavailable (AC-F16.4) | IndexedDB cannot open | Persistent top banner: `"Storage unavailable: nothing will be saved after you close this tab."` | none |
 | Export out of memory (engine.md section 11) | Worker returns `out-of-memory` | Inline error inside Export dialog: `"Not enough memory to export at this size. Try 1/2 or 1/4 size."` | Switch size preset, retry |
 | PWA update ready (AC-F15.3) | New service worker waiting | Persistent non-blocking toast: `"A new version is ready."` | `"Reload to update"`, `"Later"` |
 
@@ -325,6 +332,6 @@ Target: **WCAG 2.2 Level AA** for all UI outside the user's photo (F19).
 - **Focus visibility and management:** `:focus-visible` renders `2 px solid rgb(var(--ring))` with `2 px` offset on every interactive control. Opening a dialog or menu traps or moves focus inside; closing returns focus to the triggering element. Deleting a project card or effect row moves focus cleanly to the next sibling (or the Add/Open button if empty).
 - **Accessible names and tooltips:** Every icon-only button has an explicit `aria-label`. Undo and Redo buttons include the target commit label in both `aria-label` and tooltip, for example `"Undo Change Angle"` and `"Redo Add Pixel sort"` (AC-F9.2).
 - **Status announcements (AC-F19.3):** One visually hidden live region (`role="status" aria-live="polite" aria-atomic="true"`) announces `"Rendering"`, `"Rendered"`, `"Export finished: <file name>"`, and undo/redo results. Throttled so rapid `drag` renders do not spam assistive tech (announce on `settle` and `full` transitions).
-- **Touch targets and zoom safety:** Minimum `44 × 44 CSS px` interactive targets and minimum `16 px` font size on text/numeric inputs under `@media (pointer: coarse)` (AC-F18.3, AC-F18.4).
+- **Pointer and coarse-pointer sizing:** Minimum `24 × 24 CSS px` interactive targets on desktop (`@media (pointer: fine)`), and minimum `44 × 44 CSS px` targets plus `16 px` font size on text/numeric inputs under `@media (pointer: coarse)` so responsive layouts stay ready for touch devices.
 - **Reduced motion (AC-F19.4):** Under `@media (prefers-reduced-motion: reduce)`, all sheet transitions, toast slides, zoom easing, and spinner/progress animations become instant state updates (`transition-duration: 0.01ms`).
 - **Automated verification (AC-F14.3, AC-F19.2):** CI runs Playwright with `@axe-core/playwright` checking zero serious/critical/moderate WCAG 2.2 AA violations on the Library, Editor, Export dialog, and Settings screens in both Light and True Black themes at `390 × 844`, `820 × 1180`, and `1440 × 900`.

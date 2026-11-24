@@ -6,6 +6,6 @@
 		"jsx": "react-jsx",
 		"types": ["vite-plus/client"]
 	},
-	"include": ["../src"],
+	"include": ["../src", "../spikes/s1"],
 	"exclude": ["../src/**/*.test.ts", "../src/**/*.test.tsx"]
 }

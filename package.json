@@ -36,6 +36,7 @@
 		"check:agent-context": "node scripts/agent-context.ts",
 		"agent-context:write": "node scripts/agent-context.ts --write",
 		"spike:s3": "node spikes/s3/run.ts",
+		"bench:s1": "node scripts/spike-s1-bench.ts",
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
 	},
 	"dependencies": {

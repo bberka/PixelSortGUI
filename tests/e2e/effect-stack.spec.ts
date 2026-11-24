@@ -279,6 +279,8 @@ test('dragging the grip reorders the stack', async ({page}) => {
 			before.instances[0].id,
 			before.instances[2].id,
 		]);
+	const after = await readStack(page);
+	expect(after.historyHeadSeq).toBe(before.historyHeadSeq + 1);
 });
 
 test('Duplicate inserts a copy directly below with the same parameters and selects it', async ({

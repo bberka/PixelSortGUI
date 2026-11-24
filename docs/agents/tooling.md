@@ -1,9 +1,9 @@
 Written by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 
-# Tooling and CI: target for the scaffolding task
+# Tooling and CI
 
-Nothing in this document exists yet except `.hooks/commit-msg` and `.hooks/test-commit-msg.sh`. It specifies what the scaffolding task builds. The scaffolding agent writes the config files; this document is the spec for them. Reference material and the source projects' real files: `docs/research/tooling-reference.md`.
+The core project scaffold (T0.1) and `.hooks/commit-msg` exist. Items still marked `(planned)` below land in subsequent Milestone 0 tasks (T0.2–T0.5). Reference material and the source projects' real files: `docs/research/tooling-reference.md`.
 
 Once a file or command named here exists, delete "planned" from this document in the same pull request.
 
@@ -19,23 +19,23 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 
 | Command | Does |
 | --- | --- |
-| `vp run dev` | Dev server (planned) |
-| `vp run gui` | Build production `dist/`, then serve it locally at `http://localhost:4173` (planned) |
-| `vp run build` | Production build into `dist/` (planned) |
-| `vp run check` | `xo`, `tsgo -b`, `vp test run`: what pre-push and CI run (planned) |
-| `vp run lint`, `vp run lint:fix` | xo check, xo with fixes (planned) |
-| `vp run typecheck` | `tsgo -b` (planned) |
-| `vp run test`, `vp run test:watch` | `vp test run`, `vp test` (planned) |
+| `vp run dev` | Dev server |
+| `vp run gui` | Build production `dist/`, then serve it locally at `http://localhost:4173` |
+| `vp run build` | Production build into `dist/` |
+| `vp run check` | `xo`, `tsgo -b`, `vp test run`: what pre-push and CI run |
+| `vp run lint`, `vp run lint:fix` | xo check, xo with fixes |
+| `vp run typecheck` | `tsgo -b` |
+| `vp run test`, `vp run test:watch` | `vp test run`, `vp test` |
 | `vp run check:agent-context`, `vp run agent-context:write` | Size budget check and rewrite (planned) |
 | `vp run version:next` | Print the next release version (planned) |
 | `vp run evidence` | Upload proof screenshots into the pull request via `scripts/publish-evidence.ts` (planned) |
 | `vp run skills:install` | Restore the agent skills listed in `skills-lock.json` (planned, optional) |
 
-`vp dev` is a built-in that ignores a `dev` script, so `dev` and `gui` must be defined explicitly. Recommended: `run.tasks` in `vite.config.ts`, with `dev` running `vp dev` and `gui` running `vp build` then `vp preview`, both with caching off. Untested; the scaffolding agent verifies it and records the result here.
+`vp dev` is a built-in that ignores a `dev` script, so `dev` and `gui` are defined explicitly under `run.tasks` in `vite.config.ts` (`dev` runs `vp dev` and `gui` runs `vp build && vp preview`, both with `cache: false`) and omitted from `package.json` `scripts`. Verified with `vp` 1.4.0 (local `vite-plus` 1.6.0): Vite+ splits `&&` in `run.tasks.<name>.command` into sequential subcommands, respects `cache: false`, and serves `vp run gui` at `http://localhost:4173`.
 
-## Files the scaffolding task writes (all planned)
+## Core scaffold files
 
-`package.json` (with `"prepare": "vp hooks enable --hooks-dir .hooks"`), `pnpm-workspace.yaml` (catalog with `vite` as `npm:@voidzero-dev/vite-plus-core@<version>` and `vite-plus`, override `vite@*` to the catalog), `vite.config.ts`, `xo.config.ts`, `tsconfig.json` as a solution file with `tsconfig/base.json`, `app.json`, `node.json`, `test.json`, `components.json`, `index.html`, `.gitignore`, `VERSION`, `t3.json` (optional, buttons for `dev` and `gui`), and the scripts below.
+`package.json` (with `"prepare": "vp hooks enable --hooks-dir .hooks"`), `pnpm-workspace.yaml` (catalog with `vite` as `npm:@voidzero-dev/vite-plus-core@<version>` and `vite-plus`, override `vite@*` to the catalog), `vite.config.ts`, `xo.config.ts`, `tsconfig.json` as a solution file with `tsconfig/base.json`, `app.json`, `node.json`, `test.json`, `components.json`, `index.html`, `.gitignore`, `VERSION`, and `t3.json` (planned, optional, buttons for `dev` and `gui`), plus the scripts below (planned).
 
 `.gitignore` must include `node_modules/`, `dist/`, `*.tsbuildinfo`, `coverage/`, `/.agents/`, `/.claude/worktrees/`, `.unslop/`, and the local proof folder.
 

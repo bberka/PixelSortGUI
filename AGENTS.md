@@ -1,7 +1,7 @@
 # PixelSortGUI
 
 Web GUI editor for glitch art and pixel sorting of still photos. Static-hostable (`glitch.bbay.dev`), fully offline, no accounts, all state in browser storage, desktop-first with responsive layouts.
-Stack (planned): Vite+ (`vp`), pnpm, TypeScript, React 19, Tailwind 4, shadcn, Zustand, xo. Status: planning. No application code exists yet.
+Stack: Vite+ (`vp`), pnpm, TypeScript, React 19, Tailwind 4, shadcn, Zustand, xo. Status: scaffolded; application features are not yet implemented.
 The owner does not write code. A lead agent splits work into tasks, delegates each to a subagent, reviews the result, and merges approved pull requests.
 
 ## Hard rules
@@ -17,13 +17,13 @@ The owner does not write code. A lead agent splits work into tasks, delegates ea
 
 ## Commands
 
-Not available yet. They land with the scaffolding task, so do not run them before it merges. Details in [tooling.md](docs/agents/tooling.md).
+Details in [tooling.md](docs/agents/tooling.md).
 
-- `vp run dev`: dev mode (planned)
-- `vp run gui`: build, then serve the production build locally (planned)
-- `vp run check`: lint, typecheck, tests (planned)
-
-Available now: `sh .hooks/test-commit-msg.sh` tests the commit-msg hook.
+- `vp run dev`: dev mode
+- `vp run gui`: build, then serve the production build locally at `http://localhost:4173`
+- `vp run check`: lint, typecheck, tests
+- `vp run build`: production build into `dist/`
+- `sh .hooks/test-commit-msg.sh`: tests the commit-msg hook
 
 ## Load on demand
 

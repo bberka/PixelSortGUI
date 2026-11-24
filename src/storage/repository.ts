@@ -167,17 +167,20 @@ function readIndexDescending<T>(index: IDBIndex): Promise<T[]> {
 export type IndexedDbRepositoryOptions = {
 	storageManager?: StorageManagerLike;
 	now?: () => number;
+	keyRange?: typeof IDBKeyRange;
 };
 
 export class IndexedDbRepository implements StorageRepository {
 	readonly #db: IDBDatabase;
 	readonly #storageManager: StorageManagerLike | undefined;
 	readonly #now: () => number;
+	readonly #keyRange: typeof IDBKeyRange;
 
 	constructor(database: IDBDatabase, options: IndexedDbRepositoryOptions = {}) {
 		this.#db = database;
 		this.#storageManager = options.storageManager;
 		this.#now = options.now ?? (() => Date.now());
+		this.#keyRange = options.keyRange ?? globalThis.IDBKeyRange;
 	}
 
 	async #stepHistory(
@@ -539,7 +542,7 @@ export class IndexedDbRepository implements StorageRepository {
 				await requestToPromise(projectsStore.delete(id));
 				await requestToPromise(
 					historyStore.delete(
-						IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]),
+						this.#keyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]),
 					),
 				);
 				await requestToPromise(thumbnailsStore.delete(id));
@@ -592,7 +595,7 @@ export class IndexedDbRepository implements StorageRepository {
 
 				await requestToPromise(
 					historyStore.delete(
-						IDBKeyRange.bound(
+						this.#keyRange.bound(
 							[input.projectId, existing.historyHeadSeq + 1],
 							[input.projectId, Number.MAX_SAFE_INTEGER],
 						),
@@ -616,7 +619,7 @@ export class IndexedDbRepository implements StorageRepository {
 					nextMinSeq = nextSeq - MAX_HISTORY_ENTRIES + 1;
 					await requestToPromise(
 						historyStore.delete(
-							IDBKeyRange.bound(
+							this.#keyRange.bound(
 								[input.projectId, 0],
 								[input.projectId, nextMinSeq - 1],
 							),

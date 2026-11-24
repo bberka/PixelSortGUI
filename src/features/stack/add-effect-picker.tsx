@@ -75,7 +75,7 @@ export function AddEffectPicker({
 			aria-label="Add effect"
 			aria-describedby={describedBy}
 			disabled={disabled}
-			className="max-md:h-11 max-md:w-11 max-md:px-0"
+			className="max-md:h-11 max-md:w-11 max-md:px-0 md:w-full md:justify-start"
 		>
 			<PlusIcon aria-hidden="true" />
 			<span className="max-md:hidden">Add effect</span>

@@ -169,7 +169,7 @@ export function EffectStackPanel({
 
 	return (
 		<div className="flex h-full min-h-0 w-full items-center gap-1.5 px-1.5 md:flex-col md:items-stretch md:gap-2 md:px-2 md:py-2">
-			<div className="flex shrink-0 items-center gap-1.5 md:w-full">
+			<div className="flex shrink-0 items-center gap-1.5 md:w-full md:flex-col md:items-stretch">
 				{picker}
 				{limitNote}
 			</div>

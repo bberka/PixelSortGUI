@@ -471,6 +471,42 @@ describe('renderStack: cancellation', () => {
 		}
 	});
 
+	it('checks for cancellation between compositing slices of a large image', async () => {
+		const large = noiseImage(256, 256, 9);
+		const mixed = stack(instance('testInvert', {mix: 0.5}));
+		let total = 0;
+		const expected = await renderStack(
+			large,
+			mixed,
+			registry,
+			options(large, {
+				checkpoint() {
+					total++;
+				},
+			}),
+		);
+		expect(total).toBeGreaterThanOrEqual(1 + (256 * 256) / 16_384);
+
+		const cache = createStageCache();
+		await expect(
+			renderStack(
+				large,
+				mixed,
+				registry,
+				options(large, {checkpoint: cancelAfter(total - 1), cache}),
+			),
+		).rejects.toBeInstanceOf(Cancelled);
+		expect(cache.size).toBe(0);
+
+		const after = await renderStack(
+			large,
+			mixed,
+			registry,
+			options(large, {cache}),
+		);
+		expect(after.image).toEqual(expected.image);
+	});
+
 	it('awaits a checkpoint that returns a promise and honours its rejection', async () => {
 		let yields = 0;
 		const result = await renderStack(

@@ -445,6 +445,15 @@ describe('adaptive drag cap', () => {
 		]);
 	});
 
+	it('does not adapt on a drag render that was discarded', () => {
+		const {coordinator, renders, answer} = opened();
+		coordinator.setStack({stack: stackOf(1)}, {dragging: true});
+		const stale = renders('drag')[0];
+		coordinator.cancel();
+		answer(stale, 500);
+		expect(coordinator.getState().dragCap).toBe(1_048_576);
+	});
+
 	it('does not adapt on settle renders', () => {
 		const {coordinator, renders, answer, posted} = opened();
 		coordinator.setStack({stack: stackOf(1)});
@@ -607,6 +616,51 @@ describe('timeout and crashes', () => {
 
 		previews[0].fail('late error from the terminated worker');
 		expect(previews).toHaveLength(2);
+		expect(previews[1].terminated).toBe(false);
+		expect(coordinator.getState().failed).toBe(false);
+	});
+
+	it('closes a bitmap that a terminated worker delivers late', () => {
+		const {coordinator, renders, previews, frames} = opened();
+		coordinator.setStack({stack: stackOf(1)});
+		const sent = renders()[0];
+		previews[0].fail('boom');
+
+		const late = bitmap();
+		previews[0].reply({
+			type: 'rendered',
+			jobId: sent.jobId,
+			generation: sent.generation,
+			level: 'settle',
+			width: 10,
+			height: 10,
+			bitmap: late,
+			totalMs: 1,
+			perInstanceMs: [1],
+			warnings: [],
+		});
+		expect(late.closed).toBe(true);
+		expect(frames()).toHaveLength(0);
+	});
+
+	it('closes the previous original when the source is reloaded after a crash', () => {
+		const {posted, previews, preview, original, coordinator} = opened();
+		previews[0].fail('boom');
+		expect(original.closed).toBe(false);
+
+		const reloaded = bitmap();
+		const load = posted('loadSource').at(-1)!;
+		preview().reply({
+			type: 'sourceLoaded',
+			requestId: load.requestId,
+			sourceKey: load.sourceKey,
+			settle: {width: 2364, height: 1773},
+			drag: {width: 1182, height: 886},
+			original: reloaded,
+		});
+		expect(original.closed).toBe(true);
+		expect(reloaded.closed).toBe(false);
+		expect(coordinator.getState().source?.original).toBe(reloaded);
 	});
 
 	it('enters the failed state on a second crash within 60 s, until retry()', () => {
@@ -682,6 +736,17 @@ describe('full render', () => {
 				stack: stackOf(1),
 			},
 		]);
+	});
+
+	it('gives up the 500 ms wait when the view goes back under the threshold', () => {
+		const {coordinator, exports, events} = settled();
+		coordinator.setViewScale(2);
+		vi.advanceTimersByTime(300);
+		coordinator.setViewScale(0.5);
+		expect(events.at(-1)).toEqual({type: 'busy', level: 'full', busy: false});
+		vi.advanceTimersByTime(1000);
+		expect(exports).toHaveLength(0);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it('delivers the tiles, terminates the worker, and discards them on a stack change', () => {
@@ -892,6 +957,27 @@ describe('export', () => {
 });
 
 describe('dispose', () => {
+	it('closes a source that finishes loading after dispose and reports nothing', () => {
+		const {coordinator, posted, preview, events} = setup();
+		coordinator.setSource(SOURCE);
+		const load = posted('loadSource')[0];
+		coordinator.dispose();
+		const count = events.length;
+
+		const late = bitmap();
+		preview().reply({
+			type: 'sourceLoaded',
+			requestId: load.requestId,
+			sourceKey: load.sourceKey,
+			settle: {width: 2364, height: 1773},
+			drag: {width: 1182, height: 886},
+			original: late,
+		});
+		expect(late.closed).toBe(true);
+		expect(coordinator.getState().source).toBeUndefined();
+		expect(events).toHaveLength(count);
+	});
+
 	it('terminates every worker, closes bitmaps and stops timers', async () => {
 		const {coordinator, renders, answer, previews, exports, original} =
 			opened();

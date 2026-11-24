@@ -257,6 +257,7 @@ export function createRenderCoordinator(
 	let request: StackRequest | undefined;
 
 	let preview: WorkerPort<PreviewRequest> | undefined;
+	let previewEpoch = 0;
 	const inFlight: {drag?: Job; settle?: Job} = {};
 	const sentGeneration = {drag: -1, settle: -1};
 	let dragWanted = false;
@@ -416,10 +417,7 @@ export function createRenderCoordinator(
 		}
 
 		ready = false;
-		preview ??= env.createPreviewWorker({
-			message: onPreviewMessage,
-			error: crash,
-		});
+		preview ??= createPreview();
 		nextId++;
 		loadRequestId = nextId;
 		preview.post({
@@ -433,6 +431,30 @@ export function createRenderCoordinator(
 		});
 	};
 
+	// A terminated worker can still deliver a queued message or error. Handlers
+	// are tied to the worker they were made for, so those cannot reach its
+	// replacement; a bitmap they carry is closed here because nothing else will.
+	const createPreview = () => {
+		previewEpoch++;
+		const epoch = previewEpoch;
+		return env.createPreviewWorker({
+			message(response) {
+				if (epoch === previewEpoch && !disposed) {
+					onPreviewMessage(response);
+				} else if (response.type === 'sourceLoaded') {
+					response.original.close();
+				} else if (response.type === 'rendered') {
+					response.bitmap.close();
+				}
+			},
+			error(message) {
+				if (epoch === previewEpoch) {
+					crash(message);
+				}
+			},
+		});
+	};
+
 	// Engine.md section 11: terminate, start a new worker, reload the source and
 	// repeat the newest request. A second crash within 60 s is the failed state.
 	function crash(message: string) {
@@ -442,6 +464,7 @@ export function createRenderCoordinator(
 
 		preview.terminate();
 		preview = undefined;
+		previewEpoch++;
 		ready = false;
 		cancelledBelow = 0;
 		for (const level of PREVIEW_LEVELS) {
@@ -635,7 +658,7 @@ export function createRenderCoordinator(
 				}
 
 				const job = finishJob(level);
-				if (level === 'drag') {
+				if (level === 'drag' && !job?.discard) {
 					const cap = nextDragCap(dragCap, response.totalMs);
 					if (cap !== dragCap) {
 						dragCap = cap;
@@ -930,7 +953,9 @@ export function createRenderCoordinator(
 
 			preview?.terminate();
 			preview = undefined;
+			previewEpoch++;
 			disposed = true;
+			source = undefined;
 			listeners.clear();
 			sourceInfo?.original.close();
 			frame?.bitmap.close();

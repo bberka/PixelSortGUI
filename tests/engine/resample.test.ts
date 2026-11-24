@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import {describe, expect, it} from 'vite-plus/test';
 import {boxDownscale} from '../../src/engine/resample.ts';
 import type {RgbaImage} from '../../src/engine/types.ts';
-import {bytes, image, noiseImage} from './helpers.ts';
+import {bytes, image, noiseImage} from './sample-effects.ts';
 
 // A grey image: every channel of a pixel holds the same value.
 function grey(width: number, height: number, values: number[]): RgbaImage {

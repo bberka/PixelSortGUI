@@ -17,7 +17,7 @@ import {
 	options,
 	selectionEffect,
 	stack,
-} from './helpers.ts';
+} from './sample-effects.ts';
 
 describe('createStageCache', () => {
 	it('uses the limits of engine.md section 8.5 by default', () => {

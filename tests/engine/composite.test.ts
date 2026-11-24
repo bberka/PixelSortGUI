@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import {describe, expect, it} from 'vite-plus/test';
 import {composite, compositeRows} from '../../src/engine/composite.ts';
 import type {BlendMode} from '../../src/engine/types.ts';
-import {bytes, image, noiseImage} from './helpers.ts';
+import {bytes, image, noiseImage} from './sample-effects.ts';
 
 // Instance input and effect output for one pixel.
 const INPUT = [200, 50, 10, 255];

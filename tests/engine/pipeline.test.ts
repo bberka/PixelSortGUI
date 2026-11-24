@@ -27,7 +27,7 @@ import {
 	options,
 	selectionEffect,
 	stack,
-} from './helpers.ts';
+} from './sample-effects.ts';
 
 const registry = createRegistry([
 	addEffect(),
@@ -592,7 +592,7 @@ describe('renderStack: buffers and progress', () => {
 		expect(second.image).toEqual(first.image);
 	});
 
-	it('reports progress that never goes backwards and ends at 1', async () => {
+	it('reports (completed + fraction) / enabled count, ending at 1', async () => {
 		const source = noiseImage(4, 4);
 		const seen: number[] = [];
 		await renderStack(
@@ -610,9 +610,38 @@ describe('renderStack: buffers and progress', () => {
 				},
 			}),
 		);
-		expect(seen).toEqual([
-			0.125, 0.25, 0.375, 0.5, 0.5, 0.625, 0.75, 0.875, 1, 1,
-		]);
+		// Three enabled instances; the unknown one in the middle counts as done.
+		expect(seen).toEqual(
+			[0.25, 0.5, 0.75, 1, 1, 2.25, 2.5, 2.75, 3, 3].map((done) => done / 3),
+		);
+	});
+
+	it('never reports a lower fraction than before, and jumps to 1 when a debug render stops early', async () => {
+		const source = noiseImage(4, 4);
+		const backwards: EffectDefinition<{}> = {
+			...invertEffect,
+			type: 'testBackwards',
+			render(input, output, _params, ctx) {
+				ctx.progress(0.8);
+				ctx.progress(0.2);
+				ctx.progress(7);
+				output.data.set(input.data);
+			},
+		};
+		const target = instance('testBackwards');
+		const seen: number[] = [];
+		await renderStack(
+			source,
+			stack(target, instance('testBackwards')),
+			createRegistry([backwards]),
+			options(source, {
+				debug: {instanceId: target.id, view: 'selection'},
+				onProgress(fraction) {
+					seen.push(fraction);
+				},
+			}),
+		);
+		expect(seen).toEqual([0.4, 0.5, 0.5, 1]);
 	});
 
 	it('reports progress 1 for a stack with nothing to render', async () => {

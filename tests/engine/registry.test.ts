@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vite-plus/test';
 import {createRegistry} from '../../src/engine/registry.ts';
-import {addEffect, invertEffect, noiseEffect} from './helpers.ts';
+import {addEffect, invertEffect, noiseEffect} from './sample-effects.ts';
 
 describe('createRegistry', () => {
 	it('finds a definition by type', () => {

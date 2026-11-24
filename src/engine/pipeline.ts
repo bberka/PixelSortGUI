@@ -218,6 +218,8 @@ type Step = {
 	params: Record<string, ParamValue>;
 	isDebug: boolean;
 	cacheKey: string | undefined;
+	// Enabled instances before this one, skipped ones included.
+	enabledBefore: number;
 };
 
 const CHECKPOINT_PIXELS = 16_384;
@@ -257,6 +259,7 @@ export async function renderStack(
 			continue;
 		}
 
+		const enabledBefore = enabled.length;
 		enabled.push(instance);
 		const resolved = resolveInstance(instance, registry);
 		if (resolved.status !== 'ok') {
@@ -275,6 +278,7 @@ export async function renderStack(
 			definition: resolved.definition,
 			params: resolved.params,
 			isDebug,
+			enabledBefore,
 			cacheKey:
 				cache && !isDebug
 					? stageCacheKey(
@@ -305,10 +309,15 @@ export async function renderStack(
 		}
 	}
 
-	const reportProgress = (completed: number, fraction: number) => {
-		onProgress?.(
-			(completed + Math.min(Math.max(fraction, 0), 1)) / steps.length,
-		);
+	const enabledCount = stack.instances.filter((item) => item.enabled).length;
+	let reported = -1;
+	const report = (fraction: number) => {
+		if (!(onProgress && fraction >= reported)) {
+			return;
+		}
+
+		reported = fraction;
+		onProgress(fraction);
 	};
 
 	const scratch = createScratch();
@@ -316,7 +325,15 @@ export async function renderStack(
 	const rowsPerSlice = Math.max(1, Math.ceil(CHECKPOINT_PIXELS / width));
 	try {
 		for (let s = firstStep; s < steps.length; s++) {
-			const {index, instance, definition, params, isDebug, cacheKey} = steps[s];
+			const {
+				index,
+				instance,
+				definition,
+				params,
+				isDebug,
+				cacheKey,
+				enabledBefore,
+			} = steps[s];
 			const pending = checkpoint();
 			if (pending) {
 				await pending;
@@ -340,7 +357,10 @@ export async function renderStack(
 					debugView,
 					checkpoint,
 					progress(fraction) {
-						reportProgress(s, fraction);
+						report(
+							(enabledBefore + Math.min(Math.max(fraction, 0), 1)) /
+								enabledCount,
+						);
 					},
 				},
 				scratch,
@@ -378,11 +398,11 @@ export async function renderStack(
 			}
 
 			perInstanceMs[index] = performance.now() - started;
-			reportProgress(s + 1, 0);
+			report((enabledBefore + 1) / enabledCount);
 		}
 
-		if (steps.length === 0 || firstStep === steps.length) {
-			onProgress?.(1);
+		if (reported < 1) {
+			report(1);
 		}
 
 		return {image: copyImage(current), perInstanceMs, warnings};

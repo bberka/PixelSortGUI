@@ -12,7 +12,7 @@ import type {
 	ParamSpec,
 	ParamSpecs,
 } from '../../src/engine/types.ts';
-import {instance, type Params} from './helpers.ts';
+import {instance, type Params} from './sample-effects.ts';
 
 const meta = {label: 'Label', group: 'Group'};
 

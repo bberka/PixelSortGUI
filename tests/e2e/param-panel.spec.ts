@@ -123,6 +123,35 @@ async function selectedId(page: Page): Promise<string> {
 	return id;
 }
 
+async function readView(
+	page: Page,
+): Promise<{fitMode: string; zoom: number; centerX: number; centerY: number}> {
+	return page.evaluate(() => {
+		const project = (
+			globalThis as unknown as RuntimeGlobal
+		).__psgBundle?.store.getState().activeProject;
+		if (!project) {
+			throw new Error('No active project');
+		}
+
+		const {fitMode, zoom, centerX, centerY} = project.viewState;
+		return {fitMode, zoom, centerX, centerY};
+	});
+}
+
+async function readParams(
+	page: Page,
+): Promise<Record<string, ParamValue> | undefined> {
+	return page.evaluate(() => {
+		const project = (
+			globalThis as unknown as RuntimeGlobal
+		).__psgBundle?.store.getState().activeProject;
+		return project?.stack.instances.find(
+			(item) => item.id === project.selectedInstanceId,
+		)?.params;
+	});
+}
+
 async function setParam(
 	page: Page,
 	key: string,
@@ -565,6 +594,46 @@ test('a burst of arrow keys on a slider is one commit after 500 ms', async ({
 		.poll(async () => (await readStack(page)).historyHeadSeq)
 		.toBe(before.historyHeadSeq + 2);
 	expect((await readStack(page)).instances[0].params.skipChance).toBe(1);
+});
+
+test('arrow keys belong to the focused control, never to the whole page', async ({
+	page,
+}) => {
+	await seedProject(page, ['pixelSort']);
+	await expect(page.locator('canvas')).toBeVisible();
+
+	// The canvas has focus: the arrows pan it and leave every parameter alone.
+	const beforeCanvas = {
+		view: await readView(page),
+		params: await readParams(page),
+	};
+	await page.locator('canvas').focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('ArrowDown');
+	const afterCanvas = {
+		view: await readView(page),
+		params: await readParams(page),
+	};
+
+	expect(afterCanvas.view.centerX).toBeGreaterThan(beforeCanvas.view.centerX);
+	expect(afterCanvas.view.centerY).toBeGreaterThan(beforeCanvas.view.centerY);
+	expect(afterCanvas.params).toEqual(beforeCanvas.params);
+
+	// A slider in the panel has focus: the arrows move that slider only.
+	const thumb = page.getByRole('slider', {name: 'Skip chance'});
+	await thumb.focus();
+	const beforeSlider = {
+		view: await readView(page),
+		params: await readParams(page),
+	};
+	await page.keyboard.press('ArrowRight');
+	await expect(paramRow(page, 'Skip chance')).toContainText('0.01');
+	// A burst of nudges commits once, after the burst ends.
+	await expect
+		.poll(async () => (await readParams(page))?.skipChance)
+		.toBeCloseTo((beforeSlider.params?.skipChance as number) + 0.01, 5);
+
+	expect(await readView(page)).toEqual(beforeSlider.view);
 });
 
 test('the angle dial snaps within 4 degrees and Shift bypasses the snap', async ({

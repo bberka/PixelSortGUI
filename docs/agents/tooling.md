@@ -26,7 +26,8 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run lint`, `vp run lint:fix` | xo check, xo with fixes |
 | `vp run typecheck` | `tsgo -b` |
 | `vp run test`, `vp run test:watch` | `vp test run`, `vp test` |
-| `vp run test:e2e` | Playwright end-to-end suite against the production build on Chromium and Firefox |
+| `vp run test:e2e` | Playwright end-to-end suite against the production build on Chromium and Firefox, without the `@perf` tests |
+| `vp run test:perf` | The `@perf` speed budgets on both browsers, serially (`--workers=1`), via `playwright.perf.config.ts` |
 | `pnpm run gen:notices`, `pnpm run check:notices` | Write the third-party notices from the bundled packages; check the committed ones are current (see [licensing.md](licensing.md)) |
 | `vp run check:a11y` | Playwright `@axe-core/playwright` accessibility checks (`@a11y` tests) |
 | `vp run proof:sheet` | Capture proof viewports and build a contact sheet via `scripts/proof-sheet.ts` |
@@ -74,10 +75,15 @@ Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref
 | `hooks` | `sh .hooks/test-commit-msg.sh` |
 | `commit-messages` | Runs `.hooks/commit-msg` on every commit in a pull request |
 | `build` | `pnpm exec vp run build`, then `pnpm run check:notices` |
-| `e2e` | `pnpm exec vp run test:e2e` (Chromium and Firefox against the production build) |
+| `e2e` | Matrix of 4 shards, each `pnpm exec playwright test --shard=i/4` (Chromium and Firefox against the production build). Each shard uploads `playwright-report-shard-i`. |
+| `perf` | `pnpm exec vp run test:perf` on the runner, nothing else competing. Blocks merging through `test`. |
 | `test` | The required gate. `needs` all jobs above, `if: always()`, passes only when every needed job succeeded (except `commit-messages`, which may be `skipped` on `push` events only). Keep its name stable, because the branch ruleset requires it. |
 
 `agent-context.yml`, on pull requests (opened, synchronize, reopened, labeled, unlabeled): runs the size budget check against the base branch. Fetch the base from `github.base_ref`, not a hard-coded name. A pull request that grows the budget needs the label `agent-context-increase`.
+
+Performance tests are tagged `@perf` in the test title, so a new spec file needs no config change. The default projects exclude them; put the behaviour in an untagged test and only the time or frame-rate budget in the `@perf` one. When several agents share a machine, run the full suite with `--workers=4`, because timing under load is not what the budgets measure.
+
+CI retries a failed test once. A test that passes on retry keeps the job green, and `scripts/flaky-report.ts` lists it in the job summary and as a warning annotation (tested by `scripts/flaky-report.test.ts`).
 
 The owner sets a ruleset on `main` that requires a pull request and the checks `test` and the agent-context job.
 

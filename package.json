@@ -29,6 +29,7 @@
 		"check": "xo && tsgo -b && vp test run",
 		"version:next": "node scripts/release-version.ts next",
 		"test:e2e": "playwright test",
+		"test:perf": "playwright test --config playwright.perf.config.ts --workers=1",
 		"check:a11y": "playwright test --grep @a11y",
 		"proof:sheet": "node scripts/proof-sheet.ts",
 		"evidence": "node scripts/publish-evidence.ts",

@@ -378,8 +378,7 @@ test('a full storage shows the shell dialog and creates no project (AC-F16.2)', 
 	expect(snapshot.sourceCount).toBe(0);
 });
 
-test('probing a 50 MP image does not block the main thread', async ({page}) => {
-	test.slow();
+async function probeFiftyMegapixels(page: Page) {
 	await gotoLibrary(page);
 
 	const large = await bigJpeg(page);
@@ -390,19 +389,11 @@ test('probing a 50 MP image does not block the main thread', async ({page}) => {
 		dialog.getByRole('heading', {name: 'mural.jpg is 7100 × 7100 px'}),
 	).toBeVisible();
 	const sample = await stopStallSampler(page);
-
-	console.log(
-		`main-thread stall while probing a 50 MP image: ${sample.maxGapMs.toFixed(1)} ms over ${sample.frameCount} frames`,
-	);
-	expect(sample.frameCount).toBeGreaterThan(0);
-	expect(sample.maxGapMs).toBeLessThan(500);
 	await dialog.getByRole('button', {name: 'Cancel'}).click();
-});
+	return sample;
+}
 
-test('importing a 12 MP image does not block the main thread', async ({
-	page,
-}) => {
-	test.slow();
+async function importTwelveMegapixels(page: Page) {
 	await gotoLibrary(page);
 
 	const big = await makeImage(page, {
@@ -415,7 +406,39 @@ test('importing a 12 MP image does not block the main thread', async ({
 	await startStallSampler(page);
 	await dropImages(page, [big]);
 	await expectEditorOpen(page);
-	const sample = await stopStallSampler(page);
+	return stopStallSampler(page);
+}
+
+test('a 50 MP image is probed and offered for a decision', async ({page}) => {
+	test.slow();
+	const sample = await probeFiftyMegapixels(page);
+	expect(sample.frameCount).toBeGreaterThan(0);
+});
+
+test('a 12 MP image imports and opens the editor', async ({page}) => {
+	test.slow();
+	const sample = await importTwelveMegapixels(page);
+	expect(sample.frameCount).toBeGreaterThan(0);
+});
+
+test('probing a 50 MP image does not block the main thread @perf', async ({
+	page,
+}) => {
+	test.slow();
+	const sample = await probeFiftyMegapixels(page);
+
+	console.log(
+		`main-thread stall while probing a 50 MP image: ${sample.maxGapMs.toFixed(1)} ms over ${sample.frameCount} frames`,
+	);
+	expect(sample.frameCount).toBeGreaterThan(0);
+	expect(sample.maxGapMs).toBeLessThan(500);
+});
+
+test('importing a 12 MP image does not block the main thread @perf', async ({
+	page,
+}) => {
+	test.slow();
+	const sample = await importTwelveMegapixels(page);
 
 	console.log(
 		`main-thread stall while importing a 12 MP image: ${sample.maxGapMs.toFixed(1)} ms over ${sample.frameCount} frames`,

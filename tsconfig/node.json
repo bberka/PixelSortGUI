@@ -12,6 +12,7 @@
 		"../vite.config.ts",
 		"../xo.config.ts",
 		"../playwright.config.ts",
+		"../playwright.perf.config.ts",
 		"../scripts/**/*.ts"
 	],
 	"exclude": ["../scripts/**/*.test.ts"]

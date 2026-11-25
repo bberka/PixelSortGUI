@@ -327,9 +327,7 @@ test('the zoom menu offers Fit, 50%, 100%, 200% and 400% (AC-F13.2)', async ({
 	await expect(trigger).toHaveText(/100%/);
 });
 
-test('zooming and panning redraw at frame rate without writing the store or asking for a render (AC-F13.1)', async ({
-	page,
-}) => {
+async function measureZoomGesture(page: Page) {
 	await page.addInitScript(() => {
 		const counters = {draws: 0, renderRequests: 0};
 		Object.defineProperty(globalThis, '__canvasCounters', {
@@ -377,7 +375,7 @@ test('zooming and panning redraw at frame rate without writing the store or aski
 	await waitForSettledFrame(page);
 	await chooseZoom(page, '100%');
 
-	const measured = await page.evaluate(async () => {
+	return page.evaluate(async () => {
 		const canvas = globalThis.document.querySelector('canvas');
 		const counters = (globalThis as unknown as RuntimeGlobal).__canvasCounters;
 		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
@@ -427,12 +425,16 @@ test('zooming and panning redraw at frame rate without writing the store or aski
 			duringGesture: store.getState().activeProject?.viewState.zoom ?? 0,
 		};
 	});
+}
 
-	const framesPerSecond = (measured.draws / measured.elapsedMs) * 1000;
+test('zooming and panning redraw without writing the store or asking for a render (AC-F13.1)', async ({
+	page,
+}) => {
+	const measured = await measureZoomGesture(page);
 	expect(
-		framesPerSecond,
-		`redraws per second while zooming: ${framesPerSecond.toFixed(1)}`,
-	).toBeGreaterThanOrEqual(30);
+		measured.draws,
+		'the canvas redraws during the gesture',
+	).toBeGreaterThan(0);
 	expect(
 		measured.renderRequests,
 		'a zoom must not request an engine render',
@@ -444,6 +446,18 @@ test('zooming and panning redraw at frame rate without writing the store or aski
 	await expect
 		.poll(async () => (await readView(page)).zoom, {timeout: 3000})
 		.toBeGreaterThan(measured.before);
+});
+
+test('zooming and panning redraw at 30 frames per second or better (AC-F13.1) @perf', async ({
+	page,
+}) => {
+	const measured = await measureZoomGesture(page);
+	const framesPerSecond = (measured.draws / measured.elapsedMs) * 1000;
+	console.log(`[perf] zoom redraws per second: ${framesPerSecond.toFixed(1)}`);
+	expect(
+		framesPerSecond,
+		`redraws per second while zooming: ${framesPerSecond.toFixed(1)}`,
+	).toBeGreaterThanOrEqual(30);
 });
 
 test('ctrl+wheel zooms around the pointer, plain wheel pans', async ({

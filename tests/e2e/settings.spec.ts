@@ -101,11 +101,17 @@ test.describe('Settings, storage status, and About', () => {
 		const dialog = await openSettings(page);
 
 		await dialog.getByRole('button', {name: 'View notices'}).click();
-		const names = (
-			await dialog
-				.locator('#settings-third-party-notices li > div > :first-child')
-				.allTextContents()
-		).map((name) => name.trim());
+		const noticesList = dialog.locator('#settings-third-party-notices');
+		await expect(noticesList).toBeVisible();
+		// A locator call that reads many of these items crashes Playwright's
+		// Firefox page (Page crashed), so read the names in one page evaluation.
+		const names = await page.evaluate(() =>
+			[
+				...globalThis.document.querySelectorAll(
+					'#settings-third-party-notices li > div > :first-child',
+				),
+			].map((element) => element.textContent?.trim() ?? ''),
+		);
 		expect(names.length).toBeGreaterThan(10);
 		expect(names).toContain('react');
 		expect(names).toContain('lucide-react');

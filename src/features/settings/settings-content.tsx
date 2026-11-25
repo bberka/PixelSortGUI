@@ -9,10 +9,7 @@ import {
 	SunIcon,
 } from 'lucide-react';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
-import {
-	APP_LICENSE_TEXT,
-	THIRD_PARTY_NOTICES,
-} from './third-party-notices.generated.ts';
+import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
@@ -67,7 +64,6 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 	const setStorageMetrics = useAppStore((state) => state.setStorageMetrics);
 
 	const [requestingPersistence, setRequestingPersistence] = useState(false);
-	const [licenseOpen, setLicenseOpen] = useState(false);
 	const [noticesOpen, setNoticesOpen] = useState(false);
 	const mountedRef = useRef(true);
 
@@ -271,37 +267,6 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 						</li>
 					))}
 				</ul>
-
-				<div className="flex flex-col gap-2">
-					<div className="flex items-center justify-between gap-2">
-						<span className="text-foreground">MIT License</span>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							aria-expanded={licenseOpen}
-							aria-controls="settings-mit-license"
-							onClick={() => {
-								setLicenseOpen((previous) => !previous);
-							}}
-						>
-							{licenseOpen ? (
-								<ChevronDownIcon className="size-4" aria-hidden="true" />
-							) : (
-								<ChevronRightIcon className="size-4" aria-hidden="true" />
-							)}
-							<span>{licenseOpen ? 'Hide licence' : 'View licence'}</span>
-						</Button>
-					</div>
-					{licenseOpen ? (
-						<pre
-							id="settings-mit-license"
-							className="max-h-48 overflow-auto rounded-md border border-border bg-secondary p-3 font-mono text-xs leading-4 whitespace-pre-wrap text-foreground"
-						>
-							{APP_LICENSE_TEXT}
-						</pre>
-					) : null}
-				</div>
 
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center justify-between gap-2">

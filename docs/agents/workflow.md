@@ -41,6 +41,7 @@ Done when a reader with no other context could do the task and could tell when i
 2. If the spec is missing or does not cover the task, write or amend it first, as its own commit. The spec commit comes before the code commit.
 3. Implement against the acceptance criteria. Keep the diff to the smallest change that meets them.
 4. Update every doc that describes the changed behavior in the same pull request.
+5. A pull request that adds, removes or changes something a user can see or do updates the "What works today" and "Not there yet" lists in `README.md` in the same pull request.
 
 ## 4. Commits
 

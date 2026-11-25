@@ -5,10 +5,7 @@ import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {SettingsButton} from './settings-button.tsx';
-import {
-	APP_LICENSE_TEXT,
-	THIRD_PARTY_NOTICES,
-} from './third-party-notices.generated.ts';
+import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import type {AppRuntime} from '@/state/index.ts';
@@ -220,7 +217,7 @@ describe('Settings view', () => {
 		expect(dialog.textContent).toContain('Storage protection: Persistent');
 	});
 
-	it('displays About info, MIT licence text, ASDFPixelSort credit, and generated third-party notices', async () => {
+	it('displays About info, the ASDFPixelSort credit, and generated third-party notices', async () => {
 		const context = createTestStore();
 		mountSettings(context, {
 			estimate: async () => ({usage: 0, quota: 100_000_000}),
@@ -237,14 +234,7 @@ describe('Settings view', () => {
 			"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort.",
 		);
 
-		const viewLicenseButton = [...dialog.querySelectorAll('button')].find(
-			(button) => button.textContent?.includes('View licence'),
-		)!;
-		act(() => {
-			viewLicenseButton.click();
-		});
-		await flush();
-		expect(dialog.textContent).toContain(APP_LICENSE_TEXT.slice(0, 40));
+		expect(dialog.textContent).not.toContain('View licence');
 
 		const viewNoticesButton = [...dialog.querySelectorAll('button')].find(
 			(button) => button.textContent?.includes('View notices'),

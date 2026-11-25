@@ -1,7 +1,7 @@
 import {useMemo, useRef, useState, type PointerEvent} from 'react';
 import {AddEffectPicker} from './add-effect-picker.tsx';
 import {StackRow} from './stack-row.tsx';
-import {usePhoneLayout} from './use-phone-layout.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {effectRegistry} from '@/engine/effects/index.ts';

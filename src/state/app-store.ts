@@ -473,9 +473,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		devicePixelRatio?: number,
 	) => {
 		const dpr = devicePixelRatio ?? timerEnv.getDevicePixelRatio();
-		coordinator.setViewScale(
-			viewState.fitMode === 'custom' ? viewState.zoom * dpr : 0,
-		);
+		coordinator.setViewScale(viewState.zoom * dpr);
 	};
 
 	const maybeCaptureThumbnail = (frame: Frame) => {

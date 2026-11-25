@@ -66,7 +66,7 @@ describe('app store — projects, routing, settings, coordinator, and quota', ()
 				request: {stack: result.project.stack, debug: undefined},
 				options: undefined,
 			},
-			{type: 'setViewScale', scale: 0},
+			{type: 'setViewScale', scale: 1},
 		]);
 	});
 

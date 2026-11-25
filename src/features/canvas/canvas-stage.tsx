@@ -215,9 +215,13 @@ export function CanvasStage() {
 			dirtyRef.current = false;
 			writeLabel(next.zoom);
 			setLabelZoom(next.zoom);
+			if (viewportRef.current.width > 0 && viewportRef.current.height > 0) {
+				bundle.coordinator.setViewScale(next.zoom * devicePixelRatio());
+			}
+
 			scheduleDraw();
 		},
-		[scheduleDraw, writeLabel],
+		[bundle.coordinator, scheduleDraw, writeLabel],
 	);
 
 	// A new project, or a new source size, takes the stored view state.

@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test, type Page} from '@playwright/test';
 import {renderSize, renderSizeForPixelCap} from '../../src/codec/decode.ts';
 import {boxDownscale} from '../../src/engine/resample.ts';
 import {
@@ -295,13 +295,9 @@ test.describe('render workers in the production build', () => {
 		expect(actual.frameHash).toBe(expectedHash);
 	});
 
-	test('the main thread has no task over 50 ms while a 12 MP project renders', async ({
-		page,
-		browserName,
-	}) => {
-		test.setTimeout(120_000);
+	const renderTwelveMegapixels = async (page: Page) => {
 		await openRenderPage(page);
-		const actual = await page.evaluate(
+		return page.evaluate(
 			async (input) => {
 				const {renderTest} = globalThis as unknown as PageScope;
 				const width = 4000;
@@ -379,12 +375,28 @@ test.describe('render workers in the production build', () => {
 			},
 			{url: builtAsset('coordinator'), defaultStack},
 		);
+	};
+
+	test('a 12 MP project renders, drags, settles and exports without errors', async ({
+		page,
+	}) => {
+		test.setTimeout(120_000);
+		const actual = await renderTwelveMegapixels(page);
 
 		expect(actual.errors).toEqual([]);
 		expect(actual.dragFrames).toBeGreaterThan(0);
 		expect(actual.full).toEqual({width: 4000, height: 3000, tiles: 4});
 		expect(actual.exported).toEqual({width: 4000, height: 3000});
+	});
 
+	test('the main thread has no task over 50 ms while a 12 MP project renders @perf', async ({
+		page,
+		browserName,
+	}) => {
+		test.setTimeout(120_000);
+		const actual = await renderTwelveMegapixels(page);
+
+		expect(actual.errors).toEqual([]);
 		const {renderingReport, decodingReport} = actual;
 		expect(renderingReport.longTasks).toEqual([]);
 		expect(renderingReport.stalls.filter((stall) => stall.ms >= 50)).toEqual(
@@ -499,10 +511,9 @@ test.describe('render workers in the production build', () => {
 		});
 	});
 
-	test('cancelling an export stops it promptly', async ({page}) => {
-		test.setTimeout(120_000);
+	const cancelHeavyExport = async (page: Page) => {
 		await openRenderPage(page);
-		const actual = await page.evaluate(
+		return page.evaluate(
 			async (input) => {
 				const {renderTest} = globalThis as unknown as PageScope;
 				const {createRenderCoordinator} = await renderTest.loadCoordinator(
@@ -538,7 +549,17 @@ test.describe('render workers in the production build', () => {
 			},
 			{url: builtAsset('coordinator'), heavyStack},
 		);
+	};
 
+	test('cancelling an export stops it', async ({page}) => {
+		test.setTimeout(120_000);
+		const actual = await cancelHeavyExport(page);
+		expect(actual.outcome).toEqual({status: 'cancelled'});
+	});
+
+	test('cancelling an export stops it within 1 s @perf', async ({page}) => {
+		test.setTimeout(120_000);
+		const actual = await cancelHeavyExport(page);
 		expect(actual.outcome).toEqual({status: 'cancelled'});
 		// Product.md AC-F12.4 allows 1 s.
 		expect(actual.cancelMs).toBeLessThan(1000);

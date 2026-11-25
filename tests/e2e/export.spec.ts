@@ -214,7 +214,7 @@ async function decodeImageInPage(
 	);
 }
 
-test('AC-F12.1 & timing: exports a 12 MP project as PNG and JPEG at Full size', async ({
+test('AC-F12.1: exports a 12 MP project as PNG and JPEG at Full size', async ({
 	page,
 }, testInfo) => {
 	const consoleErrors = collectConsoleErrors(page);
@@ -247,7 +247,6 @@ test('AC-F12.1 & timing: exports a 12 MP project as PNG and JPEG at Full size', 
 	expect(pngDecoded.width).toBe(4000);
 	expect(pngDecoded.height).toBe(3000);
 	expect(pngChunkTypes(pngBytes)).not.toContain('eXIf');
-	expect(pngMs).toBeLessThan(5000);
 
 	await dialog.getByRole('radio', {name: 'JPEG'}).click();
 	await expect(dialog.getByRole('spinbutton', {name: 'Quality'})).toHaveValue(
@@ -273,6 +272,36 @@ test('AC-F12.1 & timing: exports a 12 MP project as PNG and JPEG at Full size', 
 		`[export-timing] ${testInfo.project.name} 12MP PNG=${Math.round(pngMs)}ms JPEG=${Math.round(jpegMs)}ms`,
 	);
 	expect(consoleErrors).toEqual([]);
+});
+
+test('AC-F12.1: a 12 MP PNG export at Full size finishes within 5 s @perf', async ({
+	page,
+}) => {
+	await seedProject(page, {
+		name: 'TwelveMP',
+		width: 4000,
+		height: 3000,
+		effects: ['pixelSort'],
+	});
+
+	await page.getByRole('button', {name: 'Export'}).click();
+	const dialog = page.getByRole('dialog', {name: 'Export'});
+	await expect(dialog).toBeVisible();
+	await expect(dialog.locator('[data-slot="export-dimensions"]')).toHaveText(
+		'4000 × 3000 px',
+	);
+
+	const pngStart = performance.now();
+	const [pngDownload] = await Promise.all([
+		page.waitForEvent('download'),
+		dialog.getByRole('button', {name: 'Download'}).click(),
+	]);
+	await readDownloadBytes(pngDownload);
+	const pngMs = performance.now() - pngStart;
+
+	expect(pngMs, `12 MP PNG export took ${Math.round(pngMs)} ms`).toBeLessThan(
+		5000,
+	);
 });
 
 test('AC-F12.2: WebP appears when supported and is omitted when convertToBlob probe fails', async ({
@@ -434,9 +463,7 @@ test('AC-F12.3: 4001 × 3001 at 1/2 size exports exact 2000 × 1500 PNG', async 
 	expect(decoded.height).toBe(1500);
 });
 
-test('AC-F12.4: Cancel stops the export within 1 s and writes no file', async ({
-	page,
-}) => {
+async function cancelExport(page: Page) {
 	await seedProject(page, {
 		name: 'CancelTest',
 		width: 4000,
@@ -494,18 +521,30 @@ test('AC-F12.4: Cancel stops the export within 1 s and writes no file', async ({
 	const cancelStart = performance.now();
 	await cancelButton.click();
 	await expect(dialog.getByRole('button', {name: 'Download'})).toBeVisible();
-	expect(performance.now() - cancelStart).toBeLessThan(1000);
+	const cancelMs = performance.now() - cancelStart;
+	const cancelled = await page.evaluate(
+		() =>
+			(
+				globalThis as unknown as {
+					__exportCancelState?: {cancelled: boolean};
+				}
+			).__exportCancelState?.cancelled,
+	);
+	return {cancelMs, cancelled, downloaded: () => downloaded};
+}
+
+test('AC-F12.4: Cancel stops the export and writes no file', async ({page}) => {
+	const result = await cancelExport(page);
+	expect(result.cancelled).toBe(true);
+	expect(result.downloaded()).toBe(false);
+});
+
+test('AC-F12.4: Cancel stops the export within 1 s @perf', async ({page}) => {
+	const result = await cancelExport(page);
 	expect(
-		await page.evaluate(
-			() =>
-				(
-					globalThis as unknown as {
-						__exportCancelState?: {cancelled: boolean};
-					}
-				).__exportCancelState?.cancelled,
-		),
-	).toBe(true);
-	expect(downloaded).toBe(false);
+		result.cancelMs,
+		`cancel took ${Math.round(result.cancelMs)} ms`,
+	).toBeLessThan(1000);
 });
 
 test('AC-F12.6 & AC-F6.5: strips EXIF metadata and two PNG exports are deterministic', async ({

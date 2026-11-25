@@ -134,12 +134,31 @@ The stack lists the project's effect instances top to bottom in the order they a
 
 Selecting an instance shows its parameters, generated from the effect type's parameter schema (engine.md section 3). Number parameters have a slider plus a numeric field for exact entry; enums use a segmented toggle (up to 4 options) or a select (more); booleans use a switch; ranges use a two-thumb slider with two numeric fields; angles use an angle dial with snap points and a numeric field; seeds use a numeric field and a "New seed" button. Parameters whose `visibleWhen` condition is false are hidden. Each parameter has a "Reset to default" action, and the instance has "Reset all".
 
+The panel header also has a "Randomize" button (dice icon) that gives every parameter of the selected instance a random valid value, so the user can explore looks quickly. Randomize is schema-driven: it reads only each parameter's `ParamSpec` (engine.md section 3) and names no effect or parameter, so an effect added later works with no extra code.
+
+- A `number` is drawn uniformly from the multiples of its step between `min` and `max`; an `integer` the same with step 1.
+- An `angle` is drawn uniformly from the 3600 values `0.0` to `359.9` (step 0.1). Snap points only guide dragging and are not used.
+- A `range` is two such draws, stored low then high. The range control has no minimum gap between its thumbs, so none is enforced.
+- An `enum` is drawn uniformly from its options and a `boolean` is true with probability one half.
+- A `seed` is a new uint32, like the one "New seed" writes.
+- Parameters hidden by `visibleWhen` are randomized too, because they keep their values and reach `render` (engine.md section 3); they are ready when a later change reveals them. Every combination of values the schema allows is valid, so nothing is restricted.
+- Randomize leaves the instance's Mix, Blend and on/off state, "Show selection", the other instances and the stack order unchanged.
+- The button is disabled when no effect is selected (the panel then shows its "No effect selected" note beside the disabled button) or the selected effect has no parameters. Activating it announces "Randomized <effect label>". On a phone-width layout it shows the icon only; the tooltip and accessible name stay "Randomize".
+- The random numbers come from `crypto.getRandomValues` in the app and from an injected source in tests. They only choose the stored values; rendering stays deterministic for the stored values.
+
 - AC-F5.1: Typing 37.5 into the angle field and pressing Enter sets the angle to 37.5 and creates one commit.
 - AC-F5.2: Typing a value outside the range (for example 400 for a 0 to 1 slider) clamps it to the nearest limit and shows the clamped value.
 - AC-F5.3: Dragging a slider for 3 s creates exactly one commit, on release.
 - AC-F5.4: With keyboard focus on a slider, Arrow keys change the value by one step and Shift+Arrow by ten steps; a burst of key presses with no gap over 500 ms creates one commit.
 - AC-F5.5: Setting pixel sort `intervalMode` to `edges` hides the threshold range and shows the edge threshold and edge blur controls.
 - AC-F5.6: Every control has a visible label, its current value with unit (for example "120 px", "45°", "0.25"), and an accessible name equal to the label.
+
+- AC-F5.7: The parameter panel header shows a "Randomize" button with a dice icon beside "Reset all". It has the accessible name "Randomize" and a tooltip, is reachable by Tab, and Enter and Space activate it.
+- AC-F5.8: One activation creates exactly one history entry labelled "Randomize <effect label>", so the Undo button reads "Undo Randomize <effect label>". One Undo restores every parameter to its previous value, and Redo reapplies the random values.
+- AC-F5.9: Every randomized value is valid for its `ParamSpec`: within `min` and `max`, a multiple of the step (integers stay integers), a range with low at most high, an enum option, a boolean, a uint32 seed, an angle in [0, 360) on the 0.1 step. For one random source the result is the same every time, and it is unchanged by `validateParams`.
+- AC-F5.10: Randomize changes the instance's parameters only: Mix, Blend, the enabled state, "Show selection" and every other instance are unchanged, and parameters hidden by `visibleWhen` are randomized too.
+- AC-F5.11: Randomize is disabled when no effect is selected or the effect has no parameters. After a click the live region says "Randomized <effect label>".
+- AC-F5.12: On a pixel sort instance, Randomize changes at least one displayed value and the rendered canvas, creates one history entry, and Undo restores the exact previous values. At 390 px width the header shows both buttons without horizontal overflow, and the page has no accessibility violations.
 
 ### F6. Pixel sort effect
 

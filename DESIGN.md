@@ -122,7 +122,7 @@ All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/
 
 Displayed in the parameter panel whenever an effect instance is selected (outside `ParamSpec`):
 
-- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit).
+- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit), plus a `"Randomize"` `Button` (ghost, `DicesIcon`, tooltip) before it that sets every param to a random valid value as 1 commit and leaves `mix`, `blend` and `enabled` alone; icon-only on phone widths (F5).
 - **Blend & Mix group (bottom section):**
   - `Mix`: `Slider` + numeric `Input` (`0` to `100%`, step `1%`, stored as `0..1` step `0.01`, default `100%`).
   - `Blend`: `ToggleGroup` (`normal` "Normal", `lighten` "Lighten", `darken` "Darken", `difference` "Difference").

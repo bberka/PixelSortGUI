@@ -238,11 +238,34 @@ describe('empty library', () => {
 		expect(harness.container.textContent).toContain(
 			'Images stay on this device.',
 		);
-		const buttons = [...harness.container.querySelectorAll('button')].map(
-			(button) => button.textContent,
-		);
-		expect(buttons).toContain('Open images');
+		const openButton = [
+			...harness.container.querySelectorAll<HTMLButtonElement>('button'),
+		].find((button) => button.textContent === 'Open images');
+		expect(openButton).toBeDefined();
+		expect(openButton?.disabled).toBe(false);
 		expect(cardElements(harness.container)).toHaveLength(0);
+	});
+
+	it('triggers the hidden file picker when Open images is activated', async () => {
+		const harness = await renderLibrary([]);
+		const openButton = [
+			...harness.container.querySelectorAll<HTMLButtonElement>('button'),
+		].find((button) => button.textContent === 'Open images');
+		expect(openButton).toBeDefined();
+
+		const fileInputs = [
+			...harness.container.querySelectorAll<HTMLInputElement>(
+				':scope main input[type="file"]',
+			),
+		];
+		expect(fileInputs).toHaveLength(1);
+		const clickSpy = vi.spyOn(fileInputs[0], 'click');
+
+		act(() => {
+			openButton!.click();
+		});
+
+		expect(clickSpy).toHaveBeenCalledTimes(1);
 	});
 });
 

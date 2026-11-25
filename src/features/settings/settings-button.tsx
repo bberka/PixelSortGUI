@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {SettingsIcon} from 'lucide-react';
 import {SettingsContent} from './settings-content.tsx';
-import {usePhoneLayout} from './use-phone-layout.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {Button} from '@/components/ui/button';
 import {
 	Dialog,

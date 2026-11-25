@@ -2,7 +2,6 @@ import {createElement, type ReactNode} from 'react';
 import {ArrowLeftIcon} from 'lucide-react';
 import {useAppStore} from './runtime-context.tsx';
 import {APP_BAR_ACTIONS} from './app-bar-actions.ts';
-import {ThemeToggle} from '@/components/theme-toggle';
 import {Button} from '@/components/ui/button';
 
 export function AppBarFrame({children}: {readonly children: ReactNode}) {
@@ -17,7 +16,6 @@ export function AppBar() {
 	const route = useAppStore((state) => state.route);
 	const projectName = useAppStore((state) => state.activeProject?.name ?? null);
 	const closeProject = useAppStore((state) => state.closeProject);
-	const setTheme = useAppStore((state) => state.setTheme);
 	const isEditor = route.screen === 'editor';
 	const actions = APP_BAR_ACTIONS.filter(
 		(action) => action.screen === route.screen,
@@ -52,11 +50,6 @@ export function AppBar() {
 				{actions.map((action) =>
 					createElement(action.component, {key: action.id}),
 				)}
-				<ThemeToggle
-					onSelect={(theme) => {
-						void setTheme(theme);
-					}}
-				/>
 			</div>
 		</AppBarFrame>
 	);

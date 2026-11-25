@@ -9,7 +9,7 @@ import {
 	Trash2Icon,
 } from 'lucide-react';
 import {toast} from 'sonner';
-import {ThemeSelector, ThemeToggle} from '@/components/theme-toggle';
+import {ThemeSelector} from '@/components/theme-toggle';
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -169,7 +169,10 @@ export function ComponentGallery() {
 	const [invalidLongestSide, setInvalidLongestSide] = useState('24000');
 
 	return (
-		<div className="min-h-dvh bg-background text-foreground">
+		<ScrollArea
+			className="h-dvh bg-background text-foreground"
+			viewportClassName="[&>div]:block!"
+		>
 			<header className="sticky top-0 z-30 flex h-[52px] items-center justify-between gap-2 border-b border-border bg-background px-3 sm:px-4 lg:h-12 lg:px-6">
 				<div className="flex min-w-0 items-center gap-2">
 					<h1 className="truncate text-lg leading-6 font-semibold">
@@ -183,7 +186,6 @@ export function ComponentGallery() {
 					<div className="hidden sm:block">
 						<ThemeSelector />
 					</div>
-					<ThemeToggle />
 				</div>
 			</header>
 
@@ -850,6 +852,6 @@ export function ComponentGallery() {
 					</Card>
 				</div>
 			</main>
-		</div>
+		</ScrollArea>
 	);
 }

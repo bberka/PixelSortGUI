@@ -66,9 +66,11 @@ test.describe('Settings, storage status, and About', () => {
 			),
 		).toBeVisible();
 
-		await dialog.getByRole('button', {name: 'View licence'}).click();
 		await expect(
-			dialog.getByText('Permission is hereby granted, free of charge'),
+			dialog.getByRole('button', {name: 'View licence'}),
+		).toHaveCount(0);
+		await expect(
+			dialog.getByRole('link', {name: /Licence \(MIT\)/}),
 		).toBeVisible();
 
 		await dialog.getByRole('button', {name: 'View notices'}).click();

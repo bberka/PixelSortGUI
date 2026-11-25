@@ -1,11 +1,36 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
-import {channelShiftEffect} from './channel-shift.ts';
-import {pixelSortEffect} from './pixel-sort/index.ts';
+import {
+	channelShiftSpec,
+	type ChannelShiftParams,
+} from './channel-shift-spec.ts';
+import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 
+const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
+	...pixelSortSpec,
+	async render(input, output, params, ctx) {
+		const {pixelSortEffect} = await import('./pixel-sort/index.ts');
+		return pixelSortEffect.render(input, output, params, ctx);
+	},
+};
+
+const lazyChannelShiftEffect: EffectDefinition<ChannelShiftParams> = {
+	...channelShiftSpec,
+	async render(input, output, params, ctx) {
+		const {channelShiftEffect} = await import('./channel-shift.ts');
+		return channelShiftEffect.render(input, output, params, ctx);
+	},
+};
+
+/**
+ Main-thread effect registry: carries schemas, labels, and defaults without
+ statically importing render implementations (such as the direction table).
+ Calling `render` dynamically loads the implementation if ever invoked outside
+ a worker.
+ */
 export const effects: readonly EffectDefinition[] = [
-	pixelSortEffect,
-	channelShiftEffect,
+	lazyPixelSortEffect,
+	lazyChannelShiftEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

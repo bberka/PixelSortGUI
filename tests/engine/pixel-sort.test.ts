@@ -59,8 +59,10 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 	});
 
 	it('is in the registered list', () => {
-		expect(effects).toContain(pixelSortEffect);
-		expect(effectRegistry.get('pixelSort')).toBe(pixelSortEffect);
+		expect(effects.map((effect) => effect.type)).toContain('pixelSort');
+		expect(effectRegistry.get('pixelSort')?.params).toBe(
+			pixelSortEffect.params,
+		);
 	});
 
 	it('declares the 15 parameters in table order with their groups', () => {

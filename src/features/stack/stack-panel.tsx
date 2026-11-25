@@ -1,7 +1,8 @@
 import {useMemo, useRef, useState, type PointerEvent} from 'react';
 import {AddEffectPicker} from './add-effect-picker.tsx';
 import {StackRow} from './stack-row.tsx';
-import {usePhoneLayout} from './use-phone-layout.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {effectRegistry} from '@/engine/effects/index.ts';
@@ -173,49 +174,56 @@ export function EffectStackPanel({
 				{picker}
 				{limitNote}
 			</div>
-			<ul
-				ref={listRef}
-				className="flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden md:flex-col md:items-stretch md:overflow-x-hidden md:overflow-y-auto"
-				onPointerDown={handlePointerDown}
-				onPointerMove={handlePointerMove}
-				onPointerUp={handlePointerUp}
-				onPointerCancel={() => {
-					setDrag(null);
-				}}
+			<ScrollArea
+				orientation="both"
+				tabStop={false}
+				className="min-h-0 min-w-0 flex-1 self-stretch"
+				viewportClassName="[&>div]:h-full"
 			>
-				{instances.map((instance, index) => (
-					<StackRow
-						key={instance.id}
-						instance={instance}
-						index={index}
-						total={instances.length}
-						label={labelFor(
-							instance,
-							registry,
-							unsupportedById.get(instance.id),
-						)}
-						isSelected={instance.id === selectedInstanceId}
-						isUnsupported={unsupportedById.has(instance.id)}
-						isDragging={drag?.instanceId === instance.id}
-						compact={compact}
-						onSelect={() => {
-							selectEffect(instance.id);
-						}}
-						onToggleEnabled={(enabled) => {
-							void setEffectEnabled(instance.id, enabled);
-						}}
-						onMove={(to) => {
-							move(instance, index, to);
-						}}
-						onDuplicate={() => {
-							void duplicateEffect(instance.id);
-						}}
-						onRemove={() => {
-							void removeEffect(instance.id);
-						}}
-					/>
-				))}
-			</ul>
+				<ul
+					ref={listRef}
+					className="flex h-full items-center gap-1 md:h-auto md:flex-col md:items-stretch"
+					onPointerDown={handlePointerDown}
+					onPointerMove={handlePointerMove}
+					onPointerUp={handlePointerUp}
+					onPointerCancel={() => {
+						setDrag(null);
+					}}
+				>
+					{instances.map((instance, index) => (
+						<StackRow
+							key={instance.id}
+							instance={instance}
+							index={index}
+							total={instances.length}
+							label={labelFor(
+								instance,
+								registry,
+								unsupportedById.get(instance.id),
+							)}
+							isSelected={instance.id === selectedInstanceId}
+							isUnsupported={unsupportedById.has(instance.id)}
+							isDragging={drag?.instanceId === instance.id}
+							compact={compact}
+							onSelect={() => {
+								selectEffect(instance.id);
+							}}
+							onToggleEnabled={(enabled) => {
+								void setEffectEnabled(instance.id, enabled);
+							}}
+							onMove={(to) => {
+								move(instance, index, to);
+							}}
+							onDuplicate={() => {
+								void duplicateEffect(instance.id);
+							}}
+							onRemove={() => {
+								void removeEffect(instance.id);
+							}}
+						/>
+					))}
+				</ul>
+			</ScrollArea>
 		</div>
 	);
 }

@@ -333,9 +333,12 @@ describe('app store — undo/redo, presets, and view-state persistence', () => {
 			centerY: 200,
 		});
 
-		// Switching back to fit sends viewScale 0
-		store.getState().setViewState({fitMode: 'fit'});
-		expect(coordinator.calls.at(-1)).toEqual({type: 'setViewScale', scale: 0});
+		// Switching back to fit reports the fitted zoom * dpr instead of 0
+		store.getState().setViewState({fitMode: 'fit', zoom: 0.75});
+		expect(coordinator.calls.at(-1)).toEqual({
+			type: 'setViewScale',
+			scale: 1.5,
+		});
 	});
 
 	it('dragSplitPosition stays in transientStore and commitSplitPosition schedules a debounced viewState save', async () => {

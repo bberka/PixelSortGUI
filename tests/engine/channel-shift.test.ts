@@ -72,8 +72,10 @@ async function renderDirect(
 
 describe('channelShiftEffect', () => {
 	it('is registered in effects/index.ts with the spec schema and defaults', () => {
-		expect(effects).toContain(channelShiftEffect);
-		expect(effectRegistry.get('channelShift')).toBe(channelShiftEffect);
+		expect(effects.map((effect) => effect.type)).toContain('channelShift');
+		expect(effectRegistry.get('channelShift')?.params).toBe(
+			channelShiftEffect.params,
+		);
 		expect(channelShiftEffect.type).toBe('channelShift');
 		expect(channelShiftEffect.version).toBe(1);
 		expect(channelShiftEffect.category).toBe('glitch');

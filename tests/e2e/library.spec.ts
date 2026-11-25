@@ -89,7 +89,7 @@ async function openCardMenu(page: Page, name: string): Promise<void> {
 	await page.getByRole('button', {name: `Actions for ${name}`}).click();
 }
 
-test('the empty library shows the heading, the note and the disabled action', async ({
+test('the empty library shows the heading, the note and the import action', async ({
 	page,
 }) => {
 	const consoleErrors = collectConsoleErrors(page);
@@ -99,7 +99,7 @@ test('the empty library shows the heading, the note and the disabled action', as
 		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
 	).toBeVisible();
 	await expect(page.getByText('Images stay on this device.')).toBeVisible();
-	await expect(page.getByRole('button', {name: 'Open images'})).toBeDisabled();
+	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();
 	await expect(page.getByRole('listitem')).toHaveCount(0);
 	expect(consoleErrors, 'Console errors').toEqual([]);
 });
@@ -439,7 +439,9 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 	const lastCardThumbnail = page.getByRole('listitem').last().locator('img');
 
 	const scrollStats = await page.evaluate(async () => {
-		const scroller = globalThis.document.querySelector('ul')?.parentElement;
+		const scroller = globalThis.document
+			.querySelector('ul')
+			?.closest('[data-slot="scroll-area-viewport"]');
 		if (!scroller) {
 			throw new Error('No scroll container');
 		}
@@ -479,7 +481,9 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 	expect(after.imagesInDom).toBeLessThan(40);
 
 	const nearBottom = await page.evaluate(() => {
-		const scroller = globalThis.document.querySelector('ul')?.parentElement;
+		const scroller = globalThis.document
+			.querySelector('ul')
+			?.closest('[data-slot="scroll-area-viewport"]');
 		return scroller
 			? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
 			: 0;

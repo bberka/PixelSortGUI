@@ -113,7 +113,7 @@ test('the app opens on the library screen with the empty state', async ({
 		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
 	).toBeVisible();
 	await expect(page.getByText('Images stay on this device.')).toBeVisible();
-	await expect(page.getByRole('button', {name: 'Open images'})).toBeDisabled();
+	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();
 	expect(consoleErrors, 'Console errors').toEqual([]);
 });
 
@@ -165,7 +165,7 @@ test('the app bar goes back to the library from the editor', async ({page}) => {
 	expect(new URL(page.url()).hash).toBe('#/');
 });
 
-test('the theme toggle in the app bar changes the theme and survives a reload', async ({
+test('the Settings theme selector changes the theme and survives a reload', async ({
 	page,
 }) => {
 	await page.goto('/');
@@ -179,8 +179,11 @@ test('the theme toggle in the app bar changes the theme and survives a reload', 
 			).backgroundColor,
 		}));
 
-	await page.getByRole('button', {name: /^Theme: /}).click();
-	await page.getByRole('menuitem', {name: 'True Black'}).click();
+	await page.getByRole('button', {name: 'Settings'}).click();
+	await page
+		.getByRole('dialog')
+		.getByRole('radio', {name: 'True Black'})
+		.click();
 	await expect.poll(readTheme).toEqual({
 		stored: 'dark',
 		attr: 'dark',
@@ -194,8 +197,8 @@ test('the theme toggle in the app bar changes the theme and survives a reload', 
 		background: 'rgb(0, 0, 0)',
 	});
 
-	await page.getByRole('button', {name: /^Theme: /}).click();
-	await page.getByRole('menuitem', {name: 'Light'}).click();
+	await page.getByRole('button', {name: 'Settings'}).click();
+	await page.getByRole('dialog').getByRole('radio', {name: 'Light'}).click();
 	await page.reload();
 	expect(await readTheme()).toEqual({
 		stored: 'light',
@@ -255,17 +258,28 @@ test('keyboard: the first Tab reaches a visible control and focus follows the vi
 	const settingsButton = page.getByRole('button', {name: 'Settings'});
 	await expect(settingsButton).toBeFocused();
 	const settingsBox = await settingsButton.boundingBox();
-	await page.keyboard.press('Tab');
-	const themeButton = page.getByRole('button', {name: /^Theme: /});
-	await expect(themeButton).toBeFocused();
-	const themeBox = await themeButton.boundingBox();
-	if (!backBox || !exportBox || !settingsBox || !themeBox) {
+	if (!backBox || !exportBox || !settingsBox) {
 		throw new Error('All app bar controls must have a layout box');
 	}
 
 	expect(backBox.x).toBeLessThan(exportBox.x);
 	expect(exportBox.x).toBeLessThan(settingsBox.x);
-	expect(settingsBox.x).toBeLessThan(themeBox.x);
+});
+
+test('the app bar has no theme button on the library and editor screens', async ({
+	page,
+}) => {
+	await page.goto('/');
+	const header = page.getByRole('banner');
+	await expect(header.getByRole('button', {name: 'Settings'})).toBeVisible();
+	await expect(header.getByRole('button', {name: /theme/i})).toHaveCount(0);
+
+	await importSyntheticProject(page);
+	await expect(
+		page.getByRole('button', {name: 'Back to library'}),
+	).toBeVisible();
+	await expect(header.getByRole('button', {name: 'Settings'})).toBeVisible();
+	await expect(header.getByRole('button', {name: /theme/i})).toHaveCount(0);
 });
 
 test('the component gallery is still reachable at its dev route', async ({

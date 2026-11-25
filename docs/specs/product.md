@@ -2,6 +2,7 @@ Written by Claude Opus 5.5 (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI product spec
 
@@ -216,7 +217,7 @@ The canvas supports fit-to-view, 100% (one image pixel per CSS pixel) and contin
 
 ### F14. Themes
 
-Two themes, light and true black (pure `#000000` background), plus "System" which follows the operating system setting. Default: System. The choice is made in Settings and from the theme button in the toolbar, applied before first paint on reload (no flash of the other theme). Tokens are in [DESIGN.md](../../DESIGN.md#2-themes-and-color-tokens).
+Two themes, light and true black (pure `#000000` background), plus "System" which follows the operating system setting. Default: System. The choice is made in Settings -> Appearance (the app bar has no theme button), applied before first paint on reload (no flash of the other theme). Tokens are in [DESIGN.md](../../DESIGN.md#2-themes-and-color-tokens).
 
 - AC-F14.1: Switching the OS to dark mode while "System" is selected switches the app to the true black theme without a reload.
 - AC-F14.2: Reloading with the light theme selected on a dark OS shows no dark frame before the light theme appears (checked with a screen recording at 60 fps).
@@ -255,25 +256,122 @@ WCAG 2.2 level AA for all UI outside the image itself. Details in [DESIGN.md sec
 - AC-F19.3: Render state changes ("Rendering", "Rendered", "Export finished: <file name>") are announced through a polite live region.
 - AC-F19.4: With `prefers-reduced-motion: reduce`, sheet and zoom animations are replaced by instant changes.
 
-## 6. Later (not in the first release)
+## 6. Next release (v0.2.0): specified features (F20 to F24)
+
+These features were requested by the owner after the first-release scope was settled. They are specified in full here and in [engine.md](engine.md#16-next-release-v020-and-later), [persistence.md](persistence.md#8-next-release-v020-geometry-transforms-and-history-jump), and [DESIGN.md](../../DESIGN.md#72-post-v010-ui-specifications-f20-f23-f24) so implementation agents can build them after `v0.1.0` ships (see [roadmap.md](roadmap.md#milestone-7-post-v010-geometry-formats-effects-and-history-v020) for the schedule impact if any item is pulled into `v0.1.0`).
+
+### F20. Geometry tools (crop, rotate, flip, resize)
+
+Non-destructive source geometry applied before the effect stack. Original file bytes in the `sources` store are never modified; the project stores a `SourceTransform` record (rotation, horizontal/vertical flip, integer crop rectangle, and optional resize with resampling filter) that defines the **effective image** fed into the effect stack. "Cut" in the owner's request is specified here as crop; see [decisions.md D26 and Q11](decisions.md#d26-interpretation-of-cut-and-change-history-2026-11-25) for the alternative region-cutout reading.
+
+- **Orientation:** Rotate 90° clockwise, rotate 90° counter-clockwise, flip horizontal, flip vertical. Stored as `rotation` (`0 | 90 | 180 | 270` degrees clockwise), `flipX`, and `flipY`.
+- **Crop:** Free aspect ratio or fixed aspect ratios (`Original`, `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `4:5`), interactive on-canvas crop box with corner/edge handles and numeric `X`, `Y`, `Width`, `Height` fields in oriented source pixels. Exact rounding rules are in [engine.md section 16.3](engine.md#163-geometry-transforms-f20).
+- **Resize:** Resize the cropped image by pixels (`Width`, `Height`) or by percentage (`1%` to `1000%`, rounded half away from zero), with aspect-ratio lock (on by default) and resampling filter choice (`Lanczos-3` default, `Bilinear`, `Nearest`). Output is capped at `16,384` px per side and `50,000,000` px (50 MP) total area (an image imported with "Import anyway" above 50 MP may always be resized downward, but never resized above the larger of 50 MP or its cropped pixel count).
+- **Interaction with stack, compare, export, and history:** Effect parameters in pixels (`unit: 'px'`) keep their stored numbers and apply in effective-image pixels. Compare ("Original") and Split show the geometry-transformed image without effects so pixels align 1:1. Export size presets (`Full`, `1/2`, `1/4`, `Custom`) apply to effective dimensions. Each committed geometry action creates one history entry (storing both `transform` and `stack`).
+
+Acceptance criteria:
+
+- AC-F20.1: Rotating a 4000 × 3000 px project 90° clockwise updates effective dimensions to 3000 × 4000 px in the canvas, export dialog, and library card, leaves the stored `SourceRecord` blob unchanged, and creates one history commit; Undo restores 4000 × 3000 px.
+- AC-F20.2: Flipping horizontal twice or rotating 90° four times returns pixel-identical output to the un-transformed image.
+- AC-F20.3: Choosing aspect ratio `1:1` on a 4000 × 3000 px image initializes the crop box to `x: 500, y: 0, width: 3000, height: 3000`; choosing `16:9` initializes `x: 0, y: 375, width: 4000, height: 2250`. Applying the crop creates one commit and keeps the original bytes intact so resetting the crop restores 4000 × 3000 px.
+- AC-F20.4: Resizing a 2000 × 1000 px image by 50% with aspect lock on produces 1000 × 500 px; entering width 20,000 px or dimensions exceeding 50,000,000 px is rejected with an inline error ("Maximum output size is 50 MP (50,000,000 px) and 16,384 px per side.") and does not commit.
+- AC-F20.5: Exporting at `Full` size after cropping to 1200 × 800 px downloads a 1200 × 800 px file; exporting at `1/2` downloads 600 × 400 px.
+- AC-F20.6: Applying a preset replaces only the effect stack and leaves the project's crop, rotation, flip, and resize intact.
+- AC-F20.7: Every geometry control (rotate, flip, aspect ratio, numeric crop fields, resize width/height/percent, filter, apply, reset) is operable by keyboard alone.
+
+### F21. Extended image formats
+
+Today (`v0.1.0`), import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`).
+
+Next-release additions (all bundled offline with MIT-compatible licences, zero runtime network calls; full browser support matrix and sources in [engine.md section 16.4](engine.md#164-extended-format-support-f21)):
+
+- **Import additions:**
+  - **TIFF (`.tif`, `.tiff`):** Decoded via bundled `utif2` (MIT, ~25 to 30 KB gzipped, lazy-loaded in the worker). Supports 8-bit and 16-bit (downconverted to 8-bit sRGB) grayscale, RGB, RGBA, paletted, uncompressed, LZW, PackBits, Deflate, and JPEG-compressed TIFFs. First page/IFD is imported.
+  - **SVG (`.svg`):** Rasterised on the main thread via an `HTMLImageElement` drawn onto a canvas (scripts and external resources are blocked by the browser's SVG-as-image sandbox) into an RGBA PNG blob stored in `sources`, capped at 16,384 px per side and 50 MP. SVGs without explicit pixel dimensions default to scaling their `viewBox` to a longest side of 2,048 px.
+  - **AVIF (`.avif`), BMP (`.bmp`), GIF first frame (`.gif`):** Explicitly tested in CI and listed in the file picker `accept` attribute.
+  - **Animated inputs (animated GIF, WebP, APNG, AVIF):** Import the first frame per the HTML `ImageBitmap` specification and show a non-blocking toast: `"Imported the first frame of <file name>. Animation is not supported yet."`
+- **Export additions:**
+  - **AVIF (`.avif`):** Encoded via lazy-loaded `@jsquash/avif` WebAssembly encoder (Apache-2.0, ~3.3 MB `.wasm` chunk loaded only when AVIF export is chosen), with quality 50 to 100 (default 80 for AVIF).
+  - **BMP (`.bmp`):** Encoded via our own pure-TypeScript 24-bit/32-bit uncompressed BMP writer (0 dependencies, ~1 KB). Useful for external databending workflows.
+  - **TIFF (`.tif`):** Encoded as uncompressed 8-bit RGBA TIFF via `utif2` (MIT, lazy-loaded).
+- **Refused formats (explicitly unsupported with clear errors):**
+  - **HEIC / HEIF (`.heic`, `.heif`):** Not natively decoded by Chrome, Edge, or Firefox; available Wasm decoders wrap LGPL `libheif`/`libde265` (~750 KB to 3 MB) and carry HEVC patent encumbrance. Rejected with `"Can't open <file name>: HEIC/HEIF is not supported in this browser. Convert it to JPEG, PNG, or WebP first."`
+  - **Camera RAW (`.dng`, `.cr2`, `.cr3`, `.nef`, `.arw`, `.raf`, `.orf`, `.rw2`):** Not natively decoded by browsers; `dcraw` is GPL-2.0+, `LibRaw` is LGPL-2.1/CDDL-1.0, and RAW development is a non-goal (section 7). Rejected with `"Can't open <file name>: RAW camera files are not supported. Export a TIFF, PNG, or JPEG from your RAW converter first."`
+
+Acceptance criteria:
+
+- AC-F21.1: Importing a valid 8-bit RGB TIFF and a 16-bit TIFF creates projects with exact dimensions and upright orientation in Chromium and Firefox.
+- AC-F21.2: Importing an SVG with `viewBox="0 0 100 50"` and no explicit width/height rasterises it to 2048 × 1024 px with zero external network requests.
+- AC-F21.3: Importing an animated GIF imports frame 0 and displays the first-frame notice toast.
+- AC-F21.4: Dropping a `.heic` file or a `.dng`/`.cr2` file creates no project and shows the format-specific message naming HEIC/HEIF or RAW.
+- AC-F21.5: Exporting to AVIF, BMP, and TIFF downloads valid files whose headers match the format (`ftypavif`, `BM`, `II*\0` or `MM\0*`), have exact target dimensions, and carry no EXIF or GPS metadata.
+- AC-F21.6: Initial app load does not fetch the AVIF Wasm chunk or `utif2` chunk until the user imports a TIFF or selects AVIF/TIFF export.
+
+### F22. Expanded glitch effect catalogue
+
+Adds a catalogue of 11 deterministic still-photo glitch effects beyond `pixelSort` and `channelShift`, fully specified in [engine.md section 16.1](engine.md#161-deferred-glitch-effects-and-v020-catalogue). All 11 use the existing `ParamSpec` vocabulary and require zero hand-written parameter UI code.
+
+**Ranked top five for `v0.2.0` (by visual value to implementation effort):**
+
+1. `sliceShift` (glitch): shift random horizontal or vertical bands sideways.
+2. `channelSwap` (color): permute R, G, and B channels.
+3. `blockShuffle` (glitch): swap square tiles around the image.
+4. `scanlineWave` (glitch): sinusoidal and jittered row or column displacement.
+5. `posterize` (color): reduce colour depth by level quantization or bit-crush.
+
+**Remaining six specified for subsequent releases (in ranked order):**
+
+6. `bayerDither` (color): ordered Bayer matrix dithering (2×2, 4×4, 8×8).
+7. `rgbNoise` (glitch): deterministic colour or monochrome grain and hot-pixel dropout.
+8. `pixelSmear` (glitch): carry pixels along a direction with per-pixel decay; supports `'selection'` debug view.
+9. `mirrorFold` (glitch): horizontal, vertical, quad, or 8-way radial mirror fold.
+10. `thresholdInvert` (color): invert pixels or channels inside a key threshold range; supports `'selection'` debug view.
+11. `jpegCrush` (glitch): deterministic 8×8 block quantization and pixel-space byte-bend glitch simulation.
+
+Acceptance criteria:
+
+- AC-F22.1: Each implemented effect is registered in `src/engine/effects/index.ts`, appears in the "Add effect" picker with its label and one-line description, and generates all controls from `ParamSpec` without custom UI code.
+- AC-F22.2: Each implemented effect passes the generic contract suite in `tests/engine/effect-contract.test.ts` (output size, input immutability, determinism, `mix = 0` identity) and has committed golden-image cases under `tests/golden/<type>/`.
+- AC-F22.3: Built-in presets `builtin:vhs-split` and `builtin:tile-scramble` are enabled once `sliceShift`, `blockShuffle`, and `channelSwap` land.
+
+### F23. Project change history panel
+
+A visible history list for the active project, backed by the existing persisted `history` store (`persistence.md` section 2, up to 201 entries: 1 base state plus 200 undoable commits). Each entry displays a descriptive action label (for example `"Threshold range 0.25 to 0.80"`, `"Add Pixel sort"`, `"Crop 1200 × 800"`, `"Initial"`). Clicking or activating an entry jumps directly to that commit without deleting later entries; entries after the current position (`seq > historyHeadSeq`) appear muted until overwritten by a new commit. Layout placement at desktop, tablet, and phone widths is specified in [DESIGN.md section 7.2](../../DESIGN.md#72-post-v010-ui-specifications-f20-f23-f24).
+
+Acceptance criteria:
+
+- AC-F23.1: After 5 commits, the History panel lists all 6 entries (`Initial` plus 5 commits) in newest-first order with human-readable action labels; the active entry is marked with `aria-current="step"` and a visible `"Current"` badge.
+- AC-F23.2: Clicking entry 2 of 5 jumps the project stack (and geometry transform, once F20 lands) to entry 2 without changing zoom or pan; entries 3, 4, and 5 remain visible in a muted redo style.
+- AC-F23.3: Making a new commit while positioned at entry 2 discards entries 3, 4, and 5 and appends the new entry as entry 3.
+- AC-F23.4: Reloading the browser restores the full history list and the exact active entry position.
+- AC-F23.5: After 205 commits, the History panel shows 201 entries (the oldest reachable base state plus 200 undoable commits), matching AC-F9.3.
+- AC-F23.6: The History list is fully keyboard navigable (Tab, Enter/Space to jump) and lays out without horizontal overflow at `390 × 844`, `820 × 1180`, and `1440 × 900`.
+
+### F24. App changelog (Settings / About)
+
+Companion feature addressing the second reading of "change history" (see [decisions.md D26 and Q12](decisions.md#d26-interpretation-of-cut-and-change-history-2026-11-25)): an expandable `"Changelog"` section inside Settings -> About (`src/features/settings/settings-content.tsx`) that displays release notes by version. The text is read from a repository root `CHANGELOG.md` bundled at build time (same generated-module pattern as `src/features/settings/third-party-notices.generated.ts`), with zero runtime network requests.
+
+Acceptance criteria:
+
+- AC-F24.1: Settings -> About includes a `"View changelog"` toggle that expands the bundled release notes offline without any network request.
+- AC-F24.2: The build reads `CHANGELOG.md` from the repository root so release notes stay in sync with tagged releases.
+
+## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).
 
-1. **Backup and restore (`F17`, later).** ZIP export and import of selected projects or the whole library (source images, effect stacks, optional history, and all user presets), double-import deduplication, corruption/version errors, and the 30-day backup reminder. Format in [persistence.md section 8](persistence.md#8-later-backup-export-and-import-f17-and-eviction-warnings).
-2. **Deferred glitch effects (from `F7`, later).** `sliceShift` (shift random bands sideways), `blockShuffle` (swap square tiles), and `channelSwap` (permute R, G, B), plus the `vhs-split` and `tile-scramble` built-in presets. Specified in [engine.md section 16.1](engine.md#161-deferred-glitch-effects).
-3. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.0](persistence.md#80-safari-7-day-eviction-warning-later)).
-4. **Masks and on-canvas tools.** Brush-painted mask per effect instance (paint, erase, size, hardness, invert, clear, overlay opacity), mask from the image's own luminance, imported mask images, and interactive on-canvas tools using the reserved slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot-reserved-for-later) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later). Engine mask semantics are already specified in engine.md section 5.6.
-5. **More effects.** Smear with decay trails, wave displacement (sine row offsets), posterize, ordered dither, noise and grain, data bending (corrupting compressed JPEG bytes and decoding the result), per-channel pixel sort (a different key per channel), mirror and kaleidoscope.
-6. **Interval transforms for pixel sort.** Mirror (alternate ends), splice (rotate the interval), fold from the middle, and grouping equal colours.
-7. **More line shapes for pixel sort.** Concentric rectangles, circles, spirals, random walks, tiles with density.
-8. **Editing comfort.** History panel listing entries; compare against any history entry; paste an image from the clipboard; crop and rotate of the source; project tags or folders; batch export of several projects; side-by-side preview of two presets.
-9. **Formats.** AVIF export and WebP export on Safari through a WebAssembly encoder; 16-bit PNG input kept at 16 bits; wide-gamut (Display P3) output.
-10. **Speed.** WebGPU acceleration for axis-aligned pixel sort; multi-worker splitting; WebAssembly SIMD kernels. See engine.md section 12.
-11. **Motion.** Parameter animation to GIF and video, and video input frame by frame.
-12. **Packaging.** Native desktop and mobile apps packaged with Tauri from the same web build (note: Tauri uses the system webview, so WebKit/iOS canvas limits still apply on Apple platforms; see decisions.md).
-13. **Languages.** Translated UI (the first release is English only).
+1. **Backup and restore (`F17`, later).** ZIP export and import of selected projects or the whole library (source images, effect stacks, geometry transforms, optional history, and all user presets), double-import deduplication, corruption/version errors, and the 30-day backup reminder. Format in [persistence.md section 8.3](persistence.md#83-later-backup-export-and-import-f17-and-eviction-warnings).
+2. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.3.0](persistence.md#830-safari-7-day-eviction-warning-later)).
+3. **Masks and on-canvas tools.** Brush-painted mask per effect instance (paint, erase, size, hardness, invert, clear, overlay opacity), region cutout if requested (Q11), mask from the image's own luminance, imported mask images, and interactive on-canvas tools using the reserved slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot-reserved-for-later) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later). Engine mask semantics are already specified in engine.md section 5.6.
+4. **Remaining F22 effects and `pixelSort` v2.** The 6 lower-ranked effects from F22 (`bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert`, `jpegCrush`), per-channel pixel sort, interval transforms (mirror, splice, fold, grouping equal colours), and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density).
+5. **Editing comfort.** Compare against any history entry; paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.
+6. **Extended colour pipelines.** WebP export on Safari through a WebAssembly encoder; 16-bit PNG/TIFF processing kept at 16 bits; wide-gamut (Display P3) output.
+7. **Speed.** WebGPU acceleration for axis-aligned pixel sort; multi-worker splitting; WebAssembly SIMD kernels. See engine.md section 12.
+8. **Motion.** Parameter animation to GIF and video, and video input frame by frame.
+9. **Packaging.** Native desktop and mobile apps packaged with Tauri from the same web build (note: Tauri uses the system webview, so WebKit/iOS canvas limits still apply on Apple platforms; see decisions.md).
+10. **Languages.** Translated UI (the first release is English only).
 
-## 7. Non-goals
+## 8. Non-goals
 
 These are out of scope for the first release and are not planned unless the owner asks:
 
@@ -286,7 +384,7 @@ These are out of scope for the first release and are not planned unless the owne
 - Support for browsers without module workers, `createImageBitmap` or IndexedDB.
 - Guaranteeing identical output bytes across browsers for JPEG sources (decoders differ; see engine.md section 10).
 
-## 8. Release acceptance
+## 9. Release acceptance
 
 The first release ships when:
 

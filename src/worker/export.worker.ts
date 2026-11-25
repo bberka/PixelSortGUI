@@ -1,6 +1,6 @@
 import {decodeImage, isMemoryError, renderSize} from '../codec/decode.ts';
 import {encodeImage} from '../codec/encode.ts';
-import {effectRegistry} from '../engine/effects/index.ts';
+import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
 import {renderStack} from '../engine/pipeline.ts';
 import type {RgbaImage} from '../engine/types.ts';
 import {

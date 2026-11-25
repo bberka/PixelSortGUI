@@ -52,6 +52,59 @@ export function nextVersion(minor: number, tags: readonly string[]): string {
 	);
 }
 
+export type BuildVersionInput = {
+	readonly minor: number;
+	readonly exactTag?: string | null;
+	readonly shortSha?: string | null;
+	readonly envVersion?: string | null;
+};
+
+export function formatBuildVersion(input: BuildVersionInput): string {
+	const fromEnv = input.envVersion?.trim();
+	if (fromEnv) {
+		return fromEnv.replace(/^v/, '');
+	}
+
+	if (input.exactTag) {
+		const parsed = parseReleaseTag(input.exactTag);
+		if (parsed) {
+			return `0.${parsed.minor}.${parsed.patch}`;
+		}
+	}
+
+	const sha = input.shortSha?.trim();
+	return sha ? `0.${input.minor}.x (${sha})` : `0.${input.minor}.x (dev)`;
+}
+
+function readGitOutput(args: readonly string[], cwd: string): string | null {
+	try {
+		const out = execFileSync('git', [...args], {
+			cwd,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		}).trim();
+		return out.length > 0 ? out : null;
+	} catch {
+		return null;
+	}
+}
+
+export function resolveBuildVersion(rootDir = projectRoot): string {
+	const minor = parseMinor(readFileSync(resolve(rootDir, 'VERSION'), 'utf8'));
+	const envVersion = process.env.VITE_APP_VERSION;
+	if (envVersion?.trim()) {
+		return formatBuildVersion({minor, envVersion});
+	}
+
+	const tags = readGitOutput(
+		['tag', '--points-at', 'HEAD', '--list', 'v0.*', '--sort=-v:refname'],
+		rootDir,
+	);
+	const exactTag = tags?.split('\n', 1)[0] ?? null;
+	const shortSha = readGitOutput(['rev-parse', '--short', 'HEAD'], rootDir);
+	return formatBuildVersion({minor, exactTag, shortSha});
+}
+
 if (
 	process.argv[1] &&
 	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -68,8 +121,10 @@ if (
 			.split('\n')
 			.filter(Boolean);
 		console.log(nextVersion(minor, tags));
+	} else if (command === 'build') {
+		console.log(resolveBuildVersion(projectRoot));
 	} else {
-		console.error('Usage: node scripts/release-version.ts next');
+		console.error('Usage: node scripts/release-version.ts <next|build>');
 		process.exitCode = 1;
 	}
 }

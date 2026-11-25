@@ -12,6 +12,8 @@ import {
 } from '../../../tests/state/fixtures.ts';
 import {ParameterPanel} from './params-panel.tsx';
 import type {Slider as SliderComponent} from '@/components/ui/slider';
+import {TooltipProvider} from '@/components/ui/tooltip';
+import {LiveRegion} from '@/app/live-region.tsx';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import {effects} from '@/engine/effects/index.ts';
 import {createRegistry} from '@/engine/registry.ts';
@@ -21,7 +23,11 @@ import type {
 	ParamSpecs,
 	ParamValue,
 } from '@/engine/types.ts';
-import {createAppStore, type AppStore} from '@/state/app-store.ts';
+import {
+	createAppStore,
+	selectUndoLabel,
+	type AppStore,
+} from '@/state/app-store.ts';
 import type {AppRuntime} from '@/state/index.ts';
 import {MemoryStorageAdapter} from '@/storage/memory-adapter.ts';
 import type {TransientStore} from '@/state/transient.ts';
@@ -190,6 +196,7 @@ function mountPanel(
 	repository: MemoryStorageAdapter,
 	coordinator: FakeCoordinator,
 	registry?: EffectRegistry,
+	random?: () => number,
 ): HTMLDivElement {
 	container = document.createElement('div');
 	document.body.append(container);
@@ -208,7 +215,10 @@ function mountPanel(
 					},
 				}}
 			>
-				<ParameterPanel registry={registry} />
+				<TooltipProvider>
+					<ParameterPanel random={random} registry={registry} />
+					<LiveRegion />
+				</TooltipProvider>
 			</AppRuntimeProvider>,
 		);
 	});
@@ -342,13 +352,14 @@ afterEach(() => {
 	document.body.replaceChildren();
 });
 
-function mount(harness: Harness): HTMLDivElement {
+function mount(harness: Harness, random?: () => number): HTMLDivElement {
 	return mountPanel(
 		harness.store,
 		harness.transientStore,
 		harness.repository,
 		harness.coordinator,
 		harness.registry,
+		random,
 	);
 }
 
@@ -888,6 +899,170 @@ describe('reset', () => {
 		expect(instance?.mix).toBe(1);
 		expect(instance?.blend).toBe('normal');
 		expect(historyHead(harness)).toBe(before + 1);
+	});
+});
+
+function counter(): () => number {
+	let index = 0;
+	return () => {
+		index++;
+		return ((index * 0.381966) % 1) * 0.999;
+	};
+}
+
+function randomizeButton(): HTMLButtonElement {
+	const button = [
+		...container!.querySelectorAll<HTMLButtonElement>('button'),
+	].find((item) => item.textContent === 'Randomize');
+	if (!button) {
+		throw new Error('No Randomize button');
+	}
+
+	return button;
+}
+
+function instanceOf(harness: Harness) {
+	const instance = harness.store
+		.getState()
+		.activeProject?.stack.instances.find(
+			(item) => item.id === harness.instanceId,
+		);
+	if (!instance) {
+		throw new Error('Instance is gone');
+	}
+
+	return instance;
+}
+
+describe('randomize', () => {
+	it('gives every parameter a new valid value as one commit labelled for undo', async () => {
+		const harness = await setupTestEffect();
+		mount(harness, counter());
+		await flush();
+		const before = historyHead(harness);
+		const previous = instanceOf(harness).params;
+
+		act(() => {
+			randomizeButton().click();
+		});
+		await flush();
+
+		const after = instanceOf(harness).params;
+		expect(historyHead(harness)).toBe(before + 1);
+		expect(lastHistoryLabel(harness)).toBe('Randomize Test effect');
+		expect(selectUndoLabel(harness.store.getState())).toBe(
+			'Randomize Test effect',
+		);
+		expect(Object.keys(after)).toEqual(Object.keys(previous));
+		expect(after).not.toEqual(previous);
+		expect(container?.querySelector('[role="status"]')?.textContent).toBe(
+			'Randomized Test effect',
+		);
+	});
+
+	it('restores every previous value with one undo', async () => {
+		const harness = await setupTestEffect();
+		mount(harness, counter());
+		await flush();
+		const previous = structuredClone(instanceOf(harness).params);
+
+		act(() => {
+			randomizeButton().click();
+		});
+		await flush();
+		await act(async () => {
+			await harness.store.getState().undo();
+		});
+		await flush();
+
+		expect(instanceOf(harness).params).toEqual(previous);
+		expect(await storedParams(harness)).toEqual(previous);
+	});
+
+	it('randomizes parameters hidden by visibleWhen too', async () => {
+		const harness = await setupTestEffect();
+		mount(harness, counter());
+		await flush();
+		expect(instanceOf(harness).params.mode).toBe('basic');
+		const hiddenBefore = instanceOf(harness).params.extra;
+
+		act(() => {
+			randomizeButton().click();
+		});
+		await flush();
+
+		expect(instanceOf(harness).params.extra).not.toBe(hiddenBefore);
+	});
+
+	it('leaves mix, blend, enabled and the other instances alone', async () => {
+		const harness = await setupTestEffect();
+		const other = await harness.store.getState().addEffect('channelShift');
+		await act(async () => {
+			harness.store.getState().selectEffect(harness.instanceId);
+			await harness.store.getState().commitMix(harness.instanceId, 0.4);
+			await harness.store.getState().setBlend(harness.instanceId, 'darken');
+			await harness.store
+				.getState()
+				.setEffectEnabled(harness.instanceId, false);
+		});
+		const otherBefore = structuredClone(
+			harness.store
+				.getState()
+				.activeProject?.stack.instances.find((item) => item.id === other.id),
+		);
+		mount(harness, counter());
+		await flush();
+
+		act(() => {
+			randomizeButton().click();
+		});
+		await flush();
+
+		const instance = instanceOf(harness);
+		expect(instance.mix).toBe(0.4);
+		expect(instance.blend).toBe('darken');
+		expect(instance.enabled).toBe(false);
+		expect(
+			harness.store
+				.getState()
+				.activeProject?.stack.instances.find((item) => item.id === other.id),
+		).toEqual(otherBefore);
+	});
+
+	it('is disabled with no selection and for an effect with no parameters', async () => {
+		const harness = await setup({type: 'pixelSort'});
+		harness.store.getState().selectEffect(null);
+		mount(harness);
+		await flush();
+		expect(randomizeButton().disabled).toBe(true);
+
+		act(() => {
+			root!.unmount();
+		});
+		root = undefined;
+		container?.remove();
+		container = undefined;
+
+		const bare: EffectDefinition = {
+			...testEffect,
+			type: 'bareEffect',
+			label: 'Bare effect',
+			params: {},
+			debugViews: undefined,
+		};
+		const bareHarness = await setup({
+			type: 'bareEffect',
+			registry: createRegistry([...effects, bare]),
+		});
+		mount(bareHarness);
+		await flush();
+		const before = historyHead(bareHarness);
+		expect(randomizeButton().disabled).toBe(true);
+		act(() => {
+			randomizeButton().click();
+		});
+		await flush();
+		expect(historyHead(bareHarness)).toBe(before);
 	});
 });
 

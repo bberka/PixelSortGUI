@@ -1,9 +1,11 @@
 import {useMemo, type ReactNode} from 'react';
-import {EyeOffIcon} from 'lucide-react';
+import {DicesIcon, EyeOffIcon} from 'lucide-react';
 import {controlId} from './ids.ts';
 import {BlendControl, MixControl} from './instance-controls.tsx';
 import {ParamControl} from './param-control.tsx';
+import {cryptoRandom, randomizeParams, type RandomSource} from './randomize.ts';
 import {isParamVisible} from './visibility.ts';
+import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
@@ -11,6 +13,8 @@ import {Label} from '@/components/ui/label';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {Separator} from '@/components/ui/separator';
 import {Switch} from '@/components/ui/switch';
+import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {effectRegistry} from '@/engine/effects/index.ts';
 import {resolveInstance} from '@/engine/params.ts';
 import type {
@@ -28,6 +32,11 @@ export type ParameterPanelProps = {
 	 complete panel without a change here.
 	 */
 	readonly registry?: EffectRegistry;
+	/**
+	 Test seam: the random numbers Randomize draws from. Defaults to
+	 `crypto.getRandomValues`.
+	 */
+	readonly random?: RandomSource;
 };
 
 type ParamGroup = {
@@ -56,8 +65,47 @@ function groupSpecs(
 	return [...groups].map(([name, entries]) => ({name, entries}));
 }
 
+function noop(): void {}
+
 function Note({children}: {readonly children: ReactNode}) {
 	return <p className="px-2 py-3 text-sm text-muted-foreground">{children}</p>;
+}
+
+function RandomizeButton({
+	label,
+	disabled,
+	onRandomize,
+}: {
+	readonly label: string | null;
+	readonly disabled: boolean;
+	readonly onRandomize: () => void;
+}) {
+	const isPhone = usePhoneLayout();
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span className="inline-flex">
+					<Button
+						type="button"
+						variant="ghost"
+						size={isPhone ? 'icon-xs' : 'xs'}
+						aria-label={isPhone ? 'Randomize' : undefined}
+						disabled={disabled}
+						onClick={onRandomize}
+					>
+						<DicesIcon aria-hidden="true" />
+						{isPhone ? null : 'Randomize'}
+					</Button>
+				</span>
+			</TooltipTrigger>
+			<TooltipContent>
+				{label
+					? `Give every ${label} parameter a random value`
+					: 'Select an effect to randomize'}
+			</TooltipContent>
+		</Tooltip>
+	);
 }
 
 function InstanceHeader({
@@ -66,12 +114,14 @@ function InstanceHeader({
 	showSelection,
 	onShowSelectionChange,
 	onResetAll,
+	onRandomize,
 }: {
 	readonly definition: EffectDefinition;
 	readonly instance: EffectInstance;
 	readonly showSelection: boolean;
 	readonly onShowSelectionChange: (checked: boolean) => void;
 	readonly onResetAll: () => void;
+	readonly onRandomize: () => void;
 }) {
 	const showSelectionId = controlId(instance.id, 'showSelection');
 
@@ -87,9 +137,16 @@ function InstanceHeader({
 						</Badge>
 					)}
 				</div>
-				<Button type="button" variant="ghost" size="xs" onClick={onResetAll}>
-					Reset all
-				</Button>
+				<div className="flex shrink-0 items-center gap-0.5">
+					<RandomizeButton
+						disabled={Object.keys(definition.params).length === 0}
+						label={definition.label}
+						onRandomize={onRandomize}
+					/>
+					<Button type="button" variant="ghost" size="xs" onClick={onResetAll}>
+						Reset all
+					</Button>
+				</div>
 			</div>
 			{definition.debugViews?.includes('selection') ? (
 				<div className="flex min-h-6 items-center justify-between gap-2">
@@ -113,6 +170,7 @@ function InstanceHeader({
  */
 export function ParameterPanel({
 	registry = effectRegistry,
+	random = cryptoRandom,
 }: ParameterPanelProps = {}) {
 	const stack = useAppStore((state) => state.activeProject?.stack ?? null);
 	const selectedInstanceId = useAppStore(
@@ -121,6 +179,9 @@ export function ParameterPanel({
 	const debugView = useAppStore((state) => state.debugView);
 	const setDebugView = useAppStore((state) => state.setDebugView);
 	const resetInstance = useAppStore((state) => state.resetInstance);
+	const commitInstanceParams = useAppStore(
+		(state) => state.commitInstanceParams,
+	);
 
 	const resolved = useMemo(() => {
 		if (!stack || !selectedInstanceId) {
@@ -143,15 +204,18 @@ export function ParameterPanel({
 	}
 
 	if (!resolved) {
-		return <Note>No effect selected</Note>;
+		return (
+			<div className="flex items-center justify-between gap-2 px-2">
+				<Note>No effect selected</Note>
+				<RandomizeButton disabled label={null} onRandomize={noop} />
+			</div>
+		);
 	}
 
 	const {instance, resolution} = resolved;
 	if (resolution.status !== 'ok') {
 		return (
-			<Note>
-				{`Unsupported effect (${instance.type} v${instance.version})`}
-			</Note>
+			<Note>{`Unsupported effect (${instance.type} v${instance.version})`}</Note>
 		);
 	}
 
@@ -169,6 +233,15 @@ export function ParameterPanel({
 				definition={definition}
 				instance={instance}
 				showSelection={showSelection}
+				onRandomize={() => {
+					void commitInstanceParams(
+						instance.id,
+						randomizeParams(definition.params, random),
+						`Randomize ${definition.label}`,
+					).then(() => {
+						announce(`Randomized ${definition.label}`);
+					});
+				}}
 				onResetAll={() => {
 					void resetInstance(instance.id);
 				}}

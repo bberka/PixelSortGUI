@@ -3,6 +3,7 @@ Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI product spec
 
@@ -375,6 +376,28 @@ Acceptance criteria:
 
 - AC-F24.1: Settings -> About includes a `"View changelog"` toggle that expands the bundled release notes offline without any network request.
 - AC-F24.2: The build reads `CHANGELOG.md` from the repository root so release notes stay in sync with tagged releases.
+
+### F25. Project files (save and open a single project)
+
+A user can save any single project to disk as a self-contained `.glproj` file (a standard ZIP archive) and open it again later on any device or browser without uploading anything. The archive holds the untouched original source bytes (plus any secondary images referenced by `F26`), its SHA-256 hash, project metadata (name, created/modified/opened timestamps, source dimensions and MIME type), the geometry transform (`F20`), the effect stack, export settings, view state, optional undo history (default included), and an optional preview thumbnail. Format details and validation rules are in [persistence.md section 8.3](persistence.md#83-project-file-format-f25).
+
+- **Extension and neutrality:** `.glproj` (standard ZIP container built and read with `fflate`, MIT). The extension and manifest (`kind: 'project'`) do not embed the app name so renaming the app never breaks saved files.
+- **UI entry points:**
+  - **Save:** `"Save project file"` in each library card menu (`src/features/library/project-card.tsx`) and in the editor toolbar / phone overflow menu (`src/features/toolbar/editor-toolbar.tsx`). Opens a compact dialog with `"Include undo history"` (checked by default), `"Save"`, and a progress bar with `"Cancel"` while assembling.
+  - **Open:** Supported alongside image import in the `"Open images"` file picker (`src/features/import/use-image-picker.ts`, accepting `.glproj` and `.zip` in addition to image types) and by dragging and dropping `.glproj` (or `.zip`) files onto the library or editor (`src/features/import/window-file-drop.tsx`).
+- **Name clash and deduplication:** Opening a `.glproj` always creates a new project with a fresh UUID so an existing local project is never overwritten. If a project with the same name already exists (case-insensitive trimmed match), the imported copy is named `"<name> (imported)"` (or `"<name> (imported 2)"`, etc., truncated to 120 characters). If the source SHA-256 already exists in `sources`, the existing stored blob is reused without storing a second copy.
+
+Acceptance criteria:
+
+- AC-F25.1: Choosing `"Save project file"` on a project with 2 effects, a geometry transform, custom export settings, and 5 history commits downloads a `<slug>-<YYYYMMDD-HHmmss>.glproj` file whose ZIP entries match [persistence.md section 8.3.2](persistence.md#832-archive-layout) and whose source entry matches the stored `SourceRecord` bytes bit-for-bit.
+- AC-F25.2: Opening that `.glproj` file on a fresh browser profile (via picker or drag-and-drop) restores the project name, timestamps, source dimensions, effect stack, geometry transform, export settings, and all 5 undo steps, and opens it in the editor.
+- AC-F25.3: Saving with `"Include undo history"` unchecked omits `history.json`; opening that file creates a single `seq: 0` `"Initial"` history entry holding the imported stack and transform.
+- AC-F25.4: Opening a `.glproj` whose source SHA-256 already exists in `sources` creates a new project without duplicating the blob (storage usage grows by less than 1% of the source file size); if a project with the same name exists, the new project is named `"<name> (imported)"`.
+- AC-F25.5: Opening a corrupt or non-ZIP `.glproj` creates no project and shows `"Can't open <file name>: the file is damaged or not a valid project archive."`
+- AC-F25.6: Opening a `.glproj` with a missing source entry or a modified byte in `sources/<sha256>.<ext>` creates no project and shows `"Can't open <file name>: missing image data (<path>)."` or `"Can't open <file name>: image data is damaged (<path>)."`
+- AC-F25.7: Opening a `.glproj` with `formatVersion` higher than supported creates no project and shows `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."`
+- AC-F25.8: Opening a `.glproj` containing an unknown effect type or newer effect version imports the project cleanly, preserves the instance verbatim (AC-F4.6), and shows a non-blocking toast `"Opened <name> with <N> unsupported effect(s)."`
+- AC-F25.9: Saving and opening a 50 MP project file makes zero network requests and completes without decoding full-resolution pixels on the main thread.
 
 ## 7. Later (beyond v0.2.0)
 

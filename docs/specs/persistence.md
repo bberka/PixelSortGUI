@@ -3,6 +3,7 @@ Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium)
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup and restore (F17), and multi-image source reference counting (F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI persistence spec
 
@@ -264,7 +265,147 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
 - **Action label conventions:** Commit labels include the parameter or action detail so the History panel is scannable, for example `"Threshold range 0.25 to 0.80"`, `"Angle 90°"`, `"Add Pixel sort"`, `"Remove Channel shift"`, `"Reorder Pixel sort"`, `"Apply preset ASDF classic"`, `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"`.
 - **Memory footprint:** Each `HistoryEntryRecord` is plain JSON (`EffectStack` + `SourceTransform`, ~0.5 to 4 KB). At the 201-entry cap, a project's entire history stays under ~1 MB in RAM and IndexedDB, with zero pixel buffers stored.
 
-### 8.3 Later: Backup export and import (F17) and eviction warnings
+### 8.3 Project file format (F25)
+
+A project file stores one complete project on disk so it can be archived or reopened on any device or browser without any server or network call.
+
+#### 8.3.1 Container, dependency, and file extension
+
+- **Container:** Standard ZIP archive (PKZIP with ZIP64 support).
+- **Library:** `fflate` (npm: `fflate`, repository: `101arrowz/fflate`).
+  - **Licence:** MIT (with a BSD Zero Clause exemption for SheetJS), compatible with [licensing.md](../agents/licensing.md).
+  - **Size:** ~8 KB minified for base deflate/inflate plus ~3 KB for ZIP support (~11 KB minified total, zero dependencies, tree-shakeable; source: `npmjs.com/package/fflate` and `github.com/101arrowz/fflate`).
+  - **Current status:** Not yet in `package.json`. Added when `F25` or `F17` is implemented, with its notice generated into `THIRD-PARTY-NOTICES.md` via `vp run gen:notices`.
+  - **Streaming API:** Uses `fflate.Zip`, `ZipPassThrough` (STORE, compression level 0), `ZipDeflate` (DEFLATE, level 6), `fflate.Unzip`, and `UnzipInflate`, paired with `Blob.stream()` (`ReadableStream`, supported in Chrome 76+, Firefox 69+, Edge 79+, Safari 14.1+; source: MDN Web Docs / Can I use).
+- **File extension:** **`.glproj`** (neutral "glitch project" extension that does not embed the app name, so renaming the app never breaks saved files or user expectations; avoids `.psg` audio and `.proj` MSBuild collisions; remains a standard ZIP inspectable by any archive tool).
+- **Default file name:** `<project-slug>-<YYYYMMDD-HHmmss>.glproj`, where `<project-slug>` is the project name lowercased, non-alphanumeric runs collapsed to `-`, trimmed to 64 characters (fallback `project`).
+
+#### 8.3.2 Archive layout
+
+```
+manifest.json          (DEFLATE level 6)
+project.json           (DEFLATE level 6)
+history.json           (DEFLATE level 6; present only when includesHistory is true)
+thumbnail.webp         (or thumbnail.jpg; STORE level 0; optional, <= 512 px longest side)
+sources/
+  <sha256>.<ext>       (STORE level 0; primary source, plus any secondary sources referenced by F26 imageBlend)
+```
+
+- Binary media entries (`sources/*`, `thumbnail.*`) use `ZipPassThrough` (STORE, level 0) because JPEG, PNG, WebP, and AVIF are already compressed. Skipping deflate avoids wasted CPU and cuts peak memory for 50 MP sources.
+- JSON metadata entries use `ZipDeflate` (level 6).
+- All entry paths use forward slashes (`/`) with no leading slash and no `..` path segments.
+
+`manifest.json`:
+
+```ts
+export const PROJECT_FORMAT_VERSION = 1;
+
+export type ArchiveSourceEntry = {
+	sha256: string; // 64 lowercase hex characters
+	path: string; // 'sources/<sha256>.<ext>'
+	mimeType: string; // e.g. 'image/jpeg', 'image/png', 'image/webp'
+	byteLength: number; // exact byte count of the entry
+	width: number; // EXIF-normalized display width in px, 1..16384
+	height: number; // EXIF-normalized display height in px, 1..16384
+};
+
+export type ProjectFileManifest = {
+	kind: 'project';
+	formatVersion: 1;
+	appVersion: string; // stamped at build time (e.g. '0.2.0', or '0.x (dev)')
+	exportedAt: string; // ISO 8601 UTC timestamp
+	includesHistory: boolean;
+	primarySourceHash: string; // matches project.json sourceHash
+	sources: ArchiveSourceEntry[]; // primary source first, followed by any F26 secondary sources
+	thumbnailPath: string | null; // 'thumbnail.webp' | 'thumbnail.jpg' | null
+};
+```
+
+`project.json`:
+
+```ts
+export type ProjectFilePayload = {
+	id: string; // original UUID v4
+	name: string; // trimmed, 1..120 characters
+	createdAt: number; // Unix epoch ms
+	updatedAt: number; // Unix epoch ms
+	openedAt: number; // Unix epoch ms
+	sourceHash: string; // primary source SHA-256
+	sourceWidth: number; // 1..16384
+	sourceHeight: number; // 1..16384
+	transform?: SourceTransform; // F20 geometry transform; omitted or IDENTITY_TRANSFORM before F20
+	stack: EffectStack; // exact serialised form from engine.md section 2.2
+	selectedInstanceId: string | null;
+	viewState: ViewState;
+	exportSettings: ExportSettings;
+	historyHeadSeq: number; // 0 when includesHistory is false
+	historyMinSeq: number; // 0 when includesHistory is false
+	historyMaxSeq: number; // 0 when includesHistory is false
+};
+```
+
+`history.json` (present only when `manifest.includesHistory === true`):
+
+```ts
+export type ProjectHistoryPayload = {
+	entries: HistoryEntryRecord[]; // ordered ascending by seq, length 1..201
+};
+```
+
+`metadata` covered by a project file: project `name`, `id`, `createdAt`, `updatedAt`, `openedAt`, `sourceWidth`, `sourceHeight`, source `mimeType`, `byteLength`, `sha256`, `transform` (`SourceTransform`), `stack` (`EffectStack`), `selectedInstanceId`, `viewState`, `exportSettings`, `appVersion`, and `exportedAt`.
+
+#### 8.3.3 Format versions and migrations
+
+- `manifest.formatVersion` starts at `1` and increments only when the archive directory layout or `manifest.json` / `project.json` schema changes incompatibly.
+- **Older version (`formatVersion < PROJECT_FORMAT_VERSION`):** Run pure sequential migrators `projectFileMigrations[v]` in memory on the parsed payload before validation and DB write.
+- **Newer version (`formatVersion > PROJECT_FORMAT_VERSION`):** Reject before writing anything to IndexedDB with: `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."`
+- **Optional `transform` field:** If `project.json` was exported by an app build before `F20` (no `transform` field), default to `IDENTITY_TRANSFORM` (`{rotation: 0, flipX: false, flipY: false, crop: null, resize: null}`).
+- **Effect stack and instance versions:** Unknown effect `type`s and instances with `version > def.version` are **not** errors. They are kept verbatim (AC-F4.6), skipped when rendering, and reported after import via a non-blocking toast: `"Opened <name> with <N> unsupported effect(s)."` Older instance versions migrate lazily on open via `def.migrations` (section 6).
+
+#### 8.3.4 Size limits, memory behaviour, and streaming (50 MP sources)
+
+- **Hard limits (zip-bomb and memory protection):**
+  - Whole `.glproj` file size: max **1 GB** (`1,073,741,824` bytes).
+  - Each JSON entry (`manifest.json`, `project.json`, `history.json`): max **16 MB** (`16,777,216` bytes) uncompressed.
+  - `thumbnail.*`: max **2 MB** (`2,097,152` bytes) uncompressed.
+  - Each `sources/*` entry: max **200 MB** (`209,715,200` bytes) uncompressed (matching the F1 single-file limit).
+  - Source pixel dimensions: `1..16,384` px per side.
+- **Memory behaviour on save (50 MP source):**
+  - Run ZIP assembly inside a dedicated Web Worker (`src/worker/archive.worker.ts`) so the main thread never blocks.
+  - Stream each `SourceRecord.blob` through `blob.stream().getReader()` in chunks into `fflate.ZipPassThrough` (STORE, level 0), appending emitted ZIP chunks to an array passed to `new Blob(chunks, {type: 'application/zip'})`.
+  - Never decode pixels during project-file save. Peak RAM for a 50 MP JPEG (15 to 40 MB compressed) stays around `1x` the compressed file size plus < 10 MB overhead.
+- **Memory behaviour on open (50 MP source):**
+  - Stream-read the `.glproj` `File` via `file.stream().getReader()` into `fflate.Unzip` (with `UnzipInflate` registered) inside `archive.worker.ts`.
+  - Abort immediately if any entry exceeds its uncompressed byte cap or contains an unsafe path (`..` or leading `/`).
+  - Collect each `sources/*` entry into a `Blob` and verify its SHA-256 one source at a time via `crypto.subtle.digest('SHA-256', ...)`. Never decode 50 MP pixels to RGBA during archive validation; only run `probeImageDimensions` if dimensions need verification on a source not yet in IndexedDB.
+
+#### 8.3.5 Validation, exact error messages, and import semantics
+
+Single-project import runs in two phases: **strict validation first** (zero IndexedDB writes), then **one atomic `readwrite` transaction**.
+
+**Phase 1: Validation and exact error messages**
+
+| Condition | Exact user-facing error message |
+|---|---|
+| File > 1 GB, or any entry exceeds its uncompressed cap (16 MB JSON, 2 MB thumbnail, 200 MB per source) | `"Can't open <file name>: the project file is too large (limit is 1 GB, or 200 MB per image)."` |
+| Not a valid ZIP, truncated stream, or `fflate` decompression error | `"Can't open <file name>: the file is damaged or not a valid project archive."` |
+| Missing `manifest.json` or `project.json`, invalid JSON, `manifest.kind !== 'project'`, or invalid required field types/ranges (`name` not 1..120 chars, `stack.instances.length > 32`, invalid `history.json` when `includesHistory` is true) | `"Can't open <file name>: missing or invalid project metadata."` |
+| `manifest.formatVersion` is not an integer or `> PROJECT_FORMAT_VERSION` | `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."` |
+| Any entry listed in `manifest.sources` (or `primarySourceHash`) is missing from the ZIP | `"Can't open <file name>: missing image data (<path>)."` |
+| Computed SHA-256 of any `sources/*` entry does not match its declared `sha256` (or `byteLength` mismatches) | `"Can't open <file name>: image data is damaged (<path>)."` |
+| Any newly imported source cannot be decoded or has a side > 16,384 px | `"Can't open <file name>: embedded image is unreadable or exceeds 16,384 px."` |
+| Pre-flight quota check (`checkQuotaForImport` on bytes of sources not already in `sources`) fails, or transaction throws `QuotaExceededError` | Open `"Storage is full"` dialog (`src/app/storage-full-dialog.tsx`); zero records written. |
+
+**Phase 2: Atomic commit and clash handling**
+
+1. **Sources:** For each source in `manifest.sources`, insert into `sources` only if `sha256` does not already exist. Existing blobs are reused without copying (AC-F25.4).
+2. **Project ID:** Always generate a fresh UUID v4 (`crypto.randomUUID()`) for single-project import so an existing local project is never overwritten.
+3. **Name clash:** Compare trimmed `project.name.toLocaleLowerCase('en')` against all existing projects. If a match exists, rename to `"<name> (imported)"`; if that also exists, `"<name> (imported 2)"`, `"<name> (imported 3)"`, and so on, truncating the base name if needed to stay within 120 characters.
+4. **History:** If `includesHistory` is true, insert all validated entries from `history.json` remapped to the new `projectId` (preserving `historyHeadSeq`, `historyMinSeq`, `historyMaxSeq`, capped at 201 entries). If `includesHistory` is false, insert one `seq: 0` `"Initial"` entry containing the imported `stack` (and `transform`) and set head/min/max seq to `0`.
+5. **Thumbnail:** If `thumbnailPath` is present and valid, store `ThumbnailRecord` under the new `projectId`; otherwise omit it so the editor generates a fresh thumbnail on open.
+6. **Activate:** Set `meta.appState.activeProjectId` to the new `projectId` (when imported from picker/drop as a single file, or the first project when multiple files are dropped) and open it in the editor.
+
+### 8.4 Later: Backup export and import (F17) and eviction warnings
 
 Not built in `v0.1.0` or `v0.2.0`. Kept here so the archive format and eviction-warning design are ready when scheduled.
 

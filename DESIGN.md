@@ -1,5 +1,6 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup and restore (F17), and image blend (F26) UI specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI design system
 
@@ -302,6 +303,11 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render muted (`text-muted-foreground opacity-60`) to show they belong to the redo branch and will be discarded on a new commit. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state.
 - **App changelog (F24):**
   - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
+- **Project files (F25):**
+  - **Library card menu (`src/features/library/project-card.tsx`):** Add `"Save project file"` (`Download` or `Archive` icon) below `"Duplicate"` and above the separator before `"Delete"`.
+  - **Editor (`src/features/toolbar/editor-toolbar.tsx` / phone overflow):** Add `"Save project file"` action reachable from the editor toolbar (desktop/tablet) and phone top-bar overflow (`⋮`).
+  - **Save project file dialog:** Compact `Dialog` (desktop/tablet) / `Sheet` (phone) with project name summary, `"Include undo history"` checkbox (default checked), `"Save"` primary button, and during assembly a `Progress` bar with `"Cancel"`.
+  - **Open project file (`src/features/import/`):** `"Open images"` file picker (`use-image-picker.ts`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) updates the drop overlay copy (`drop-overlay.tsx`) to `"Drop images or project files to open"`. Error messages use the existing `ImportProblemDialog`.
 
 ## 8. Interaction: touch, pointer and keyboard
 

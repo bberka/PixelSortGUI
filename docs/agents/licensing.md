@@ -27,7 +27,7 @@ When you copy:
 1. Copy only parts whose implementation is non-obvious. Write simple parts yourself.
 2. Add the project's copyright line and the full MIT permission text to `THIRD-PARTY-NOTICES.md` at the repository root (create it with the first copy). Record which project and which part.
 3. Say in the pull request and in the effect's spec (Provenance) what was copied.
-4. A hosted web app ships its code to users, so the notices must also be reachable from the app. The specs decide where.
+4. A hosted web app ships its code to users, so the notices must also be reachable from the app. Settings → About links "Full licence texts", the same-origin file `THIRD-PARTY-NOTICES.txt` in the build output.
 5. Do not imply the original author endorses this project.
 
 ## May only learn from (never copy)
@@ -52,3 +52,11 @@ Kim Asendorf's ASDFPixelSort is the origin of most pixel-sorting tools. Credit t
 ## Other dependencies
 
 A new npm dependency needs a licence that allows use in a closed or open distributed app (MIT, ISC, BSD, Apache-2.0). Do not add a GPL, AGPL, or unlicensed package. State the licence of each new dependency in the pull request.
+
+## Notices for bundled packages
+
+MIT, ISC, BSD and Apache-2.0 require the copyright line and licence text to travel with copies. `pnpm run gen:notices` builds the app in memory, takes every package behind a bundled module (and any package a project stylesheet imports), and reads each one's licence files, copyright lines and NOTICE file from `node_modules`. It writes `THIRD-PARTY-NOTICES.md` and the compact in-app list `src/features/settings/third-party-notices.generated.ts`. Every build puts the full text in `dist/THIRD-PARTY-NOTICES.txt`.
+
+- Run it after any change to dependencies, and commit the result. `pnpm run check:notices` and the build fail when the committed files are stale.
+- Allowed licences: MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD. Any other licence in the bundle fails the generator. A package with no licence file gets the standard text from `scripts/license-templates/` and is flagged in the generator output: list it in the pull request.
+- The generator is not legal advice. A human checks flagged packages.

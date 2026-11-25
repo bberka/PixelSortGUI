@@ -299,6 +299,7 @@ test('AC-F12.1: a 12 MP PNG export at Full size finishes within 5 s @perf', asyn
 	await readDownloadBytes(pngDownload);
 	const pngMs = performance.now() - pngStart;
 
+	console.log(`[perf] 12 MP PNG export: ${Math.round(pngMs)} ms`);
 	expect(pngMs, `12 MP PNG export took ${Math.round(pngMs)} ms`).toBeLessThan(
 		5000,
 	);
@@ -541,6 +542,7 @@ test('AC-F12.4: Cancel stops the export and writes no file', async ({page}) => {
 
 test('AC-F12.4: Cancel stops the export within 1 s @perf', async ({page}) => {
 	const result = await cancelExport(page);
+	console.log(`[perf] export cancel: ${Math.round(result.cancelMs)} ms`);
 	expect(
 		result.cancelMs,
 		`cancel took ${Math.round(result.cancelMs)} ms`,

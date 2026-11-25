@@ -1,3 +1,4 @@
+import process from 'node:process';
 import {defineConfig} from '@playwright/test';
 import base, {PERF_TAG} from './playwright.config.ts';
 
@@ -9,6 +10,10 @@ export default defineConfig({
 	fullyParallel: false,
 	workers: 1,
 	retries: 0,
+	// The list reporter prints each test's measured value (`[perf] ...`) in the job log.
+	reporter: process.env.CI
+		? [['list'], ['github'], ['html', {open: 'never'}]]
+		: 'list',
 	projects: (base.projects ?? []).map((project) => ({
 		...project,
 		name: `${project.name}-perf`,

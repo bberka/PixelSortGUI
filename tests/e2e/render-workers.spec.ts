@@ -398,6 +398,9 @@ test.describe('render workers in the production build', () => {
 
 		expect(actual.errors).toEqual([]);
 		const {renderingReport, decodingReport} = actual;
+		console.log(
+			`[perf] longest main-thread stall, rendering: ${Math.max(0, ...renderingReport.stalls.map((stall) => stall.ms))} ms; decoding: ${Math.max(0, ...decodingReport.stalls.map((stall) => stall.ms))} ms`,
+		);
 		expect(renderingReport.longTasks).toEqual([]);
 		expect(renderingReport.stalls.filter((stall) => stall.ms >= 50)).toEqual(
 			[],
@@ -561,6 +564,9 @@ test.describe('render workers in the production build', () => {
 		test.setTimeout(120_000);
 		const actual = await cancelHeavyExport(page);
 		expect(actual.outcome).toEqual({status: 'cancelled'});
+		console.log(
+			`[perf] worker export cancel: ${Math.round(actual.cancelMs)} ms`,
+		);
 		// Product.md AC-F12.4 allows 1 s.
 		expect(actual.cancelMs).toBeLessThan(1000);
 	});

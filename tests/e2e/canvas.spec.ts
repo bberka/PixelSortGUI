@@ -453,6 +453,7 @@ test('zooming and panning redraw at 30 frames per second or better (AC-F13.1) @p
 }) => {
 	const measured = await measureZoomGesture(page);
 	const framesPerSecond = (measured.draws / measured.elapsedMs) * 1000;
+	console.log(`[perf] zoom redraws per second: ${framesPerSecond.toFixed(1)}`);
 	expect(
 		framesPerSecond,
 		`redraws per second while zooming: ${framesPerSecond.toFixed(1)}`,

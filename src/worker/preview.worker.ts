@@ -3,7 +3,7 @@ import {
 	isMemoryError,
 	renderSizeForPixelCap,
 } from '../codec/decode.ts';
-import {effectRegistry} from '../engine/effects/index.ts';
+import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
 import {createStageCache, renderStack} from '../engine/pipeline.ts';
 import {boxDownscale} from '../engine/resample.ts';
 import {Cancelled, type RgbaImage} from '../engine/types.ts';

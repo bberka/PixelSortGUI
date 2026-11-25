@@ -1,7 +1,7 @@
 import {
-	pixelSortEffect,
+	pixelSortSpec,
 	type PixelSortParams,
-} from '../engine/effects/pixel-sort/index.ts';
+} from '../engine/effects/pixel-sort/spec.ts';
 import {defaultParams} from '../engine/params.ts';
 import {
 	STACK_SCHEMA_VERSION,
@@ -15,7 +15,7 @@ export type BuiltinPreset = {
 	readonly stack: EffectStack;
 };
 
-const PIXEL_SORT_DEFAULTS = defaultParams(pixelSortEffect.params);
+const PIXEL_SORT_DEFAULTS = defaultParams(pixelSortSpec.params);
 
 function pixelSortInstance(
 	id: string,
@@ -23,8 +23,8 @@ function pixelSortInstance(
 ): EffectInstance {
 	return {
 		id,
-		type: pixelSortEffect.type,
-		version: pixelSortEffect.version,
+		type: pixelSortSpec.type,
+		version: pixelSortSpec.version,
 		enabled: true,
 		params: {
 			...PIXEL_SORT_DEFAULTS,

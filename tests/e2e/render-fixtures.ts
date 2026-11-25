@@ -115,9 +115,17 @@ export async function directRenderHash(
 // The URL of a chunk of the production build, found by its name in `dist/assets`.
 export function builtAsset(name: 'coordinator' | 'preview.worker'): string {
 	const directory = path.resolve(import.meta.dirname, '../../dist/assets');
-	const file = fs
+	const candidates = fs
 		.readdirSync(directory)
-		.find((entry) => entry.startsWith(`${name}-`) && entry.endsWith('.js'));
+		.filter((entry) => entry.startsWith(`${name}-`) && entry.endsWith('.js'));
+	const file =
+		name === 'coordinator'
+			? candidates.find((entry) =>
+					fs
+						.readFileSync(path.join(directory, entry), 'utf8')
+						.includes('createRenderCoordinator'),
+				)
+			: candidates[0];
 	if (!file) {
 		throw new Error(`No ${name} chunk in ${directory}`);
 	}

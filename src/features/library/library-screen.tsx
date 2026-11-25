@@ -7,7 +7,7 @@ import {
 } from 'react';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
-import {Button} from '@/components/ui/button';
+import {ImportImagesButton} from '@/features/import/import-images-button.tsx';
 import {
 	DeleteProjectDialog,
 	RenameProjectDialog,
@@ -27,9 +27,7 @@ type RenameRequest = {
 };
 
 /**
- The library screen (product.md F2, DESIGN.md section 6.1). The "Open images"
- action belongs to the import flow (T4.3): until that screen exports a button,
- the empty state shows the disabled action the shell has always shown.
+ The library screen (product.md F2, DESIGN.md section 6.1).
  */
 export function LibraryScreen() {
 	const projects = useAppStore((state) => state.projects);
@@ -90,9 +88,7 @@ export function LibraryScreen() {
 					<p className="text-sm text-muted-foreground">
 						Images stay on this device.
 					</p>
-					<Button disabled type="button">
-						Open images
-					</Button>
+					<ImportImagesButton />
 				</div>
 			</div>
 		);

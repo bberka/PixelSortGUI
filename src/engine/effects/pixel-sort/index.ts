@@ -1,11 +1,6 @@
-import {SORT_KEYS, type SortKey} from '../../keys.ts';
+import type {SortKey} from '../../keys.ts';
 import {createLinePartition} from '../../lines.ts';
-import type {
-	EffectDefinition,
-	ParamSpecs,
-	RenderContext,
-	RgbaImage,
-} from '../../types.ts';
+import type {EffectDefinition, RenderContext, RgbaImage} from '../../types.ts';
 import {computeEdgeSelection} from './edges.ts';
 import {
 	fillAverage,
@@ -30,200 +25,12 @@ import {
 	unit3,
 	writeSelectionView,
 } from './select.ts';
-
-export type IntervalMode = 'threshold' | 'edges' | 'whole';
-export type SortOrder = 'ascending' | 'descending' | 'shuffle' | 'random';
-export type FillMode = 'sort' | 'average' | 'gradient';
-
-export type PixelSortParams = {
-	angle: number;
-	intervalMode: IntervalMode;
-	selectKey: SortKey;
-	threshold: readonly [number, number];
-	edgeThreshold: number;
-	edgeBlur: number;
-	invert: boolean;
-	maxLength: number;
-	lengthJitter: number;
-	skipChance: number;
-	sortKey: SortKey;
-	order: SortOrder;
-	discretize: number;
-	fill: FillMode;
-	seed: number;
-};
-
-const KEY_LABELS: Readonly<Record<SortKey, string>> = {
-	luma: 'Luma',
-	lightness: 'Lightness',
-	value: 'Value',
-	saturation: 'Saturation',
-	hue: 'Hue',
-	red: 'Red',
-	green: 'Green',
-	blue: 'Blue',
-};
-
-const keyOptions = SORT_KEYS.map((value) => ({
-	value,
-	label: KEY_LABELS[value],
-}));
-
-const paramSpecs: ParamSpecs<PixelSortParams> = {
-	angle: {
-		kind: 'angle',
-		label: 'Angle',
-		group: 'Direction',
-		help: 'Degrees counter-clockwise from rightward: 0 sorts left to right, 90 bottom to top, 180 right to left, 270 top to bottom.',
-		default: 0,
-		snaps: [0, 45, 90, 135, 180, 225, 270, 315],
-	},
-	intervalMode: {
-		kind: 'enum',
-		label: 'Interval mode',
-		group: 'Selection',
-		help: 'How pixels are selected for sorting: by a threshold on a key, between edges, or the whole line.',
-		options: [
-			{value: 'threshold', label: 'Threshold'},
-			{value: 'edges', label: 'Edges'},
-			{value: 'whole', label: 'Whole line'},
-		],
-		default: 'threshold',
-	},
-	selectKey: {
-		kind: 'enum',
-		label: 'Selection key',
-		group: 'Selection',
-		help: 'The key the threshold range is compared against.',
-		options: keyOptions,
-		default: 'luma',
-		visibleWhen: {param: 'intervalMode', equals: ['threshold']},
-	},
-	threshold: {
-		kind: 'range',
-		label: 'Threshold range',
-		group: 'Selection',
-		help: 'Pixels whose selection key lies in this range, inclusive at both ends, are selected.',
-		min: 0,
-		max: 1,
-		step: 0.001,
-		default: [0.25, 0.8],
-		visibleWhen: {param: 'intervalMode', equals: ['threshold']},
-	},
-	edgeThreshold: {
-		kind: 'number',
-		label: 'Edge threshold',
-		group: 'Selection',
-		help: 'Edge strength, as a fraction of the maximum single-axis gradient, at which a pixel counts as an edge. Pixels that are not edges are selected.',
-		min: 0,
-		max: 1,
-		step: 0.01,
-		default: 0.2,
-		unit: 'ratio',
-		visibleWhen: {param: 'intervalMode', equals: ['edges']},
-	},
-	edgeBlur: {
-		kind: 'integer',
-		label: 'Edge blur',
-		group: 'Selection',
-		help: 'Box blur radius applied before edge detection.',
-		min: 0,
-		max: 8,
-		default: 1,
-		unit: 'px',
-		visibleWhen: {param: 'intervalMode', equals: ['edges']},
-	},
-	invert: {
-		kind: 'boolean',
-		label: 'Invert',
-		group: 'Selection',
-		help: 'Select the pixels that would not be selected, and the other way round.',
-		default: false,
-		visibleWhen: {param: 'intervalMode', notEquals: ['whole']},
-	},
-	maxLength: {
-		kind: 'integer',
-		label: 'Maximum interval length',
-		group: 'Length',
-		help: 'Splits each run into intervals of at most this length. 0 means no limit.',
-		min: 0,
-		max: 16_384,
-		default: 0,
-		unit: 'px',
-	},
-	lengthJitter: {
-		kind: 'number',
-		label: 'Length jitter',
-		group: 'Length',
-		help: 'Random variation of each interval length around the maximum.',
-		min: 0,
-		max: 1,
-		step: 0.01,
-		default: 0,
-		unit: 'ratio',
-		visibleWhen: {param: 'maxLength', notEquals: [0]},
-	},
-	skipChance: {
-		kind: 'number',
-		label: 'Skip chance',
-		group: 'Length',
-		help: 'Chance that an interval is left unchanged.',
-		min: 0,
-		max: 1,
-		step: 0.01,
-		default: 0,
-		unit: 'ratio',
-	},
-	sortKey: {
-		kind: 'enum',
-		label: 'Sort key',
-		group: 'Order',
-		help: 'The key each interval is sorted by.',
-		options: keyOptions,
-		default: 'luma',
-	},
-	order: {
-		kind: 'enum',
-		label: 'Order',
-		group: 'Order',
-		help: 'Ascending puts the smallest key first along the line direction. Random direction picks ascending or descending per interval.',
-		options: [
-			{value: 'ascending', label: 'Ascending'},
-			{value: 'descending', label: 'Descending'},
-			{value: 'shuffle', label: 'Shuffle'},
-			{value: 'random', label: 'Random direction'},
-		],
-		default: 'ascending',
-	},
-	discretize: {
-		kind: 'integer',
-		label: 'Discretize',
-		group: 'Order',
-		help: 'Colours within about this many 8-bit steps compare equal and keep their order, giving clumpier streaks. 0 turns it off.',
-		min: 0,
-		max: 64,
-		default: 0,
-		visibleWhen: {param: 'fill', notEquals: ['average']},
-	},
-	fill: {
-		kind: 'enum',
-		label: 'Fill',
-		group: 'Output',
-		help: 'Sort moves the pixels; average paints each interval with its mean colour; gradient blends from its first ordered pixel to its last.',
-		options: [
-			{value: 'sort', label: 'Sort'},
-			{value: 'average', label: 'Average'},
-			{value: 'gradient', label: 'Gradient'},
-		],
-		default: 'sort',
-	},
-	seed: {
-		kind: 'seed',
-		label: 'Seed',
-		group: 'Seed',
-		help: 'Drives length jitter, skipping, shuffle and random direction.',
-	},
-};
+import {
+	pixelSortSpec,
+	type FillMode,
+	type PixelSortParams,
+	type SortOrder,
+} from './spec.ts';
 
 const SLOT_PIXELS = 0;
 const SLOT_OUT = 1;
@@ -608,14 +415,14 @@ export async function renderPixelSort(
 }
 
 export const pixelSortEffect: EffectDefinition<PixelSortParams> = {
-	type: 'pixelSort',
-	version: 1,
-	label: 'Pixel sort',
-	description:
-		'Sort runs of pixels along a direction by brightness, hue or a channel.',
-	category: 'sort',
-	params: paramSpecs,
-	debugViews: ['selection'],
+	...pixelSortSpec,
 	render: async (input, output, renderParams, ctx) =>
 		renderPixelSort(input, output, renderParams, ctx),
 };
+
+export {
+	type IntervalMode,
+	type FillMode,
+	type SortOrder,
+	type PixelSortParams,
+} from './spec.ts';

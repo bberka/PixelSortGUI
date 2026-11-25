@@ -8,6 +8,7 @@ import {
 	ShieldCheckIcon,
 	SunIcon,
 } from 'lucide-react';
+import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {
 	APP_LICENSE_TEXT,
 	THIRD_PARTY_NOTICES,
@@ -48,8 +49,7 @@ function ThemeOptionIcon({theme}: {readonly theme: ThemePreference}) {
 }
 
 function getAppVersionLabel(): string {
-	const meta = import.meta as {env?: Record<string, unknown>};
-	const stamped = meta.env?.VITE_APP_VERSION;
+	const stamped = (globalThis as {VITE_APP_VERSION?: string}).VITE_APP_VERSION;
 	return typeof stamped === 'string' && stamped.trim().length > 0
 		? stamped.trim()
 		: '0.x (dev)';
@@ -251,6 +251,26 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 				<p className="text-xs leading-4 text-muted-foreground">
 					Pixel sorting lineage: inspired by Kim Asendorf&apos;s ASDFPixelSort.
 				</p>
+
+				<ul className="flex flex-col gap-1.5">
+					{ABOUT_EXTERNAL_LINKS.map((link) => (
+						<li key={link.href}>
+							<a
+								href={link.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								aria-label={link.accessibleName}
+								className="inline-flex min-h-6 items-center gap-1.5 text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+							>
+								<span>{link.label}</span>
+								<ExternalLinkIcon
+									className="size-3.5 shrink-0"
+									aria-hidden="true"
+								/>
+							</a>
+						</li>
+					))}
+				</ul>
 
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center justify-between gap-2">

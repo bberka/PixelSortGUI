@@ -26,7 +26,7 @@ import {
 	toExportScale,
 	type ExportErrorView,
 } from './export-helpers.ts';
-import {usePhoneLayout} from './use-phone-layout.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
 import type {ExportFormat, SupportedEncodeFormats} from '@/codec/encode.ts';

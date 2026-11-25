@@ -380,4 +380,21 @@ describe('canvas stage', () => {
 		setRender(view.store, {failed: false});
 		expect(view.container.querySelector('[role="alert"]')).toBeNull();
 	});
+
+	it('reports the real fitted scale to the coordinator in fit mode instead of 0', async () => {
+		const view = await mount();
+		view.coordinator.calls.length = 0;
+
+		view.store
+			.getState()
+			.setViewState(
+				{fitMode: 'fit', zoom: 1.5, centerX: 200, centerY: 150},
+				{devicePixelRatio: 2},
+			);
+
+		expect(view.coordinator.calls).toContainEqual({
+			type: 'setViewScale',
+			scale: 3,
+		});
+	});
 });

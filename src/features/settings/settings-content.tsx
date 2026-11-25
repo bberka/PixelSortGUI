@@ -8,13 +8,12 @@ import {
 	ShieldCheckIcon,
 	SunIcon,
 } from 'lucide-react';
-import {
-	APP_LICENSE_TEXT,
-	THIRD_PARTY_NOTICES,
-} from './third-party-notices.generated.ts';
+import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
+import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {Separator} from '@/components/ui/separator';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
 import {isThemePreference, type ThemePreference} from '@/state/theme.ts';
@@ -48,8 +47,7 @@ function ThemeOptionIcon({theme}: {readonly theme: ThemePreference}) {
 }
 
 function getAppVersionLabel(): string {
-	const meta = import.meta as {env?: Record<string, unknown>};
-	const stamped = meta.env?.VITE_APP_VERSION;
+	const stamped = (globalThis as {VITE_APP_VERSION?: string}).VITE_APP_VERSION;
 	return typeof stamped === 'string' && stamped.trim().length > 0
 		? stamped.trim()
 		: '0.x (dev)';
@@ -67,7 +65,6 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 	const setStorageMetrics = useAppStore((state) => state.setStorageMetrics);
 
 	const [requestingPersistence, setRequestingPersistence] = useState(false);
-	const [licenseOpen, setLicenseOpen] = useState(false);
 	const [noticesOpen, setNoticesOpen] = useState(false);
 	const mountedRef = useRef(true);
 
@@ -252,36 +249,25 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 					Pixel sorting lineage: inspired by Kim Asendorf&apos;s ASDFPixelSort.
 				</p>
 
-				<div className="flex flex-col gap-2">
-					<div className="flex items-center justify-between gap-2">
-						<span className="text-foreground">MIT License</span>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							aria-expanded={licenseOpen}
-							aria-controls="settings-mit-license"
-							onClick={() => {
-								setLicenseOpen((previous) => !previous);
-							}}
-						>
-							{licenseOpen ? (
-								<ChevronDownIcon className="size-4" aria-hidden="true" />
-							) : (
-								<ChevronRightIcon className="size-4" aria-hidden="true" />
-							)}
-							<span>{licenseOpen ? 'Hide licence' : 'View licence'}</span>
-						</Button>
-					</div>
-					{licenseOpen ? (
-						<pre
-							id="settings-mit-license"
-							className="max-h-48 overflow-auto rounded-md border border-border bg-secondary p-3 font-mono text-xs leading-4 whitespace-pre-wrap text-foreground"
-						>
-							{APP_LICENSE_TEXT}
-						</pre>
-					) : null}
-				</div>
+				<ul className="flex flex-col gap-1.5">
+					{ABOUT_EXTERNAL_LINKS.map((link) => (
+						<li key={link.href}>
+							<a
+								href={link.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								aria-label={link.accessibleName}
+								className="inline-flex min-h-6 items-center gap-1.5 text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+							>
+								<span>{link.label}</span>
+								<ExternalLinkIcon
+									className="size-3.5 shrink-0"
+									aria-hidden="true"
+								/>
+							</a>
+						</li>
+					))}
+				</ul>
 
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center justify-between gap-2">
@@ -307,44 +293,48 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 						</Button>
 					</div>
 					{noticesOpen ? (
-						<ul
+						<ScrollArea
 							id="settings-third-party-notices"
-							className="flex max-h-56 flex-col divide-y divide-border overflow-auto rounded-md border border-border bg-secondary"
+							orientation="both"
+							tabStop={false}
+							className="max-h-56 rounded-md border border-border bg-secondary"
 						>
-							{THIRD_PARTY_NOTICES.map((notice) => (
-								<li
-									key={notice.name}
-									className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
-								>
-									<div className="flex min-w-0 flex-col">
-										{notice.url ? (
-											<a
-												href={notice.url}
-												target="_blank"
-												rel="noopener noreferrer"
-												className="inline-flex items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-											>
-												<span className="truncate">{notice.name}</span>
-												<ExternalLinkIcon
-													className="size-3 shrink-0"
-													aria-hidden="true"
-												/>
-											</a>
-										) : (
-											<span className="truncate font-medium text-foreground">
-												{notice.name}
+							<ul className="flex flex-col divide-y divide-border">
+								{THIRD_PARTY_NOTICES.map((notice) => (
+									<li
+										key={notice.name}
+										className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+									>
+										<div className="flex min-w-0 flex-col">
+											{notice.url ? (
+												<a
+													href={notice.url}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+												>
+													<span className="truncate">{notice.name}</span>
+													<ExternalLinkIcon
+														className="size-3 shrink-0"
+														aria-hidden="true"
+													/>
+												</a>
+											) : (
+												<span className="truncate font-medium text-foreground">
+													{notice.name}
+												</span>
+											)}
+											<span className="font-mono text-muted-foreground tabular-nums">
+												{notice.version}
 											</span>
-										)}
-										<span className="font-mono text-muted-foreground tabular-nums">
-											{notice.version}
-										</span>
-									</div>
-									<Badge variant="outline" className="shrink-0">
-										{notice.license}
-									</Badge>
-								</li>
-							))}
-						</ul>
+										</div>
+										<Badge variant="outline" className="shrink-0">
+											{notice.license}
+										</Badge>
+									</li>
+								))}
+							</ul>
+						</ScrollArea>
 					) : null}
 				</div>
 			</section>

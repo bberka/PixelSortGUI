@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {useAppRuntime} from '@/app/runtime-context.tsx';
+import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
 
 export type CardThumbnailProps = {
 	readonly projectId: string;
@@ -13,6 +13,9 @@ export type CardThumbnailProps = {
  */
 export function CardThumbnail({projectId, visible}: CardThumbnailProps) {
 	const {repository} = useAppRuntime().bundle;
+	const thumbnailVersion = useAppStore(
+		(state) => state.thumbnailVersions[projectId] ?? 0,
+	);
 	const [url, setUrl] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -41,7 +44,7 @@ export function CardThumbnail({projectId, visible}: CardThumbnailProps) {
 				URL.revokeObjectURL(objectUrl);
 			}
 		};
-	}, [projectId, repository, visible]);
+	}, [projectId, repository, thumbnailVersion, visible]);
 
 	if (!url) {
 		return null;

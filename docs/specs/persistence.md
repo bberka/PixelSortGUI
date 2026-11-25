@@ -2,6 +2,7 @@ Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI persistence spec
 
@@ -230,15 +231,48 @@ Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted
 - **Transaction failure fallback:** Catch `QuotaExceededError` on any IndexedDB write. Because imports and commits run inside atomic transactions, IndexedDB aborts the transaction cleanly, leaving zero partial projects and preserving the last committed state.
 - **User prompt:** Open the `"Storage is full"` dialog explaining that this device's browser storage does not have enough free space, with `"Manage library"` (closes dialog and navigates to Library).
 
-## 8. Later: Backup export and import (F17) and eviction warnings
+## 8. Next release (v0.2.0): geometry transforms and history jump
 
-Not built in the first release. Kept here so the archive format and eviction-warning design are ready when scheduled.
+### 8.1 Database version 2 (`SourceTransform`, F20)
 
-### 8.0 Safari 7-day eviction warning (later)
+When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps from `1` to `2`:
+
+- `ProjectRecord` adds:
+  - `transform: SourceTransform` (from [engine.md section 16.3](engine.md#163-geometry-transforms-f20), default `IDENTITY_TRANSFORM`).
+  - `effectiveWidth: number` and `effectiveHeight: number` (derived from `sourceWidth`, `sourceHeight`, and `transform`; cached on `ProjectRecord` so Library cards show cropped/rotated/resized dimensions without loading `sources`).
+- `HistoryEntryRecord` adds:
+  - `transform: SourceTransform` (full snapshot of the project's geometry at that commit, alongside `stack`).
+- `ThumbnailRecord.stackSignature` becomes `canonicalJson({transform, stack})` so any geometry commit invalidates and regenerates the project thumbnail.
+- `UserPresetRecord` is **unchanged**: presets store `EffectStack` only, so applying a preset never overwrites a project's crop, rotation, flip, or resize (AC-F20.6).
+- `ExportFormat` expands to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'` when `F21` lands (no DB version bump required because `exportSettings.format` is a plain string validated on read).
+
+**Migration (`dbMigrations[1]` in `src/storage/db.ts`):**
+
+1. Inside `onupgradeneeded` (from version 1 to 2), iterate all records in `projects`: set `transform = IDENTITY_TRANSFORM`, `effectiveWidth = project.sourceWidth`, `effectiveHeight = project.sourceHeight` where missing.
+2. Iterate all records in `history`: set `transform = IDENTITY_TRANSFORM` where missing.
+3. Update `meta.schemaInfo` to `dbVersion: 2`.
+4. `sources`, `presets`, and `thumbnails` are untouched. `MemoryStorageAdapter` mirrors the same default fields.
+
+### 8.2 History jump and rich action labels (F23)
+
+`F23` reuses the existing `history` IndexedDB store (`MAX_HISTORY_ENTRIES = 201`, persisted per project across reloads, `src/storage/types.ts:17`). No schema version bump is required for `F23` alone.
+
+- **Repository method:** Add `jumpToHistory(projectId: string, seq: number): Promise<HistoryStepResult | null>` to `StorageRepository` (`src/storage/types.ts`). Inside one `readwrite` transaction:
+  1. Verify `project.historyMinSeq <= seq <= project.historyMaxSeq` and read `history.get([projectId, seq])`.
+  2. Update `ProjectRecord` (`stack`, `transform` once F20 lands, `selectedInstanceId`, `historyHeadSeq: seq`, `updatedAt`).
+  3. Never delete entries with `seq > historyHeadSeq` during a jump (those remain as the redo branch until a new commit overwrites them). Never alter `viewState`, `theme`, or library selection.
+- **Action label conventions:** Commit labels include the parameter or action detail so the History panel is scannable, for example `"Threshold range 0.25 to 0.80"`, `"Angle 90°"`, `"Add Pixel sort"`, `"Remove Channel shift"`, `"Reorder Pixel sort"`, `"Apply preset ASDF classic"`, `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"`.
+- **Memory footprint:** Each `HistoryEntryRecord` is plain JSON (`EffectStack` + `SourceTransform`, ~0.5 to 4 KB). At the 201-entry cap, a project's entire history stays under ~1 MB in RAM and IndexedDB, with zero pixel buffers stored.
+
+### 8.3 Later: Backup export and import (F17) and eviction warnings
+
+Not built in `v0.1.0` or `v0.2.0`. Kept here so the archive format and eviction-warning design are ready when scheduled.
+
+#### 8.3.0 Safari 7-day eviction warning (later)
 
 When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
 
-### 8.1 Archive format (`backupVersion: 1`, later)
+#### 8.3.1 Archive format (`backupVersion: 1`, later)
 
 Backups let the user archive projects or move them between browsers and devices (F17, later). Backups are standard ZIP files built and read with `fflate` (MIT). When implemented, add `lastBackupAt` and `backupReminderDismissedAt` to `AppStateRecord` and add a 30-day Library backup reminder banner (7-day dismiss cooldown).
 
@@ -284,14 +318,14 @@ type BackupManifest = {
 
 `projects/<projectId>/history.json` holds `{ entries: HistoryEntryRecord[] }`.
 
-### 8.2 Export flow
+#### 8.3.2 Export flow
 
 1. User chooses backup scope (whole library from Settings/Library menu, or a single project from its card menu) and whether to include undo history (`"Include undo history"`, default checked).
 2. Read the selected `ProjectRecord`s, their deduplicated `SourceRecord` blobs, optional `HistoryEntryRecord`s, and all `UserPresetRecord`s from IndexedDB.
 3. Stream-assemble the ZIP with `fflate` (reporting progress and allowing Cancel) into a `Blob` (`application/zip`) and trigger download (or Share on devices supporting `navigator.canShare({files})`).
 4. If `scope === 'library'`, update `meta.appState.lastBackupAt = Date.now()` and clear any active backup reminder banner.
 
-### 8.3 Import validation, deduplication and error handling
+#### 8.3.3 Import validation, deduplication and error handling
 
 Import runs in two phases: **strict validation first** (zero DB writes), then **atomic commit**.
 

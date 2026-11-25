@@ -1,4 +1,5 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
+Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI design system
 
@@ -17,7 +18,7 @@ Rules every screen follows:
 
 ## 2. Themes and color tokens
 
-Two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with a toggle in the toolbar and Settings.
+Two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with the selector in Settings (the app bar has no theme button).
 
 ### 2.1 Activation and zero-flash boot
 
@@ -76,7 +77,7 @@ System stacks only (zero network requests):
 ## 4. Spacing, radii and elevation
 
 - **Base grid:** 4 px (`4, 8, 12, 16, 20, 24, 32`).
-- **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges/pills; `9999px` for slider thumbs and the angle dial.
+- **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges, pills, and fader slider tracks/grips; `9999px` for the angle dial.
 - **Chrome dimensions:**
   - Top bar height: `48 px` on desktop; `52 px` plus `env(safe-area-inset-top)` on tablet and phone.
   - Desktop right sidebar width: `340 px` (fixed).
@@ -89,7 +90,7 @@ System stacks only (zero network requests):
 
 ## 5. Controls and shadcn component mapping
 
-All base primitives come from **shadcn/ui** (`new-york` style, Radix UI primitives, `lucide-react` icons, `src/components/ui/`). Scrollable panels use shadcn `ScrollArea`.
+All base primitives come from **shadcn/ui** (`new-york` style, Radix UI primitives, `lucide-react` icons, `src/components/ui/`). Every scrollable region uses the one `ScrollArea` described in 5.4.
 
 ### 5.1 Parameter controls (F5, schema-driven)
 
@@ -105,6 +106,17 @@ Every control renders a visible `<label>` (equal to its accessible name, AC-F5.6
 | `range` | Two-thumb `Slider` (`minStepsBetweenThumbs={0}`) + two numeric `Input`s (`Low`, `High`) | Thumbs cannot cross; typing `lo > hi` swaps them to match `validateParams` (engine.md section 3). |
 | `angle` | Custom `AngleDial` + numeric `Input` (unit `°`, step `0.1`) | 44 × 44 px circular dial with pointer/touch drag; snaps within `±4°` to `spec.snaps` (`0, 45, 90, 135, 180, 225, 270, 315`), Shift bypasses snap. Keyboard on dial: Arrow ±1°, Shift+Arrow ±15°, Home 0°. |
 | `seed` | Numeric `Input` (`inputMode="numeric"`, uint32) + `"New seed"` `Button` (`Dices` icon) | `"New seed"` writes a random uint32 from `crypto.getRandomValues` as 1 commit. |
+
+#### Slider presentation
+
+All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/components/ui/slider.tsx`), whose default variant is **`fader`** (`DEFAULT_SLIDER_VARIANT`):
+
+- **Dimensions and radii:** `32 px` (`h-8`) interactive row height; `10 px` (`h-2.5`, `4 px` radius) thick track; `12 × 24 px` (`4 px` radius) rectangular studio-fader grip centered inside a `24 × 28 px` pointer target (`44 × 44 px` under `@media (pointer: coarse)`).
+- **Tokens and contrast:** Unfilled track uses `bg-muted` with `1 px solid` `border-input`; filled range uses `bg-accent` (≥ 4.6:1 against `bg-muted` in both Light and True Black themes). The grip uses `bg-card` with a `2 px` `border-foreground` frame and a `2 × 12 px` `bg-foreground` centre notch (`border-accent` on hover). End ticks at `0%` and `100%` use `bg-input`; the default-value tick uses `bg-foreground`. Focus renders `2 px solid` `outline-ring` with `2 px` offset. Disabled state reduces opacity to `50%` and blocks pointer events.
+- **Range form:** Two-thumb sliders render a filled `bg-accent` band between two identical rectangular grips that cannot cross (`minStepsBetweenThumbs={0}`).
+- **Alternative variants** (selectable via the `variant` prop or `DEFAULT_SLIDER_VARIANT`):
+  - **`fill-bar`:** `32 px` tall scrubby fill bar (`rounded-md`, `border-input`, `bg-muted` track, full-height `bg-accent` fill, vertical bar grip, default-value tick).
+  - **`stepped`:** `28 px` tall segmented track of 16 discrete pixel cells (`rounded-[2px]`, `bg-accent` lit cells over `bg-muted` / `border-input` unlit cells, block cursor thumb, default-value notch).
 
 ### 5.2 Universal effect instance controls
 
@@ -132,6 +144,19 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 | Update ready / Deleted project | F3, F15 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
 | Persistent warning (Storage unavailable) | F16 | Inline alert bar (`role="status"` or `role="alert"`) | Docked directly under the top bar; never overlays canvas controls |
 
+### 5.4 Scrollbars
+
+One component, `ScrollArea` in `src/components/ui/scroll-area.tsx` (Radix `ScrollArea`, restyled), draws every scrollbar in the app. No scroll region uses a native `overflow-auto` or `overflow-y-auto` element, and `src/` has no other scrollbar CSS. Radix is chosen over native CSS because Firefox's `scrollbar-width` cannot change thickness on hover or drag and has no `::-webkit-scrollbar`; the Radix bar behaves the same in Chromium and Firefox.
+
+- **Overlay.** The bar sits over the content edge and takes no layout width, so content never shifts when it appears or disappears. It mounts only on an axis that overflows.
+- **Plain thumb.** No arrow buttons, no track background, no border: a rounded thumb only. The track is `transparent`.
+- **Thickness.** The thumb is `4 px` at rest. While the pointer is on the scrollbar strip, or the thumb is being dragged, it widens to `8 px` over `150 ms`, and returns to `4 px` when the pointer leaves and the drag ends. With `prefers-reduced-motion: reduce` there is no transition.
+- **Grab target.** The transparent strip is `12 px` wide, so the thin thumb is as easy to grab as a wide one.
+- **Colour.** The thumb is `--muted-foreground`: at least `7:1` on `--background`, `--card`, `--popover` and `--secondary` in Light, and at least `6.9:1` on the same surfaces in True Black (`#000000`). Both exceed the `3:1` needed for UI components.
+- **Idle.** The bar is invisible while the area is idle and fades in (`150 ms`) while the pointer is over the area, while focus is inside it, while it scrolls (and for `800 ms` after), and during a drag.
+- **Unchanged behaviour.** Wheel, touch, keyboard scrolling and focus work as before. The viewport is an explicit tab stop (`tabIndex=0`) in the parameter panel, the Settings panel and the gallery, as before. Regions that were plain `overflow` elements keep the browser's own rule (`tabStop={false}`), so no tab stop is added.
+- **Regions.** Parameter panel, effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body and third-party notices, export sheet body, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
+
 ## 6. Layout
 
 Viewport classes match [product.md section 4](docs/specs/product.md#4-platforms-and-support) and proof viewports match [workflow.md](docs/agents/workflow.md#proof):
@@ -148,7 +173,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-------------------------------------------------------------------+
-| PixelSortGUI            [Open images]          [Theme] [Settings] |  <- 48/52 px
+| PixelSortGUI            [Open images]          [Settings] |  <- 48/52 px
 +-------------------------------------------------------------------+
 | [Optional banner: Storage unavailable]                            |
 +-------------------------------------------------------------------+
@@ -169,7 +194,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-----------------------------------------------------------------------------+
-| <- Library | project-name | [Undo][Redo] | [Compare][Split] | [100% v] | [Export] [Theme] [Settings] |  48 px
+| <- Library | project-name | [Undo][Redo] | [Compare][Split] | [100% v] | [Export] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
 | [2 px render progress bar when > 300 ms]               | [Stack | Presets]  |
 |                                                        +--------------------+
@@ -231,7 +256,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-------------------------------+  + safe-area-bottom
 ```
 
-- **Phone top bar overflow (`⋮`):** Holds Project rename, Presets, Theme toggle, and Settings so the primary bar stays uncluttered at 390 px with 44 × 44 px buttons.
+- **Phone top bar overflow (`⋮`):** Holds Project rename, Presets, and Settings so the primary bar stays uncluttered at 390 px with 44 × 44 px buttons.
 - **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled dot/`"Off"` text, and tap-to-select; tapping the active chip's `⋮` menu opens Enable/Disable, Move left (up), Move right (down), Duplicate, Remove. A pinned `+` chip opens Add effect.
 - **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet to a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
 
@@ -262,6 +287,21 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
 - **Placement:** An optional floating tool strip docked inside the canvas stage (top-left on desktop and tablet, above the stack strip on phone), rendered only when the selected effect instance has a registered canvas tool binding ([engine.md section 4.7](docs/specs/engine.md#47-on-canvas-tool-slot-reserved-for-later)).
 - **Overlay and input:** The canvas stage reserves a transparent pointer-event overlay layer aligned to the same zoom and pan transform as the photo canvas. When an on-canvas tool is active, pointer events route to the tool handler; holding `Space` (or switching back to the pan/hand tool) temporarily restores canvas pan.
 - **No impact on schema-driven effects:** Effects without a registered canvas tool render no tool strip and keep the default pan-on-drag canvas behaviour.
+
+### 7.2 Post-v0.1.0 UI specifications (F20, F23, F24)
+
+- **Geometry tools (F20):**
+  - Entry point: a `"Transform"` (or `"Crop & resize"`) toggle button in the editor toolbar (desktop/tablet top bar; phone top bar overflow or canvas strip). Activating it opens the Geometry panel in place of the Parameter panel and mounts the interactive crop overlay on the canvas stage (reusing the section 7.1 overlay layer).
+  - Orientation row: four icon buttons (`RotateCcw` 90° CCW, `RotateCw` 90° CW, `FlipHorizontal2`, `FlipVertical2`), each committing immediately as one history entry.
+  - Crop section: aspect-ratio `ToggleGroup` / `Select` (`Free`, `Original`, `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `4:5`), numeric `X`, `Y`, `W`, `H` inputs, `"Apply crop"` primary button, and `"Reset crop"` ghost button. On-canvas crop box uses a `1 px` `#ffffff` border with `1 px` `#000000` casing, dimmed mask outside (`rgba(0, 0, 0, 0.55)`), rule-of-thirds guides while dragging, and 8 focusable corner/edge handles (`44 × 44 px` hit area on coarse pointer, `24 × 24 px` on fine pointer; keyboard Arrow keys nudge by 1 px, Shift+Arrow by 10 px).
+  - Resize section: unit toggle (`px` | `%`), `Width` and `Height` numeric inputs with an aspect-lock `Button` (`Lock` / `Unlock`, default locked), resampling `Select` (`Lanczos-3`, `Bilinear`, `Nearest`), inline limit validation error when exceeding `16,384 px` or `50 MP`, `"Apply resize"` primary button, and `"Reset resize"` ghost button.
+- **Project change history panel (F23):**
+  - **Desktop (`1440 × 900`):** Third tab in the right sidebar `Tabs` bar: `[Stack | Presets | History]`. Selecting `History` replaces the Stack + Parameters area with a full-height `ScrollArea` listing commits newest-first (`Initial` at bottom).
+  - **Tablet (`820 × 1180`):** Third tab in the left column of the docked bottom panel (`[Stack | Presets | History]`).
+  - **Phone (`390 × 844`):** `"History"` action in the top bar overflow (`⋮`) menu (and tab in the bottom sheet header alongside `"Presets"`), opening the History list in a `Sheet`.
+  - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render muted (`text-muted-foreground opacity-60`) to show they belong to the redo branch and will be discarded on a new commit. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state.
+- **App changelog (F24):**
+  - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
 
 ## 8. Interaction: touch, pointer and keyboard
 

@@ -1,5 +1,11 @@
 import {describe, expect, it} from 'vite-plus/test';
-import {nextVersion, parseMinor, parseReleaseTag} from './release-version.ts';
+import {
+	formatBuildVersion,
+	nextVersion,
+	parseMinor,
+	parseReleaseTag,
+	resolveBuildVersion,
+} from './release-version.ts';
 
 describe('parseMinor', () => {
 	it('parses a whole number with surrounding whitespace', () => {
@@ -44,5 +50,44 @@ describe('nextVersion', () => {
 
 	it('throws when VERSION is lower than an existing release minor', () => {
 		expect(() => nextVersion(1, ['v0.2.0'])).toThrow(/Set VERSION to 2/);
+	});
+});
+
+describe('formatBuildVersion', () => {
+	it('prefers an explicit envVersion and strips a leading v', () => {
+		expect(
+			formatBuildVersion({
+				minor: 0,
+				exactTag: 'v0.0.1',
+				shortSha: 'abc1234',
+				envVersion: 'v0.2.3',
+			}),
+		).toBe('0.2.3');
+	});
+
+	it('uses an exact ZeroVer release tag on HEAD when present', () => {
+		expect(
+			formatBuildVersion({
+				minor: 0,
+				exactTag: 'v0.0.4',
+				shortSha: 'abc1234',
+			}),
+		).toBe('0.0.4');
+	});
+
+	it('falls back to 0.<minor>.x (<sha>) for non-release builds', () => {
+		expect(
+			formatBuildVersion({
+				minor: 1,
+				exactTag: null,
+				shortSha: 'deadbee',
+			}),
+		).toBe('0.1.x (deadbee)');
+	});
+
+	it('resolves a non-empty version for the current checkout', () => {
+		const version = resolveBuildVersion();
+		expect(version).toMatch(/^0\.\d+\./);
+		expect(version).not.toBe('0.x (dev)');
 	});
 });

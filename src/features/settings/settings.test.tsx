@@ -3,11 +3,9 @@ import {act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
+import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {SettingsButton} from './settings-button.tsx';
-import {
-	APP_LICENSE_TEXT,
-	THIRD_PARTY_NOTICES,
-} from './third-party-notices.generated.ts';
+import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import type {AppRuntime} from '@/state/index.ts';
@@ -219,7 +217,7 @@ describe('Settings view', () => {
 		expect(dialog.textContent).toContain('Storage protection: Persistent');
 	});
 
-	it('displays About info, MIT licence text, ASDFPixelSort credit, and generated third-party notices', async () => {
+	it('displays About info, the ASDFPixelSort credit, and generated third-party notices', async () => {
 		const context = createTestStore();
 		mountSettings(context, {
 			estimate: async () => ({usage: 0, quota: 100_000_000}),
@@ -230,18 +228,13 @@ describe('Settings view', () => {
 
 		const dialog = document.querySelector('[role="dialog"]')!;
 		expect(dialog.textContent).toContain('PixelSortGUI');
+		expect(dialog.textContent).not.toContain('0.x (dev)');
+		expect(dialog.textContent).toMatch(/0\.\d+\./);
 		expect(dialog.textContent).toContain(
 			"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort.",
 		);
 
-		const viewLicenseButton = [...dialog.querySelectorAll('button')].find(
-			(button) => button.textContent?.includes('View licence'),
-		)!;
-		act(() => {
-			viewLicenseButton.click();
-		});
-		await flush();
-		expect(dialog.textContent).toContain(APP_LICENSE_TEXT.slice(0, 40));
+		expect(dialog.textContent).not.toContain('View licence');
 
 		const viewNoticesButton = [...dialog.querySelectorAll('button')].find(
 			(button) => button.textContent?.includes('View notices'),
@@ -262,6 +255,19 @@ describe('Settings view', () => {
 		for (const link of externalLinks) {
 			expect(link.getAttribute('target')).toBe('_blank');
 			expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+		}
+
+		for (const expected of ABOUT_EXTERNAL_LINKS) {
+			const anchor = dialog.querySelector<HTMLAnchorElement>(
+				`a[href="${CSS.escape(expected.href)}"]`,
+			);
+			expect(anchor).not.toBeNull();
+			expect(anchor?.textContent).toContain(expected.label);
+			expect(anchor?.getAttribute('aria-label')).toBe(expected.accessibleName);
+			expect(anchor?.getAttribute('aria-label')).toContain('opens GitHub');
+			expect(anchor?.getAttribute('target')).toBe('_blank');
+			expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+			expect(anchor?.querySelector('svg')).not.toBeNull();
 		}
 	});
 });

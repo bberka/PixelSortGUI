@@ -34,5 +34,6 @@
 - [ ] No commit on this branch has a `Co-authored-by` trailer or a "Generated with" style attribution line
 - [ ] The spec for this change is in `docs/specs/` and was merged or committed before the code
 - [ ] Every doc that describes the changed behavior is updated
+- [ ] User-visible changes are reflected in the README lists "What works today" and "Not there yet"
 - [ ] I ran the checks listed under Tests and reported only what I ran
 - [ ] Code copied from another project is MIT, its notice is kept, and `docs/agents/licensing.md` lists it

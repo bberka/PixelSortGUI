@@ -14,7 +14,10 @@ import {
 	StartupFailureScreen,
 	VersionErrorScreen,
 } from '@/app/startup-screens.tsx';
-import {StorageUnavailableBanner} from '@/app/storage-banner.tsx';
+import {
+	DatabaseReloadBanner,
+	StorageUnavailableBanner,
+} from '@/app/storage-banner.tsx';
 import {StorageFullDialog} from '@/app/storage-full-dialog.tsx';
 import {
 	useAppBoot,
@@ -23,6 +26,7 @@ import {
 } from '@/app/use-app-boot.ts';
 import {Toaster} from '@/components/ui/sonner';
 import {TooltipProvider} from '@/components/ui/tooltip';
+import {WindowFileDrop} from '@/features/import/window-file-drop.tsx';
 import type {AppRuntime} from '@/state/index.ts';
 
 export type AppProps = {
@@ -110,10 +114,12 @@ function AppFrame({screens}: {readonly screens?: ScreenRegistry}) {
 		<div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
 			<AppBar />
 			<StorageUnavailableBanner />
+			<DatabaseReloadBanner />
 			<main className="flex min-h-0 flex-1 flex-col">
 				<RouteHost route={route} screens={screens} />
 			</main>
 			<StorageFullDialog />
+			<WindowFileDrop />
 			<NoticeToasts />
 			<LiveRegion />
 		</div>

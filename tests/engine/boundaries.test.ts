@@ -35,4 +35,16 @@ describe('src/engine stays self-contained (engine.md section 1)', () => {
 			expect(banned.test(text), `${name} uses a banned global`).toBe(false);
 		}
 	});
+
+	it('keeps render implementations out of the main-thread effect registry', () => {
+		const mainRegistry = readFileSync(
+			path.join(engineDir, 'effects/index.ts'),
+			'utf8',
+		);
+		const staticImports = [
+			...mainRegistry.matchAll(/import\s+[\s\S]*?from\s+'([^']+)'/g),
+		].map((match) => match[1]);
+		expect(staticImports).not.toContain('./pixel-sort/index.ts');
+		expect(staticImports).not.toContain('./channel-shift.ts');
+	});
 });

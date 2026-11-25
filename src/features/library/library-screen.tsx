@@ -5,9 +5,10 @@ import {
 	useState,
 	useSyncExternalStore,
 } from 'react';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
-import {Button} from '@/components/ui/button';
+import {ImportImagesButton} from '@/features/import/import-images-button.tsx';
 import {
 	DeleteProjectDialog,
 	RenameProjectDialog,
@@ -27,9 +28,7 @@ type RenameRequest = {
 };
 
 /**
- The library screen (product.md F2, DESIGN.md section 6.1). The "Open images"
- action belongs to the import flow (T4.3): until that screen exports a button,
- the empty state shows the disabled action the shell has always shown.
+ The library screen (product.md F2, DESIGN.md section 6.1).
  */
 export function LibraryScreen() {
 	const projects = useAppStore((state) => state.projects);
@@ -90,9 +89,7 @@ export function LibraryScreen() {
 					<p className="text-sm text-muted-foreground">
 						Images stay on this device.
 					</p>
-					<Button disabled type="button">
-						Open images
-					</Button>
+					<ImportImagesButton />
 				</div>
 			</div>
 		);
@@ -127,11 +124,13 @@ export function LibraryScreen() {
 
 	return (
 		<>
-			<div
-				ref={scrollRef}
-				className="min-h-0 flex-1 overflow-y-auto p-3 md:p-4 lg:p-6"
+			<ScrollArea
+				viewportRef={scrollRef}
+				tabStop={false}
+				className="min-h-0 flex-1"
+				viewportClassName="[&>div]:block!"
 			>
-				<ul className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:gap-4">
+				<ul className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 md:gap-4 md:p-4 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:gap-4 lg:p-6">
 					{ordered.map((project) => (
 						<ProjectCard
 							key={project.id}
@@ -146,7 +145,7 @@ export function LibraryScreen() {
 						/>
 					))}
 				</ul>
-			</div>
+			</ScrollArea>
 			<RenameProjectDialog
 				key={renameRequest?.seq ?? 0}
 				project={renameRequest?.project ?? null}

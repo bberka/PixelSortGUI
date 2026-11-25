@@ -439,7 +439,9 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 	const lastCardThumbnail = page.getByRole('listitem').last().locator('img');
 
 	const scrollStats = await page.evaluate(async () => {
-		const scroller = globalThis.document.querySelector('ul')?.parentElement;
+		const scroller = globalThis.document
+			.querySelector('ul')
+			?.closest('[data-slot="scroll-area-viewport"]');
 		if (!scroller) {
 			throw new Error('No scroll container');
 		}
@@ -479,7 +481,9 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 	expect(after.imagesInDom).toBeLessThan(40);
 
 	const nearBottom = await page.evaluate(() => {
-		const scroller = globalThis.document.querySelector('ul')?.parentElement;
+		const scroller = globalThis.document
+			.querySelector('ul')
+			?.closest('[data-slot="scroll-area-viewport"]');
 		return scroller
 			? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
 			: 0;

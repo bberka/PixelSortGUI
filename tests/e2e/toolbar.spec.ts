@@ -313,6 +313,145 @@ test('AC-F10.1: applying ASDF classic yields 2 pixelSort instances as one histor
 	expect(afterAdd.instances[2].params.threshold).toEqual([0.5, 1]);
 });
 
+const REPLACE_TEXT =
+	'Applying "ASDF classic" removes the 1 effect in this project. You can undo this.';
+
+test('AC-F10.5: applying a preset over one effect asks first; Cancel changes nothing and Replace is one history entry', async ({
+	page,
+}) => {
+	await seedProjectWithEffects(page, ['pixelSort']);
+	const before = await readEditorState(page);
+
+	await openPresets(page);
+	await page.getByRole('button', {name: /^ASDF classic/}).click();
+	const dialog = page.getByRole('alertdialog', {
+		name: 'Replace current effects?',
+	});
+	await expect(dialog).toBeVisible();
+	await expect(dialog).toContainText(REPLACE_TEXT);
+
+	// Escape cancels
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await expect(page.getByRole('button', {name: 'Presets'})).toBeFocused();
+	const afterEscape = await readEditorState(page);
+	expect(afterEscape.instances).toEqual(before.instances);
+	expect(afterEscape.historyHeadSeq).toBe(before.historyHeadSeq);
+
+	// Cancel button
+	await openPresets(page);
+	await page.getByRole('button', {name: /^ASDF classic/}).click();
+	await dialog.getByRole('button', {name: 'Cancel'}).click();
+	await expect(dialog).toHaveCount(0);
+	const afterCancel = await readEditorState(page);
+	expect(afterCancel.instances).toEqual(before.instances);
+	expect(afterCancel.historyHeadSeq).toBe(before.historyHeadSeq);
+	await expect(
+		page.getByRole('button', {name: 'Undo Add Pixel sort'}),
+	).toBeEnabled();
+
+	// Replace
+	await openPresets(page);
+	await page.getByRole('button', {name: /^ASDF classic/}).click();
+	await dialog.getByRole('button', {name: 'Replace'}).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(page.getByRole('button', {name: 'Presets'})).toBeFocused();
+	await expect(
+		page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+	).toBeEnabled();
+	const afterReplace = await readEditorState(page);
+	expect(afterReplace.instances).toHaveLength(2);
+	expect(afterReplace.historyHeadSeq).toBe(before.historyHeadSeq + 1);
+
+	await page.getByRole('button', {name: 'Undo Apply ASDF classic'}).click();
+	await expect(
+		page.getByRole('button', {name: 'Redo Apply ASDF classic'}),
+	).toBeEnabled();
+	const afterUndo = await readEditorState(page);
+	expect(afterUndo.instances).toEqual(before.instances);
+	expect(afterUndo.historyHeadSeq).toBe(before.historyHeadSeq);
+});
+
+test('AC-F10.5: no confirmation for an empty stack or for Add to stack', async ({
+	page,
+}) => {
+	await seedProjectWithEffects(page, []);
+	await openPresets(page);
+	await page.getByRole('button', {name: /^ASDF classic/}).click();
+	await expect(page.getByRole('alertdialog')).toHaveCount(0);
+	await expect(
+		page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+	).toBeEnabled();
+	expect((await readEditorState(page)).instances).toHaveLength(2);
+
+	await openPresets(page);
+	await page.getByRole('button', {name: 'Add Bright streaks to stack'}).click();
+	await expect(page.getByRole('alertdialog')).toHaveCount(0);
+	await expect(
+		page.getByRole('button', {name: 'Undo Add Bright streaks'}),
+	).toBeEnabled();
+	expect((await readEditorState(page)).instances).toHaveLength(3);
+});
+
+const CONFIRM_VIEWPORTS = PROOF_VIEWPORTS.filter(
+	(item) => item.name !== 'tablet',
+);
+
+for (const theme of THEMES) {
+	for (const viewport of CONFIRM_VIEWPORTS) {
+		test(`AC-F10.5 AC-F19.2: replace confirmation at ${viewport.name} in ${theme.name} has no a11y violations and blocks undo shortcuts @a11y`, async ({
+			page,
+			browserName,
+		}) => {
+			const consoleErrors = collectConsoleErrors(page);
+			await openToolbarInTheme(page, theme, viewport);
+			await openPresets(page);
+			await page.getByRole('button', {name: /^ASDF classic/}).click();
+			const dialog = page.getByRole('alertdialog', {
+				name: 'Replace current effects?',
+			});
+			await expect(dialog).toBeVisible();
+			await assertNoA11yViolations(page);
+
+			// Undo shortcut must stay inactive while the confirmation is open
+			const beforeShortcut = await readEditorState(page);
+			await page.keyboard.press('Control+z');
+			await page.keyboard.press('Control+Shift+z');
+			const afterShortcut = await readEditorState(page);
+			expect(afterShortcut.instances).toEqual(beforeShortcut.instances);
+			expect(afterShortcut.historyHeadSeq).toBe(beforeShortcut.historyHeadSeq);
+
+			if (
+				process.env.CAPTURE_PRESET_CONFIRM_PROOF === '1' &&
+				browserName === 'chromium'
+			) {
+				const outDir = join(process.cwd(), '.proof', 'preset-confirm');
+				await mkdir(outDir, {recursive: true});
+				await page.screenshot({
+					path: join(outDir, `${viewport.name}-${theme.name}.png`),
+				});
+			}
+
+			await dialog.getByRole('button', {name: 'Cancel'}).click();
+			await expect(dialog).toHaveCount(0);
+			if (viewport.width < 600) {
+				// Phone: Cancel returns to the Presets list underneath.
+				await expect(
+					page.getByRole('list', {name: 'Built-in presets'}),
+				).toBeVisible();
+				await page.getByRole('button', {name: /^ASDF classic/}).click();
+				await dialog.getByRole('button', {name: 'Replace'}).click();
+				await expect(dialog).toHaveCount(0);
+				await expect(
+					page.getByRole('list', {name: 'Built-in presets'}),
+				).toHaveCount(0);
+			}
+
+			expect(consoleErrors, 'Console errors').toEqual([]);
+		});
+	}
+}
+
 test('AC-F10.2 AC-F10.3 AC-F10.4: save, reload, apply to another project, rename, delete user preset; built-ins read-only', async ({
 	page,
 }) => {

@@ -1,4 +1,5 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
+Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI design system
 
@@ -262,6 +263,21 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
 - **Placement:** An optional floating tool strip docked inside the canvas stage (top-left on desktop and tablet, above the stack strip on phone), rendered only when the selected effect instance has a registered canvas tool binding ([engine.md section 4.7](docs/specs/engine.md#47-on-canvas-tool-slot-reserved-for-later)).
 - **Overlay and input:** The canvas stage reserves a transparent pointer-event overlay layer aligned to the same zoom and pan transform as the photo canvas. When an on-canvas tool is active, pointer events route to the tool handler; holding `Space` (or switching back to the pan/hand tool) temporarily restores canvas pan.
 - **No impact on schema-driven effects:** Effects without a registered canvas tool render no tool strip and keep the default pan-on-drag canvas behaviour.
+
+### 7.2 Post-v0.1.0 UI specifications (F20, F23, F24)
+
+- **Geometry tools (F20):**
+  - Entry point: a `"Transform"` (or `"Crop & resize"`) toggle button in the editor toolbar (desktop/tablet top bar; phone top bar overflow or canvas strip). Activating it opens the Geometry panel in place of the Parameter panel and mounts the interactive crop overlay on the canvas stage (reusing the section 7.1 overlay layer).
+  - Orientation row: four icon buttons (`RotateCcw` 90° CCW, `RotateCw` 90° CW, `FlipHorizontal2`, `FlipVertical2`), each committing immediately as one history entry.
+  - Crop section: aspect-ratio `ToggleGroup` / `Select` (`Free`, `Original`, `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `4:5`), numeric `X`, `Y`, `W`, `H` inputs, `"Apply crop"` primary button, and `"Reset crop"` ghost button. On-canvas crop box uses a `1 px` `#ffffff` border with `1 px` `#000000` casing, dimmed mask outside (`rgba(0, 0, 0, 0.55)`), rule-of-thirds guides while dragging, and 8 focusable corner/edge handles (`44 × 44 px` hit area on coarse pointer, `24 × 24 px` on fine pointer; keyboard Arrow keys nudge by 1 px, Shift+Arrow by 10 px).
+  - Resize section: unit toggle (`px` | `%`), `Width` and `Height` numeric inputs with an aspect-lock `Button` (`Lock` / `Unlock`, default locked), resampling `Select` (`Lanczos-3`, `Bilinear`, `Nearest`), inline limit validation error when exceeding `16,384 px` or `50 MP`, `"Apply resize"` primary button, and `"Reset resize"` ghost button.
+- **Project change history panel (F23):**
+  - **Desktop (`1440 × 900`):** Third tab in the right sidebar `Tabs` bar: `[Stack | Presets | History]`. Selecting `History` replaces the Stack + Parameters area with a full-height `ScrollArea` listing commits newest-first (`Initial` at bottom).
+  - **Tablet (`820 × 1180`):** Third tab in the left column of the docked bottom panel (`[Stack | Presets | History]`).
+  - **Phone (`390 × 844`):** `"History"` action in the top bar overflow (`⋮`) menu (and tab in the bottom sheet header alongside `"Presets"`), opening the History list in a `Sheet`.
+  - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render muted (`text-muted-foreground opacity-60`) to show they belong to the redo branch and will be discarded on a new commit. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state.
+- **App changelog (F24):**
+  - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
 
 ## 8. Interaction: touch, pointer and keyboard
 

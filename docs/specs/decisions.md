@@ -2,6 +2,7 @@ Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI decisions and open questions
 
@@ -143,16 +144,81 @@ Status: settled for first release (one optional tooling question remains open), 
   - **Research and bulk reading:** **deepseek-flash**.
 - The rule that a reviewer runs a different model from the author stays.
 
+### D21. Non-destructive project-level geometry transforms (2026-11-25)
+
+- **Options considered:** (a) Destructively rewrite the stored source `Blob` on crop/rotate/resize; (b) Add crop/rotate/resize as effect instances inside `EffectStack`; (c) Store a non-destructive `SourceTransform` record on `ProjectRecord` (and `HistoryEntryRecord`) applied before `renderStack`, bumping IndexedDB to `dbVersion = 2`.
+- **Choice:** Option (c): non-destructive `SourceTransform` applied before the effect stack (`engine.md` §16.3, `persistence.md` §8.1).
+- **Reason:** Keeps `sources` immutable for SHA-256 deduplication, keeps undo/history snapshots tiny JSON instead of multi-megabyte blobs, avoids generational loss when re-cropping, keeps `EffectDefinition` same-size-out-as-in (`engine.md` §1 rule 4), and ensures applying a preset never overwrites the user's crop or rotation.
+- **Revisit if:** A user explicitly asks for an in-stack distortion/crop effect that operates between two glitch passes.
+
+### D22. Resize resampling filters and pixel-parameter stability (2026-11-25)
+
+- **Options considered:** (a) Browser `OffscreenCanvas` scaling only; (b) Deterministic CPU resamplers (`lanczos3` via checked-in LUT, `bilinear`/`boxDownscale`, `nearest`), keeping effect pixel parameters (`unit: 'px'`) unchanged in effective-image pixels and enforcing the 50 MP / 16,384 px ceiling.
+- **Choice:** Option (b) (`engine.md` §16.3).
+- **Reason:** Browser canvas scaling differs across engines and breaks golden determinism; a checked-in Lanczos-3 LUT avoids `Math.sin` at render time while delivering sharp photo scaling, and `nearest` serves pixel-art/glitch upscaling. Leaving stored `unit: 'px'` effect parameters untouched avoids silently mutating user values during crop or resize.
+- **Revisit if:** Full-res 50 MP Lanczos-3 resize proves too slow on the reference laptop, in which case an integer bicubic or Wasm SIMD kernel can replace it with a version bump.
+
+### D23. Extended format additions and refusals (2026-11-25)
+
+- **Options considered:** (a) Native browser codecs only; (b) Add MIT/Apache-2.0 bundled codecs for high-value formats (`utif2` for TIFF, pure-TS BMP writer, main-thread SVG rasteriser, lazy `@jsquash/avif` Wasm for AVIF export) and refuse licence-incompatible or non-goal formats (HEIC/HEIF, camera RAW).
+- **Choice:** Option (b) (`product.md` F21, `engine.md` §16.4).
+- **Reason:** Chrome/Edge 120+ and Firefox 128+ already decode AVIF, BMP, and GIF first frame natively. `utif2` (MIT, ~25 to 30 KB gzipped) unlocks TIFF cleanly, a ~1 KB pure-TS BMP writer supports external databending workflows, and lazy-loaded `@jsquash/avif` (Apache-2.0, ~3.3 MB Wasm) enables offline AVIF export without slowing initial load. HEIC/HEIF decoders wrap LGPL `libheif` with HEVC patents, and RAW decoders (`dcraw` GPL, `LibRaw` LGPL/CDDL) conflict with `docs/agents/licensing.md` and `product.md` §8 (no RAW development).
+- **Revisit if:** Chrome and Firefox ship native `OffscreenCanvas.convertToBlob({type: 'image/avif'})` (allowing `@jsquash/avif` to be removed) or an unencumbered MIT HEIC decoder becomes available.
+
+### D24. Expanded glitch effect catalogue and v0.2.0 top-5 selection (2026-11-25)
+
+- **Options considered:** (a) Implement all 11 effects at once; (b) Specify an 11-effect catalogue (the 3 deferred effects plus 8 new still-photo glitch effects) and ship the top 5 by value-to-effort in `v0.2.0` (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave`, `posterize`), keeping every effect pure `RgbaImage -> RgbaImage`.
+- **Choice:** Option (b) (`product.md` F22, `engine.md` §16.1).
+- **Reason:** One effect per PR (`docs/agents/adding-an-effect.md`) keeps diffs small and reviewable. The top 5 deliver the widest visual variety (band tearing, channel permutation, tile scramble, CRT wave distortion, bit-crush/posterisation) with low implementation effort and zero UI boilerplate. Simulating JPEG/data-bend artifacts in pixel space (`jpegCrush`) avoids cross-browser JPEG decoder divergence.
+- **Revisit if:** The owner prefers a different top-5 mix (Q15).
+
+### D25. Project change history panel backed by existing persisted history (2026-11-25)
+
+- **Options considered:** (a) Keep a separate in-memory-only history list; (b) Expose the existing 201-entry persisted IndexedDB `history` store in a visible newest-first History tab with click-to-jump (`jumpToHistory`) and muted redo entries.
+- **Choice:** Option (b) (`product.md` F23, `persistence.md` §8.2, `DESIGN.md` §7.2).
+- **Reason:** The `history` store already persists up to 201 snapshots across reloads (`src/storage/repository.ts`), so reusing it gives reload-safe jump-to-state with under ~1 MB of JSON per project and no DB version bump.
+- **Revisit if:** Per-entry thumbnail previews are requested later, which would need a bounded LRU thumbnail cache.
+
+### D26. Interpretation of "cut" and "change history" (2026-11-25)
+
+- **Choice:** "Cut" in the owner's request is specified as **crop** (`F20`). "Change history" is specified primarily as a **per-project edit history panel** (`F23`), with a brief companion spec for an offline **app version changelog** in Settings -> About (`F24`).
+- **Reason:** Both interpretations match the owner's phrasing and fit naturally into the editor; alternative readings (region cutout; changelog-only) are listed in Q11 and Q12 for owner confirmation.
+
 ---
 
 ## Open questions for the owner
 
-Questions Q1 through Q9 are settled above (2026-11-24). One optional tooling question remains open:
+Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, and Q11 through Q15 arise from the post-v0.1.0 specifications:
 
 ### Q10. Optional pre-commit guards and skills management
 
 - **Question:** Should scaffolding add (a) mediastash's pre-commit em-dash rejection check, (b) mediastash's Claude Code Stop hook requiring proof screenshots before stopping on UI edits, and (c) `skills-lock.json` restored via `vp run skills:install` versus vendoring skills? (`docs/agents/tooling.md`.)
 - **Current default:** No em-dash hook and no Stop hook unless requested; lock file (`skills-lock.json`) with `vp run skills:install` rather than vendoring.
+
+### Q11. Meaning of "cut"
+
+- **Question:** Did "cut" mean **crop** (trim the image to a rectangle, specified in `F20`), or **cut out a selected region** (remove a rectangle or freehand area to transparency / fill colour)?
+- **Recommended default:** Treat "cut" as crop in `F20`, and defer region cutout to the later Masks / on-canvas tools milestone.
+
+### Q12. Meaning of "change history"
+
+- **Question:** Did "change history" mean the **per-project edit history panel** (`F23`, click any past commit to jump), an **app version changelog** (`F24`, release notes in Settings -> About), or both?
+- **Recommended default:** Build both, with `F23` prioritized first in `v0.2.0` and `F24` added as a small follow-up (`T7.3`).
+
+### Q13. Release timing for F20 to F24
+
+- **Question:** Should `v0.1.0` ship as currently scoped, or should any of `F20` to `F24` be pulled into `v0.1.0`? (Pulling all of them adds ~17 tasks; `F23` alone adds 2 tasks; see `roadmap.md` Milestone 7.)
+- **Recommended default:** Ship `v0.1.0` first, then deliver `F23`, `F24`, `F22` (top 5), `F21`, and `F20` in `v0.2.0`.
+
+### Q14. AVIF export WebAssembly bundle
+
+- **Question:** Because Chrome and Firefox do not natively encode AVIF via `convertToBlob`, should `v0.2.0` bundle the lazy-loaded `@jsquash/avif` Wasm encoder (~3.3 MB uncompressed, Apache-2.0, loaded only when AVIF export is selected), or skip AVIF export and keep only native PNG/JPEG/WebP plus BMP and TIFF?
+- **Recommended default:** Include lazy-loaded `@jsquash/avif` Wasm so AVIF export works offline without affecting initial load time.
+
+### Q15. Top-5 glitch effects for v0.2.0
+
+- **Question:** Does the ranked top-5 set (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave`, `posterize`) match what you want first, or would you swap in another from the 11-effect catalogue (such as `pixelSmear`, `bayerDither`, `rgbNoise`, `mirrorFold`, `thresholdInvert`, or `jpegCrush`)?
+- **Recommended default:** Build the ranked top 5 first (`T7.4` to `T7.8`), then schedule the remaining 6 in a follow-up wave.
 
 ---
 

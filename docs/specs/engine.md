@@ -4,6 +4,7 @@ Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium)
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine foundation review by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
+Updated with post-v0.1.0 specs (F20 geometry, F21 formats, F22 effect catalogue) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI engine spec
 
@@ -655,45 +656,227 @@ tests/fixtures/        synthetic.ts
 scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 ```
 
-## 16. Later
+## 16. Next release (v0.2.0) and later
 
-Specifications preserved here for deferred work. None of section 16 is implemented in the first release.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`.
 
-### 16.1 Deferred glitch effects
+### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
-#### `sliceShift` (version 1, glitch): "Shift random bands of the image sideways."
+This catalogue specifies 11 deterministic effects beyond `pixelSort` and `channelShift`. All 11 use the existing `ParamSpec` vocabulary (section 3), preserve `output.width === input.width` and `output.height === input.height`, never mutate `input`, and call `ctx.checkpoint()` at least once per 16,384 pixels.
 
-| Param | Kind | Default | Range | Group |
-|---|---|---|---|---|
-| `axis` | enum | `horizontal` | `horizontal` "Rows", `vertical` "Columns" | Slices |
-| `sliceMin` | integer (px) | 4 | 1..2048 | Slices |
-| `sliceMax` | integer (px) | 48 | 1..2048 | Slices |
-| `probability` | number (ratio) | 0.3 | 0..1, step 0.01 | Slices |
-| `maxOffset` | integer (px) | 80 | 0..4096 | Offset |
-| `edge` | enum | `wrap` | `wrap`, `clamp` | Offset |
-| `seed` | seed | random | | Seed |
+**Ranking by value to effort (top 5 targeted for `v0.2.0`):**
 
-Slices are defined in source space so the preview and export match. For `horizontal`, slices partition source rows `0..Hs-1` (for `vertical`, swap rows and columns, and `x` and `y` below). Let `lo = sliceMin`, `hi = max(sliceMin, sliceMax)`. Starting at `y0 = 0` with `i = 0`: slice `i` covers source rows `[y0, y0 + h)` with `h = intIn(lo, hi, seed, 1, i)`; it is active when `unit(seed, 2, i) < probability`; its offset is `o = intIn(-maxOffset, maxOffset, seed, 3, i)` when active, else 0; then `y0 += h`, `i += 1`, until `y0 >= Hs`.
+| Rank | Effect `type` | Category | Locality | Cost class (4 MP) | `selection` debug | Target |
+|---|---|---|---|---|---|---|
+| 1 | `sliceShift` | `glitch` | Per line (row or col) | Low (< 15 ms) | No | `v0.2.0` |
+| 2 | `channelSwap` | `color` | Per pixel | Low (< 10 ms) | No | `v0.2.0` |
+| 3 | `blockShuffle` | `glitch` | Whole image | Low (< 15 ms) | No | `v0.2.0` |
+| 4 | `scanlineWave` | `glitch` | Per line (row or col) | Low (< 15 ms) | No | `v0.2.0` |
+| 5 | `posterize` | `color` | Per pixel | Low (< 10 ms) | No | `v0.2.0` |
+| 6 | `bayerDither` | `color` | Per pixel (tile-local) | Low (< 15 ms) | No | Post-v0.2.0 |
+| 7 | `rgbNoise` | `glitch` | Per pixel | Low (< 20 ms) | No | Post-v0.2.0 |
+| 8 | `pixelSmear` | `glitch` | Per line (angled) | Medium (20 to 60 ms) | Yes | Post-v0.2.0 |
+| 9 | `mirrorFold` | `glitch` | Whole image | Low (< 15 ms) | No | Post-v0.2.0 |
+| 10 | `thresholdInvert` | `color` | Per pixel | Low (< 15 ms) | Yes | Post-v0.2.0 |
+| 11 | `jpegCrush` | `glitch` | Whole image (8×8 blocks) | Medium (30 to 90 ms) | No | Post-v0.2.0 |
 
-Render: for render row `y`, find the slice containing `ys = clamp(ctx.toSource(y), 0, Hs - 1)`, let `or = ctx.px(o)`, and set `out(x, y) = in(E(x - or, W), y)` for all four channels, with `E` as in 6.1.
+#### 1. `sliceShift` (version 1, `glitch`, top 5): "Shift random bands of the image sideways."
 
-#### `blockShuffle` (version 1, glitch): "Swap square tiles around the image."
+Partitions the image into variable-height horizontal bands (or variable-width vertical bands) in source space and shifts a random fraction of bands along the band axis, creating classic VHS tape-tracking tears and digital transmission glitches.
 
-| Param | Kind | Default | Range | Group |
-|---|---|---|---|---|
-| `tileSize` | integer (px) | 64 | 4..1024 | Tiles |
-| `amount` | number (ratio) | 0.15 | 0..1, step 0.01 | Tiles |
-| `seed` | seed | random | | Seed |
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `axis` | Axis | enum | `horizontal` | `horizontal` "Rows", `vertical` "Columns" | Slices | always |
+| `sliceMin` | Min band size | integer (px) | 4 | 1..2048 | Slices | always |
+| `sliceMax` | Max band size | integer (px) | 48 | 1..2048 | Slices | always |
+| `probability` | Probability | number (ratio) | 0.30 | 0..1, step 0.01 | Slices | always |
+| `maxOffset` | Max offset | integer (px) | 80 | 0..4096 | Offset | always |
+| `edge` | Edge mode | enum | `wrap` | `wrap` "Wrap around", `clamp` "Stretch edge" | Offset | always |
+| `seed` | Seed | seed | random | uint32 | Seed | always |
 
-Source grid: `T = tileSize`, `cols = floor(Ws / T)`, `rows = floor(Hs / T)`, `N = cols * rows` full tiles; the right and bottom remainders never move. If `N < 2`, output equals input. Permutation `π` starts as the identity; for `t` from 0 to `N - 1`, if `unit(seed, 1, t) < amount`, swap `π[t]` and `π[intIn(0, N - 1, seed, 2, t)]`.
+- **Behavior:** Slices are defined in source space so preview and export match. For `horizontal`, slices partition source rows `0..Hs-1` (for `vertical`, swap rows and columns, and `x` and `y`). Let `lo = sliceMin`, `hi = max(sliceMin, sliceMax)`. Starting at `y0 = 0` with `i = 0`: slice `i` covers source rows `[y0, y0 + h)` with `h = intIn(lo, hi, seed, 1, i)`; it is active when `unit(seed, 2, i) < probability`; its offset is `o = intIn(-maxOffset, maxOffset, seed, 3, i)` when active, else 0; then `y0 += h`, `i += 1`, until `y0 >= Hs`. For render row `y`, find the slice containing `ys = clamp(ctx.toSource(y), 0, Hs - 1)`, let `or = ctx.px(o)`, and set `out(x, y) = in(E(x - or, W), y)` for all four channels, with `E` as in section 6.1.
+- **Determinism & locality:** Deterministic via `hash32` with `seed` and purpose codes `1, 2, 3`. Per line once the slice table is built (at most `max(Hs, Ws)` entries). Cost class: Low. Debug views: none.
+- **Provenance:** Standard glitch-art technique (VHS/scanline tearing). Clean-room own specification; no external code copied.
 
-Render pixel `(x, y)`: `xs = (x + 0.5) / scale`, `ys = (y + 0.5) / scale`, `tx = floor(xs / T)`, `ty = floor(ys / T)`. If `tx < cols` and `ty < rows`: `t2 = π[ty * cols + tx]`, `xs2 = xs + (t2 % cols - tx) * T`, `ys2 = ys + (floor(t2 / cols) - ty) * T`, and `out(x, y) = in(clamp(floor(xs2 * scale), 0, W - 1), clamp(floor(ys2 * scale), 0, H - 1))`. Otherwise `out(x, y) = in(x, y)`. At scale 1 this is an exact tile swap.
+#### 2. `channelSwap` (version 1, `color`, top 5): "Swap the red, green and blue channels."
 
-#### `channelSwap` (version 1, color): "Swap the red, green and blue channels."
+Reassigns the red, green, and blue colour channels of every pixel according to one of the six permutations of `(R, G, B)` while leaving alpha untouched, producing instant false-colour and retro-palette shifts.
 
-One parameter `order`, enum, default `gbr`, options `rgb`, `rbg`, `grb`, `gbr`, `brg`, `bgr`. The three letters name the input channel written to output R, G and B: `gbr` means `outR = inG`, `outG = inB`, `outB = inR`.
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `order` | Channel order | enum | `gbr` | `rgb` "RGB (identity)", `rbg` "RBG", `grb` "GRB", `gbr` "GBR", `brg` "BRG", `bgr` "BGR" | Channels | always |
 
-#### Deferred built-in presets
+- **Behavior:** The three letters name the input channel written to output R, G, and B: `gbr` means `outR = inG`, `outG = inB`, `outB = inR`, `outA = inA`.
+- **Determinism & locality:** Fully deterministic, no seed. Pure per-pixel. Cost class: Low. Debug views: none.
+- **Provenance:** Standard channel permutation (also noted in `jeffThompson/PixelSorting` `OtherSortingIdeas`, no licence file, never copied). Clean-room own implementation.
+
+#### 3. `blockShuffle` (version 1, `glitch`, top 5): "Swap square tiles around the image."
+
+Divides the image into a square grid of tiles in source space and swaps a random subset of tiles with other tiles on the grid, producing corrupted-frame mosaic and macroblock-reorder effects.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `tileSize` | Tile size | integer (px) | 64 | 4..1024 | Tiles | always |
+| `amount` | Shuffle amount | number (ratio) | 0.15 | 0..1, step 0.01 | Tiles | always |
+| `seed` | Seed | seed | random | uint32 | Seed | always |
+
+- **Behavior:** Source grid: `T = tileSize`, `cols = floor(Ws / T)`, `rows = floor(Hs / T)`, `N = cols * rows` full tiles; the right and bottom remainders never move. If `N < 2`, output equals input. Permutation `π` starts as identity; for `t` from 0 to `N - 1`, if `unit(seed, 1, t) < amount`, swap `π[t]` and `π[intIn(0, N - 1, seed, 2, t)]`. Render pixel `(x, y)`: `xs = (x + 0.5) / scale`, `ys = (y + 0.5) / scale`, `tx = floor(xs / T)`, `ty = floor(ys / T)`. If `tx < cols` and `ty < rows`: `t2 = π[ty * cols + tx]`, `xs2 = xs + (t2 % cols - tx) * T`, `ys2 = ys + (floor(t2 / cols) - ty) * T`, and `out(x, y) = in(clamp(floor(xs2 * scale), 0, W - 1), clamp(floor(ys2 * scale), 0, H - 1))`. Otherwise `out(x, y) = in(x, y)`. At scale 1 this is an exact tile swap.
+- **Determinism & locality:** Deterministic via `hash32` with `seed` and purpose codes `1, 2`. Needs whole image (random tile gather). Cost class: Low. Debug views: none.
+- **Provenance:** Classic tile-scramble glitch effect. Clean-room own specification; no external code copied.
+
+#### 4. `scanlineWave` (version 1, `glitch`, top 5): "Displace rows or columns along a wave with optional jitter."
+
+Shifts each row (or column) horizontally (or vertically) by a periodic wave function combined with optional per-line random jitter, creating CRT horizontal-sync wobble, liquid distortion, and analogue interference.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `axis` | Axis | enum | `horizontal` | `horizontal` "Rows", `vertical` "Columns" | Wave | always |
+| `waveform` | Waveform | enum | `sine` | `sine` "Sine", `triangle` "Triangle", `square` "Square", `sawtooth` "Sawtooth" | Wave | always |
+| `amplitude` | Amplitude | integer (px) | 24 | 0..2048 | Wave | always |
+| `wavelength` | Wavelength | integer (px) | 120 | 4..4096 | Wave | always |
+| `phase` | Phase | angle | 0 | [0, 360), step 0.1; snaps 0, 90, 180, 270 | Wave | always |
+| `jitter` | Line jitter | integer (px) | 0 | 0..512 | Jitter | always |
+| `edge` | Edge mode | enum | `wrap` | `wrap` "Wrap around", `clamp` "Stretch edge" | Edges | always |
+| `seed` | Seed | seed | random | uint32 | Seed | `jitter` ≠ 0 |
+
+- **Behavior:** For `horizontal`, each render row `y` maps to source coordinate `ys = clamp(ctx.toSource(y), 0, Hs - 1)` (for `vertical`, swap axes). Normalized cycle position `t = wrap(ys / wavelength + phase / 360, 1)` computed via integer index `idx = wrap(floorDiv(ys * 3600, wavelength) + Math.round(phase * 10), 3600)` into `DIRECTION_TABLE[idx]` (section 5.2) so no `Math.sin` runs at render time:
+  - `sine`: `wave = -DIRECTION_TABLE[idx].dy / 4096` (exact in `[-1, 1]`).
+  - `triangle`: `p = idx / 3600`; `wave = p < 0.25 ? 4 * p : p < 0.75 ? 2 - 4 * p : 4 * p - 4`.
+  - `square`: `wave = idx < 1800 ? 1 : -1`.
+  - `sawtooth`: `wave = 2 * (idx / 3600) - 1`.
+  Source offset `os = roundHalfAway(amplitude * wave) + (jitter > 0 ? intIn(-jitter, jitter, seed, 1, ys) : 0)`. Render offset `or = ctx.px(os)`. Set `out(x, y) = in(E(x - or, W), y)` for all four channels.
+- **Determinism & locality:** Deterministic via `DIRECTION_TABLE` and `hash32` (purpose code `1`). Per line. Cost class: Low. Debug views: none.
+- **Provenance:** Classic scanline/CRT wave displacement. Clean-room own implementation reusing `DIRECTION_TABLE` from section 5.2.
+
+#### 5. `posterize` (version 1, `color`, top 5): "Reduce colour depth by quantising levels or crushing low bits."
+
+Quantises each RGB channel into a small number of discrete steps or zeroes the lowest bits of each 8-bit channel, turning smooth photo gradients into bold graphic bands or harsh digital bit-crush contours.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `mode` | Mode | enum | `levels` | `levels` "Levels", `bitCrush` "Bit crush" | Quantise | always |
+| `levels` | Levels per channel | integer | 6 | 2..64 | Quantise | `mode` = `levels` |
+| `bitsDropped` | Bits dropped | integer | 4 | 1..7 | Quantise | `mode` = `bitCrush` |
+| `preserveLuma` | Monochrome (luma) | boolean | false | | Output | always |
+
+- **Behavior:** If `preserveLuma` is true, compute `Y8 = floorDiv(2126*R + 7152*G + 722*B + 5000, 10000)` and quantise `Y8`, writing the result to R, G, and B. Otherwise quantise R, G, and B independently. Alpha is copied unchanged.
+  - `levels` (`L` in `2..64`): `stepIdx = floorDiv(c * (L - 1) + 127, 255)`, `out = floorDiv(stepIdx * 255 + floorDiv(L - 1, 2), L - 1)` (maps 0 to 0 and 255 to 255 evenly).
+  - `bitCrush` (`b` in `1..7`): `mask = (0xff << b) & 0xff`, `out = c & mask`.
+- **Determinism & locality:** Fully deterministic, no seed. Pure per-pixel (256-entry lookup table built once per render). Cost class: Low. Debug views: none.
+- **Provenance:** Standard digital image quantisation. Clean-room own implementation.
+
+#### 6. `bayerDither` (version 1, `color`): "Apply ordered Bayer matrix dithering."
+
+Adds a repeating threshold matrix (2×2, 4×4, or 8×8 Bayer pattern) before quantising each channel, producing retro print, Game Boy, and early-computer crosshatch textures.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `matrix` | Matrix size | enum | `4` | `2` "2×2", `4` "4×4", `8` "8×8" | Pattern | always |
+| `levels` | Levels per channel | integer | 2 | 2..16 | Palette | always |
+| `monochrome` | Monochrome | boolean | false | | Palette | always |
+| `spread` | Spread | number (ratio) | 1.0 | 0..1, step 0.01 | Pattern | always |
+| `pixelScale` | Pattern scale | integer (px) | 1 | 1..16 | Pattern | always |
+
+- **Behavior:** Standard recursive Bayer threshold matrices `B2` (values `0..3`), `B4` (`0..15`), `B8` (`0..63`) checked in as integer constants (`M = matrix`, `N = M * M`). For render pixel `(x, y)`, source matrix coordinates are `mx = wrap(floorDiv(ctx.toSource(x), pixelScale), M)` and `my = wrap(floorDiv(ctx.toSource(y), pixelScale), M)`. Normalised offset `d = (B[my * M + mx] + 0.5) / N - 0.5` (in `(-0.5, 0.5)`). Let `q = 255 / (levels - 1)` and `s = Math.round(spread * 100) / 100`. For each channel `c` (or `Y8` when `monochrome` is true): `v = clamp(c + d * q * s, 0, 255)`, `idx = Math.floor(v * (levels - 1) / 255 + 0.5)`, `out = floorDiv(idx * 255 + floorDiv(levels - 1, 2), levels - 1)`. Alpha unchanged.
+- **Determinism & locality:** Fully deterministic, no seed. Pure per-pixel. Cost class: Low. Debug views: none.
+- **Provenance:** Bryce Bayer (1973) ordered dithering algorithm (public domain mathematical definition). Clean-room own implementation.
+
+#### 7. `rgbNoise` (version 1, `glitch`): "Add deterministic colour or monochrome noise and dead pixels."
+
+Adds counter-hashed film/sensor grain or per-channel RGB static, plus optional dead/hot pixel dropout, keyed to source-image coordinates so preview and export have matching grain structure.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `amount` | Amount | number (ratio) | 0.15 | 0..1, step 0.01 | Noise | always |
+| `monochrome` | Monochrome | boolean | false | | Noise | always |
+| `dropout` | Dead/hot pixel chance | number (ratio) | 0 | 0..0.25, step 0.001 | Dropout | always |
+| `grainSize` | Grain size | integer (px) | 1 | 1..16 | Noise | always |
+| `seed` | Seed | seed | random | uint32 | Seed | always |
+
+- **Behavior:** For render pixel `(x, y)`, cell coordinates in source space are `gx = floorDiv(ctx.toSource(x), grainSize)` and `gy = floorDiv(ctx.toSource(y), grainSize)`. If `dropout > 0` and `unit(seed, 4, gx, gy) < dropout`, set RGB to `(255, 255, 255)` if `unit(seed, 5, gx, gy) >= 0.5`, else `(0, 0, 0)` (alpha unchanged). Otherwise, let `amp = Math.round(amount * 255)`. If `monochrome`: `delta = intIn(-amp, amp, seed, 1, gx, gy)`, add `delta` to R, G, and B and clamp to `0..255`. If colour: compute independent `deltaR`, `deltaG`, `deltaB` with purpose codes `1, 2, 3` and clamp each to `0..255`.
+- **Determinism & locality:** Deterministic via `hash32` with purpose codes `1..5`. Pure per-pixel. Cost class: Low. Debug views: none.
+- **Provenance:** Standard counter-based procedural noise. Clean-room own implementation.
+
+#### 8. `pixelSmear` (version 1, `glitch`): "Smear selected pixels along a direction with decay trails."
+
+Walks along angled pixel lines (using `DIRECTION_TABLE` and `lines.ts` from section 5.2) and carries a pixel's colour forward through selected runs, blending it gradually with each pixel it passes to create melting trails and phosphor streaks.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `angle` | Angle | angle | 270 | [0, 360), step 0.1; snaps 0, 45, 90, 135, 180, 225, 270, 315 | Direction | always |
+| `selectKey` | Selection key | enum | `luma` | the 8 keys of section 5.3 | Selection | always |
+| `threshold` | Threshold range | range | [0.50, 1.00] | 0..1, step 0.001 | Selection | always |
+| `invert` | Invert | boolean | false | | Selection | always |
+| `decay` | Trail decay | number (ratio) | 0.92 | 0..0.99, step 0.01 | Smear | always |
+| `maxLength` | Max trail length | integer (px) | 120 | 1..4096 | Smear | always |
+
+- **Behavior:** Uses the exact line partition from section 5.2 and threshold selection from section 5.4 (`lo16 <= selectKey16(p) <= hi16`, `selected = inBand !== invert`, alpha 0 never selected). Walk each line in order maintaining `(carryR, carryG, carryB, remaining)` initialized to `remaining = 0`. Let `L = ctx.pxLength(maxLength)` and `d = Math.round(decay * 1000)` (integer 0..990). At pixel `j`:
+  - If `selected[j]`: start or refresh the carry buffer with pixel `j`'s RGB, set `remaining = L`, write pixel `j` unchanged.
+  - Else if `remaining > 0` and `inA > 0`: blend `outC = floorDiv(2 * (carryC * d + inC * (1000 - d)) + 1000, 2000)` for R, G, B (alpha unchanged), update `carryC = outC`, decrement `remaining`.
+  - Else: write pixel `j` unchanged.
+- **Selection debug view:** Lists `debugViews: ['selection']`. Uses the same convention as section 5.7 (unselected pixels darkened via `c >> 2`).
+- **Determinism & locality:** Fully deterministic, no seed. Per line (reuses `lines.ts`). Cost class: Medium.
+- **Provenance:** Classic directional pixel melt / smear trail. Clean-room own implementation reusing `lines.ts` and `keys.ts`.
+
+#### 9. `mirrorFold` (version 1, `glitch`): "Mirror or fold the image into symmetrical quadrants or wedges."
+
+Reflects one half, quadrant, or octant of the image across horizontal, vertical, or diagonal symmetry axes around a configurable centre, creating surreal architectural and kaleidoscope glitch compositions.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `mode` | Symmetry | enum | `horizontal` | `horizontal` "Left to right", `vertical` "Top to bottom", `quad` "Quad (4-way)", `octant` "Kaleidoscope (8-way)" | Fold | always |
+| `flipSource` | Flip source side | boolean | false | | Fold | always |
+| `centerX` | Centre X | number (ratio) | 0.50 | 0..1, step 0.01 | Axis | always |
+| `centerY` | Centre Y | number (ratio) | 0.50 | 0..1, step 0.01 | Axis | `mode` ≠ `horizontal` |
+
+- **Behavior:** Let `cx = roundHalfAway(centerX * (W - 1))`, `cy = roundHalfAway(centerY * (H - 1))`.
+  - `horizontal`: if `flipSource` is false, mirror `x > cx` to `sx = clamp(2 * cx - x, 0, W - 1)` (else mirror `x < cx`); `sy = y`.
+  - `vertical`: mirror `y` across `cy` (`sx = x`).
+  - `quad`: apply both `horizontal` and `vertical` mirrors.
+  - `octant`: compute `dx = x - cx`, `dy = y - cy`, fold `|dx|` and `|dy|` into the first octant (`if |dy| > |dx|` swap `(|dx|, |dy|)`), then sample `sx = clamp(cx + (flipSource ? -ax : ax), 0, W - 1)`, `sy = clamp(cy + (flipSource ? -ay : ay), 0, H - 1)`.
+  Copy all four channels from `(sx, sy)`.
+- **Determinism & locality:** Fully deterministic, no seed. Whole image (reads across symmetry axes). Cost class: Low. Debug views: none.
+- **Provenance:** Standard image reflection / kaleidoscope folding (note: unrelated to `rkargon/pixelsorter` interval mirror, GPL-3.0, never copied). Clean-room own implementation.
+
+#### 10. `thresholdInvert` (version 1, `color`): "Invert colours or channels for pixels within a key range."
+
+Inverts the RGB channels (or selected channels) of pixels whose key value falls inside a threshold band, creating solarisation, negative-band highlights, and false-colour contours.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `selectKey` | Selection key | enum | `luma` | the 8 keys of section 5.3 | Selection | always |
+| `threshold` | Threshold range | range | [0.50, 1.00] | 0..1, step 0.001 | Selection | always |
+| `invertSelection` | Invert selection | boolean | false | | Selection | always |
+| `channels` | Target channels | enum | `rgb` | `rgb` "RGB", `red` "Red", `green` "Green", `blue` "Blue" | Output | always |
+
+- **Behavior:** Uses exact `key16` from section 5.3 and `lo16`, `hi16` from section 5.4. `selected = (lo16 <= key16(p) <= hi16) !== invertSelection` (alpha 0 never selected). For selected pixels, replace target channel(s) with `255 - c`; unselected pixels and alpha are copied unchanged.
+- **Selection debug view:** Lists `debugViews: ['selection']`. Unselected pixels darkened via `c >> 2`.
+- **Determinism & locality:** Fully deterministic, no seed. Pure per-pixel. Cost class: Low.
+- **Provenance:** Classic Sabattier solarisation / threshold inversion. Clean-room own implementation.
+
+#### 11. `jpegCrush` (version 1, `glitch`): "Simulate heavy JPEG macroblock quantisation and byte-bend glitches."
+
+Runs a deterministic integer 8×8 block transform and aggressive quantisation directly on the RGBA image buffer (with optional deterministic block-coefficient corruption and chroma subsampling), producing repeatable JPEG-artifact amplification and data-bend-style colour blocks without relying on browser JPEG encoders.
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `blockSize` | Block size | integer (px) | 8 | 4..64 | Blocks | always |
+| `quality` | Crush quality | integer | 12 | 1..100 | Quantise | always |
+| `chromaSubsample` | Subsample chroma | boolean | true | | Quantise | always |
+| `corruptRate` | Block corruption | number (ratio) | 0.05 | 0..0.50, step 0.01 | Data bend | always |
+| `corruptShift` | Corruption strength | number (ratio) | 0.50 | 0..1, step 0.01 | Data bend | `corruptRate` ≠ 0 |
+| `seed` | Seed | seed | random | uint32 | Seed | `corruptRate` ≠ 0 |
+
+- **Behavior:** Operates on source-aligned blocks of size `B = ctx.pxLength(blockSize)` (default 8 source px):
+  1. Convert RGB to integer YCbCr (`Y = floorDiv(299*R + 587*G + 114*B + 500, 1000)`, `Cb = clamp(128 + floorDiv(-169*R - 331*G + 500*B + 500, 1000), 0, 255)`, `Cr = clamp(128 + floorDiv(500*R - 419*G - 81*B + 500, 1000), 0, 255)`).
+  2. If `chromaSubsample` is true, average `Cb` and `Cr` over each `max(2, floorDiv(B, 2))` sub-block.
+  3. Apply a fixed-point integer 2D 8×8 Haar or integer-DCT-approximation transform on each block (resampled to 8×8 grid when `B !== 8`, or applied on 8×8 sub-tiles), quantise coefficients with a checked-in ITU-T T.81 baseline luminance/chrominance quantisation table scaled by `quality` (using integer arithmetic only, no `Math.cos`), then invert.
+  4. If `corruptRate > 0`: for each source block `(bx, by)`, when `unit(seed, 1, bx, by) < corruptRate`, perturb the block's DC `Cb`/`Cr` offsets by `intIn(-s, s, seed, 2|3, bx, by)` where `s = Math.round(corruptShift * 127)` and optionally swap or zero 1 to 3 AC coefficients keyed to `(seed, 4, bx, by)`, creating unmistakable magenta/green data-bend macroblocks.
+  5. Convert YCbCr back to RGB with integer arithmetic and copy alpha unchanged.
+- **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: Medium. Debug views: none.
+- **Provenance:** Standard ITU-T T.81 JPEG baseline quantisation tables (public standard) and data-bending aesthetics. Clean-room own implementation. (Note: true raw-bitstream JPEG corruption remains deferred because browser JPEG decoders vary across engines; pixel-space `jpegCrush` gives identical output across Chromium, Firefox, and Node.)
+
+#### Deferred built-in presets (enabled with F22 top 5)
 
 | Id | Name | Instances |
 |---|---|---|
@@ -719,3 +902,91 @@ iOS Safari invalidates any single canvas over 16,777,216 px and limits total can
 - **PNG (`src/codec/png-writer.ts`):** 8-bit, colour type 2 (RGB) when every alpha is 255, else 6 (RGBA); each row filtered with filter type 1 (Sub); compressed with `fflate` deflate in streaming mode at level 6; standard IHDR, IDAT chunks of at most 1 MiB, IEND; CRC-32 from a 256-entry table. No ancillary chunks (no gamma, ICC, text or time), so files carry no metadata.
 - **JPEG:** WebAssembly JPEG encoder loaded on demand (candidate `@jsquash/jpeg`).
 - **WebP:** not offered on Safari unless native or via Wasm encoder.
+
+### 16.3 Geometry transforms (F20)
+
+Geometry transforms are non-destructive and stored per project (not inside `EffectStack`), applied **before** the effect stack so every effect operates on the transformed **effective image**.
+
+#### Data model (`src/engine/transform.ts`)
+
+```ts
+type RotationDegrees = 0 | 90 | 180 | 270;
+type ResizeFilter = 'lanczos3' | 'bilinear' | 'nearest';
+
+type CropRect = {
+	readonly x: number; // integer, 0 <= x < orientedWidth
+	readonly y: number; // integer, 0 <= y < orientedHeight
+	readonly width: number; // integer, 1 <= width <= orientedWidth - x
+	readonly height: number; // integer, 1 <= height <= orientedHeight - y
+};
+
+type ResizeSpec = {
+	readonly width: number; // integer, 1..16384
+	readonly height: number; // integer, 1..16384
+	readonly filter: ResizeFilter; // default 'lanczos3'
+};
+
+type SourceTransform = {
+	readonly rotation: RotationDegrees; // clockwise degrees, default 0
+	readonly flipX: boolean; // horizontal mirror, default false
+	readonly flipY: boolean; // vertical mirror, default false
+	readonly crop: CropRect | null; // null = full oriented image
+	readonly resize: ResizeSpec | null; // null = cropped dimensions
+};
+```
+
+`IDENTITY_TRANSFORM` is `{rotation: 0, flipX: false, flipY: false, crop: null, resize: null}`.
+
+#### Canonical order and exact dimensions
+
+Given decoded EXIF-normalized source dimensions `(Ws, Hs)`:
+
+1. **Orientation:** Rotate clockwise by `rotation` (0, 90, 180, or 270), then apply `flipX` (mirror left-right: `x -> Wo - 1 - x`), then `flipY` (mirror top-bottom: `y -> Ho - 1 - y`). Oriented dimensions: `(Wo, Ho) = (rotation === 90 || rotation === 270) ? (Hs, Ws) : (Ws, Hs)`. Pixel mapping is an exact bijection with zero resampling.
+2. **Crop:** Extract rectangle `[crop.x, crop.x + crop.width) × [crop.y, crop.y + crop.height)` from oriented pixels. Cropped dimensions: `(Wc, Hc) = crop ? (crop.width, crop.height) : (Wo, Ho)`.
+   - **Fixed aspect ratio `a:b` rounding rules:**
+     - Initial centred box in `(Wo, Ho)`: if `Wo * b <= Ho * a`, `w = Wo` and `h = clamp(roundHalfAway(Wo * b / a), 1, Ho)`; else `h = Ho` and `w = clamp(roundHalfAway(Ho * a / b), 1, Wo)`. `x = Math.floor((Wo - w) / 2)`, `y = Math.floor((Ho - h) / 2)`.
+     - Interactive handle drag with locked `a:b`: anchor the opposite corner/edge, clamp the dragged axis length `d` to available space, compute the paired axis with `roundHalfAway(d * b / a)` (or `a / b`), clamp both to stay inside `[0, Wo] × [0, Ho]` and at least `1 × 1`.
+     - Numeric entry: round with `roundHalfAway`, clamp `width` to `[1, Wo]`, `height` to `[1, Ho]`, then clamp `x` to `[0, Wo - width]` and `y` to `[0, Ho - height]`.
+3. **Resize:** Resample `(Wc, Hc)` to `(We, He) = resize ? (resize.width, resize.height) : (Wc, Hc)`.
+   - **Percent mode:** `w = Math.max(1, roundHalfAway(Wc * percent / 100))`, `h = Math.max(1, roundHalfAway(Hc * percent / 100))`.
+   - **Limits:** `1 <= We <= 16384`, `1 <= He <= 16384`, and `We * He <= Math.max(50_000_000, Wc * Hc)`.
+   - **Resampling filters (all deterministic, straight-alpha in/out, premultiplied-alpha internally):**
+     - `lanczos3` (default): separable horizontal-then-vertical 3-lobe Lanczos filter (`a = 3`), reading kernel weights from a checked-in 1,024-entry lookup table on `[0, 3]` (generated by a script so no `Math.sin` runs at render time, rule 3 of section 1). When downscaling by factor `r = dst / src < 1`, widen support to `3 / r` to prevent aliasing. Premultiply RGB by alpha before filtering, clamp sums to `[0, 255]`, and unpremultiply afterwards.
+     - `bilinear`: uses exact `boxDownscale` (`src/engine/resample.ts`) when downscaling on both axes (`We <= Wc && He <= Hc`), and premultiplied-alpha bilinear interpolation with exact pixel-centre mapping `sx = (dx + 0.5) * Wc / We - 0.5` otherwise.
+     - `nearest`: `sx = Math.min(Wc - 1, Math.floor((dx + 0.5) * Wc / We))`, `sy = Math.min(Hc - 1, Math.floor((dy + 0.5) * Hc / He))`, copying all four channels unchanged.
+
+#### Pipeline, proxy, stage cache, and effect-parameter interaction
+
+- **Where it runs:** Before `renderStack`. `effectiveDimensions(Ws, Hs, transform)` returns `(We, He)`. `renderStack` receives `sourceWidth: We, sourceHeight: He`.
+- **Preview worker (`src/worker/preview.worker.ts`):** `loadSource` and a new `setTransform` message receive `transform: SourceTransform`. When `crop` is null and `resize` is null (identity or rotate/flip only), the worker may decode at `settle` cap and apply rotate/flip directly. When `crop` or `resize` is set, the worker decodes at a resolution sufficient to yield the full `settle` proxy (up to 4 MP of `(We, He)`), applies `applyTransform`, derives `drag` via `boxDownscale`, returns the transformed `settle` bitmap as `original` (so Compare and Split align 1:1 with the edited result), and clears the stage cache.
+- **Stage cache (`src/engine/pipeline.ts`):** `sourceKey` passed to `renderStack` becomes `${sourceHash}:${canonicalJson(transform)}` so two different crops with identical `(We, He)` never collide in the cache.
+- **Export worker (`src/worker/export.worker.ts`):** `export` and `renderFull` receive `transform: SourceTransform`. Export decodes full source, applies orientation and crop, then resizes directly to `renderSize(We, He, exportScale)` using `transform.resize?.filter ?? 'lanczos3'` (avoiding double resampling when both `transform.resize` and `exportScale < 1` are active), and runs `renderStack` with `sourceWidth: We, sourceHeight: He`.
+- **Effect parameters with `unit: 'px'`:** Stored unchanged in effective-image pixels. Cropping or resizing never rewrites effect parameters.
+
+### 16.4 Extended format support (F21)
+
+#### Current state (`v0.1.0`)
+
+- **Import (`src/codec/decode.ts`):** Calls `createImageBitmap(blob, {imageOrientation: 'from-image', colorSpaceConversion: 'default'})`. No bundled decoders.
+- **Export (`src/codec/encode.ts`):** Calls `OffscreenCanvas.convertToBlob` for `image/png`, `image/jpeg` (alpha flattened onto white via `flattenAlphaForJpeg`), and `image/webp` (gated on startup `probeSupportedEncodeFormats`).
+
+#### Candidate format matrix (verified 2026-11-25)
+
+Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image file type and format guide (`developer.mozilla.org`), WHATWG HTML `ImageBitmap` specification (`html.spec.whatwg.org`), MDN `OffscreenCanvas.convertToBlob`, Can I use (`caniuse.com`), `docs/research/engine-architecture.md` section 5, npm/GitHub package registries (`@jsquash/avif`, `photopea/UTIF.js` / `utif2`, `libheif-js`, `heic2any`, `LibRaw`, `dcraw`).
+
+| Format | Native decode (Chrome 120+ / Firefox 128+) | Native canvas encode (`convertToBlob`) | Bundled codec option, size, and licence | Decision for `v0.2.0` |
+|---|---|---|---|---|
+| **AVIF** (`image/avif`) | Yes (Chrome 85+, Firefox 93+) | No (both silently fall back to `image/png`) | `@jsquash/avif` (`libavif` + `libaom` Wasm), **~3.3 MB** `.wasm` uncompressed, **Apache-2.0** (MIT-compatible) | **Accept:** native import (test in CI) + lazy-loaded Wasm export |
+| **BMP** (`image/bmp`) | Yes (Chrome & Firefox) | No (falls back to `image/png`) | Own pure-TS 24/32-bit BI_RGB writer, **~1 KB**, 0 deps, **MIT** | **Accept:** native import + own pure-TS export |
+| **TIFF** (`image/tiff`) | No (Safari only) | No | `utif2` (`photopea/UTIF.js`), **~25 to 30 KB gzipped** (~95 KB raw), 0 deps, **MIT** | **Accept:** lazy-loaded `utif2` import (first IFD, 16-bit -> 8-bit) and uncompressed RGBA export |
+| **GIF first frame** (`image/gif`) | Yes (first frame per HTML spec) | No | None needed for still import; palette GIF export deferred to Motion | **Accept import (native first frame); refuse still GIF export** |
+| **Animated inputs** (GIF, WebP, APNG, AVIF) | First frame only via `createImageBitmap` (HTML spec) | No | Full multi-frame decode deferred to Motion milestone | **Accept first frame with notice toast; refuse animation editing** |
+| **SVG rasterised** (`image/svg+xml`) | Unreliable via `createImageBitmap(blob)` in Chrome; works via main-thread `<img>` -> canvas | No | Main-thread `<img>` rasteriser (~50 lines, 0 deps, **MIT**; browser blocks scripts and external fetches in `<img>` SVGs) | **Accept import (rasterise to PNG blob on import); refuse SVG export** |
+| **HEIC / HEIF** (`image/heic`, `image/heif`) | No (Safari 17+ only; HEVC patent-encumbered) | No | `libheif-js` (**LGPL-3.0**, ~756 KB gzip / ~3 MB min); `heic2any` (MIT wrapper over LGPL `libheif`, compliance risk) | **Refuse:** licence incompatibility (`docs/agents/licensing.md`), HEVC patents, heavy Wasm |
+| **RAW camera** (`.dng`, `.cr2`, `.cr3`, `.nef`, `.arw`, `.raf`) | No | No | `dcraw` (**GPL-2.0+**); `LibRaw` Wasm (**LGPL-2.1 / CDDL-1.0**, ~150 to 250 KB gzip); requires RAW development | **Refuse:** licence incompatibility + RAW development is a non-goal (`product.md` §8) |
+
+#### Codec architecture changes for `v0.2.0`
+
+- `src/codec/decode.ts`: detect TIFF magic bytes (`0x49 0x49 0x2A 0x00` or `0x4D 0x4D 0x00 0x2A`) and dynamically `import('utif2')` in the worker; convert 16-bit samples to 8-bit via `v >>> 8`. Detect HEIC (`ftypheic`/`ftypheix`/`ftypmif1`) and common RAW extensions/headers before `createImageBitmap` so the user gets the specific refusal message instead of a generic decode error. Detect animated GIF/WebP/APNG/AVIF headers on import to trigger the first-frame toast.
+- `src/features/import/`: detect `image/svg+xml` (or `.svg`), rasterise on the main thread via `HTMLImageElement` + `<canvas>` (default longest side 2,048 px when no intrinsic pixel size exists, clamped to 16,384 px and 50 MP), and store the resulting PNG `Blob` in `sources`.
+- `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.

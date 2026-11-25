@@ -422,6 +422,54 @@ describe('several files', () => {
 		expect(bodyText()).not.toContain('Checking slow.png');
 		expect(harness.store.getState().projects).toHaveLength(1);
 	});
+
+	it('ignores a second import attempt while an import is already in progress', async () => {
+		const first = Promise.withResolvers<CodecResult<ImageDimensions>>();
+		const probe = vi.fn<ImportProbe>(async (blob) => {
+			if ((blob as File).name === 'first.png') {
+				return first.promise;
+			}
+
+			return {
+				ok: true,
+				value: {width: 100, height: 50, exceedsGuaranteedArea: false},
+			};
+		});
+		const harness = setup({probe});
+		harness.mount();
+
+		chooseFiles([imageFile('first.png')]);
+		await settle(2);
+
+		// Trigger a second import while the first is still probing.
+		chooseFiles([imageFile('second.png')]);
+		await settle(2);
+
+		expect(probe).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			first.resolve({
+				ok: true,
+				value: {width: 100, height: 50, exceedsGuaranteedArea: false},
+			});
+		});
+		await waitFor(
+			() => harness.store.getState().projects.length === 1,
+			'the first project',
+		);
+
+		expect(harness.store.getState().projects.map((p) => p.name)).toEqual([
+			'first',
+		]);
+
+		// Once finished, a subsequent import is accepted again.
+		chooseFiles([imageFile('after.png')]);
+		await waitFor(
+			() => harness.store.getState().projects.length === 2,
+			'the follow-up project',
+		);
+		expect(probe).toHaveBeenCalledTimes(2);
+	});
 });
 
 describe('drag and drop onto the window', () => {

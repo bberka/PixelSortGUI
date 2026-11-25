@@ -203,7 +203,10 @@ describe('startup states', () => {
 
 		expect(textOf(screen)).toContain('No projects yet');
 		expect(store.getState().notice).toBeNull();
-		expect(textOf(document.body)).toContain('That project no longer exists.');
+		// The toast library mounts the message on a later tick than the store update.
+		await vi.waitFor(() => {
+			expect(textOf(document.body)).toContain('That project no longer exists.');
+		});
 	});
 
 	it('opens the storage-full dialog and returns to the library from it', async () => {

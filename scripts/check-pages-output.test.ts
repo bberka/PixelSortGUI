@@ -3,10 +3,19 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vite-plus/test';
 import {expectedCname, findPagesOutputProblems} from './check-pages-output.ts';
+import {NOTICES_FILE_NAME} from './notices.ts';
 
 let dist: string;
 
-function writeBuild(options: {cname?: string | undefined; script: string}) {
+function writeBuild(options: {
+	cname?: string | undefined;
+	script: string;
+	notices?: string | undefined;
+}) {
+	writeFileSync(
+		path.join(dist, NOTICES_FILE_NAME),
+		options.notices ?? 'zustand\nCopyright (c) 2019 Paul Henschel',
+	);
 	if (options.cname !== undefined) {
 		writeFileSync(path.join(dist, 'CNAME'), options.cname);
 	}
@@ -37,6 +46,21 @@ describe('findPagesOutputProblems', () => {
 	it('rejects a missing CNAME', () => {
 		writeBuild({script: '/assets/app.js'});
 		expect(findPagesOutputProblems(dist)).toEqual(['CNAME is missing']);
+	});
+
+	it('rejects a build without the third-party notices file', () => {
+		writeBuild({cname: expectedCname, script: '/assets/app.js'});
+		rmSync(path.join(dist, NOTICES_FILE_NAME));
+		expect(findPagesOutputProblems(dist)).toEqual([
+			`${NOTICES_FILE_NAME} is missing`,
+		]);
+	});
+
+	it('rejects a notices file with no copyright line', () => {
+		writeBuild({cname: expectedCname, script: '/assets/app.js', notices: ''});
+		expect(findPagesOutputProblems(dist)).toEqual([
+			`${NOTICES_FILE_NAME} holds no copyright line`,
+		]);
 	});
 
 	it.each(['example.com', `${expectedCname}\n`, `${expectedCname}\nwww`])(

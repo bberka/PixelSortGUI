@@ -5,7 +5,10 @@ import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {SettingsButton} from './settings-button.tsx';
-import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
+import {
+	THIRD_PARTY_NOTICES,
+	THIRD_PARTY_NOTICES_FILE,
+} from './third-party-notices.generated.ts';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import type {AppRuntime} from '@/state/index.ts';
@@ -269,5 +272,28 @@ describe('Settings view', () => {
 			expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
 			expect(anchor?.querySelector('svg')).not.toBeNull();
 		}
+	});
+
+	it('links the bundled full licence texts from the app origin and holds no licence text itself', async () => {
+		const context = createTestStore();
+		mountSettings(context, {
+			estimate: async () => ({usage: 0, quota: 100_000_000}),
+			persisted: async () => true,
+		});
+		openSettingsDialog();
+		await flush();
+
+		const dialog = document.querySelector('[role="dialog"]')!;
+		const link = [...dialog.querySelectorAll('a')].find(
+			(anchor) => anchor.textContent === 'Full licence texts',
+		);
+		expect(link).toBeDefined();
+		const url = new URL(link!.getAttribute('href')!, 'https://app.test/');
+		expect(url.origin).toBe('https://app.test');
+		expect(url.pathname).toBe(`/${THIRD_PARTY_NOTICES_FILE}`);
+		expect(THIRD_PARTY_NOTICES_FILE).toBe('THIRD-PARTY-NOTICES.txt');
+		expect(link!.getAttribute('target')).toBe('_blank');
+		expect(link!.getAttribute('rel')).toBe('noopener noreferrer');
+		expect(dialog.textContent).not.toContain('Permission is hereby granted');
 	});
 });

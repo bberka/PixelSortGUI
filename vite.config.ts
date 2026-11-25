@@ -3,11 +3,14 @@ import process from 'node:process';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {defineConfig} from 'vite-plus';
+import {thirdPartyNotices} from './scripts/notices-plugin.ts';
 import {resolveBuildVersion} from './scripts/release-version.ts';
 
 const appVersion =
 	process.env.VITE_APP_VERSION?.trim() || resolveBuildVersion();
 process.env.VITE_APP_VERSION = appVersion;
+
+const notices = thirdPartyNotices(import.meta.dirname);
 
 export default defineConfig({
 	base: '/',
@@ -15,9 +18,10 @@ export default defineConfig({
 		'globalThis.VITE_APP_VERSION': JSON.stringify(appVersion),
 		'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
 	},
-	plugins: [react(), tailwindcss()],
+	plugins: [react(), tailwindcss(), notices.plugin],
 	worker: {
 		format: 'es',
+		plugins: () => [notices.workerPlugin],
 	},
 	build: {
 		rollupOptions: {

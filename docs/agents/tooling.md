@@ -27,6 +27,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run typecheck` | `tsgo -b` |
 | `vp run test`, `vp run test:watch` | `vp test run`, `vp test` |
 | `vp run test:e2e` | Playwright end-to-end suite against the production build on Chromium and Firefox |
+| `pnpm run gen:notices`, `pnpm run check:notices` | Write the third-party notices from the bundled packages; check the committed ones are current (see [licensing.md](licensing.md)) |
 | `vp run check:a11y` | Playwright `@axe-core/playwright` accessibility checks (`@a11y` tests) |
 | `vp run proof:sheet` | Capture proof viewports and build a contact sheet via `scripts/proof-sheet.ts` |
 | `vp run browser:install` | Install Playwright Chromium and Firefox browsers |
@@ -72,7 +73,7 @@ Runner `ubuntu-latest`, `permissions: contents: read`, concurrency group per ref
 | `unit` | `pnpm exec vp test run` |
 | `hooks` | `sh .hooks/test-commit-msg.sh` |
 | `commit-messages` | Runs `.hooks/commit-msg` on every commit in a pull request |
-| `build` | `pnpm exec vp run build` |
+| `build` | `pnpm exec vp run build`, then `pnpm run check:notices` |
 | `e2e` | `pnpm exec vp run test:e2e` (Chromium and Firefox against the production build) |
 | `test` | The required gate. `needs` all jobs above, `if: always()`, passes only when every needed job succeeded (except `commit-messages`, which may be `skipped` on `push` events only). Keep its name stable, because the branch ruleset requires it. |
 
@@ -93,7 +94,7 @@ Goal: the always-loaded files stay small as the docs grow.
 
 ## Deployment and release
 
-Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`.github/workflows/pages.yml`). Pushes to `main` and manual dispatch build and deploy; pull requests build and validate output without deployment. The production build (`dist/`) must work when served from the domain root (`/`), and the published output includes `CNAME` containing `glitch.bbay.dev`. Run `pnpm run check:pages-output` locally to check the built output.
+Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`.github/workflows/pages.yml`). Pushes to `main` and manual dispatch build and deploy; pull requests build and validate output without deployment. The production build (`dist/`) must work when served from the domain root (`/`), and the published output includes `CNAME` containing `glitch.bbay.dev`. Run `pnpm run check:pages-output` locally to check the built output, including `THIRD-PARTY-NOTICES.txt`.
 
 ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only and is bumped by hand in a normal pull request when starting a new minor series; the release workflow never commits or pushes to `main`. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 

@@ -278,7 +278,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
   - Appearance: Theme `ToggleGroup` (`System`, `Light`, `True Black`).
   - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, and a short note that Private Browsing does not retain data after closing.
   - App installation: `"Install app"` button when `beforeinstallprompt` is captured (desktop Chromium).
-  - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section / dialog listing bundled MIT notices when present.
+  - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section listing each bundled package with its version and licence, and a `"Full licence texts"` link to the same-origin file `THIRD-PARTY-NOTICES.txt` (no licence text in the app's JavaScript).
 
 ### 7.1 On-canvas tool slot (reserved for later)
 

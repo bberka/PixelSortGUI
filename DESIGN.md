@@ -135,7 +135,7 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 | Library project card | F2 | `Card` | 4:3 thumbnail container, title (1-line truncate), `W × H px`, last-opened date, overflow `DropdownMenu` |
 | Card actions / Instance actions / Zoom menu | F2, F4, F13 | `DropdownMenu` | Keyboard-navigable menus |
 | Add effect picker | F4 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lists all registered effects with label and 1-line description (AC-F4.1) |
-| Stack / Presets switcher | F4, F10 | `Tabs` (`TabsList`, `TabsTrigger`, `TabsContent`) | Switches sidebar or panel between Stack and Presets |
+| Presets picker | F10 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lives in the editor toolbar (`src/features/toolbar/`), not in a sidebar tab |
 | Export / Save preset / Settings / About | F10, F12, F16 | `Dialog` (desktop/tablet) / full-height `Sheet` (phone) | Focus-trapped modals |
 | Delete project / Storage full / Large image (> 50 MP) choice | F1, F2, F16 | `AlertDialog` | Explicit confirmation or blocking choice |
 | Phone parameter panel | F18 | Custom detent bottom sheet (Radix `Dialog` non-modal or pointer-tracked region) | Drag handle + detent cycle button; never blocks canvas gestures while collapsed/half |
@@ -194,19 +194,17 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-----------------------------------------------------------------------------+
-| <- Library | project-name | [Undo][Redo] | [Compare][Split] | [100% v] | [Export] [Settings] |  48 px
+| <- PixelSortGUI project-name                             [Export] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
-| [2 px render progress bar when > 300 ms]               | [Stack | Presets]  |
-|                                                        +--------------------+
-|                                                        | + Add effect       |
-|                                                        | [=] Pixel sort [on]|  <- Stack
-|                     CANVAS STAGE                       | [=] Ch. shift [Off]|     (max 38% H,
-|                 (fluid: ~1100 x 852)                   |                    |      ScrollArea)
-|                                                        +--------------------+
-|                                                        | Pixel sort [Reset] |  <- Params
+| [Undo][Redo] | [Presets] | [Compare][Split]            | + Add effect       |  40 px toolbar
++--------------------------------------------------------+ [=] Pixel sort [on]|  <- Stack
+| [2 px render progress bar when > 300 ms]               | [=] Ch. shift [Off]|     (max 38% H,
+|                                                        |                    |      ScrollArea)
+|                     CANVAS STAGE                       +--------------------+
+|                 (fluid: ~1100 x 812)                   | Pixel sort [Reset] |  <- Params
 |                                                        | Show selection [o] |     (fluid H,
-|  [Rendering full resolution]                           | DIRECTION          |      ScrollArea)
-|                                                        | Angle (dial) 45.0° |
+|                                                        | DIRECTION          |      ScrollArea)
+|  [100% v]                   [Rendering full resolution]| Angle (dial) 45.0° |
 |                                                        | SELECTION ...      |
 +--------------------------------------------------------+--------------------+
                                                            <--- 340 px --->
@@ -216,21 +214,23 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +---------------------------------------------------+
-| <- | project-name | [Undo][Redo] [Cmp][Spl] [Exp] |  52 px
+| <- PixelSortGUI project-name  [Export] [Settings] |  52 px
++---------------------------------------------------+
+| [Undo][Redo] | [Presets] | [Compare][Split]       |  40 px toolbar
 +---------------------------------------------------+
 | [2 px progress bar]                               |
 |                                                   |
 |                   CANVAS STAGE                    |
-|                 (820 x ~768 px)                   |
+|                 (820 x ~728 px)                   |
 |                                                   |
 | [100% v]                              [Full res]  |
 +======================[ === ]======================+  <- resize/collapse handle
-| [Stack | Presets]       | Pixel sort      [Reset] |
-| + Add effect            | Show selection      [o] |
-| [=] Pixel sort     [on] | DIRECTION               |  <- Docked bottom panel
-| [=] Channel shift [Off] | Angle   [dial]   45.0°  |     (360 px default)
-|                         | SELECTION               |
-| <--- 260 px --->        | <--- fluid (560 px) --> |
+| + Add effect            | Pixel sort      [Reset] |
+| [=] Pixel sort     [on] | Show selection      [o] |
+| [=] Channel shift [Off] | DIRECTION               |  <- Docked bottom panel
+|                         | Angle   [dial]   45.0°  |     (360 px default,
+|                         | SELECTION               |      resizable 240 px–50% H,
+| <--- 260 px --->        | <--- fluid (560 px) --> |      collapsible to 48 px)
 +-------------------------+-------------------------+
 ```
 
@@ -238,17 +238,19 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-------------------------------+
-| <- [Undo][Redo] [Cmp] [Exp][⋮]|  52 px + safe-area-top
+| <- PixelSortGUI    [Exp] [Set]|  52 px + safe-area-top
++-------------------------------+
+| [Undo][Redo] | [Presets] ...  |  40 px toolbar
 +-------------------------------+
 | [2 px progress bar]           |
 |                               |
-|         CANVAS STAGE          |
+|         CANVAS STAGE          |  (≥ 40% viewport height at Half detent)
 |                               |
-| [100% v]          [Split]     |
+| [100% v]                      |
 +-------------------------------+
 | [+][Pixel sort][Ch. shift Off]|  <- 48 px horizontal scrollable stack strip
 +===========[  ===  ]===========+  <- Bottom sheet (Collapsed / Half / Expanded)
-| Pixel sort   [Presets][Reset] |
+| Pixel sort            [Reset] |
 | Show selection            [o] |
 | DIRECTION                     |
 | Angle        [dial]    45.0°  |
@@ -256,9 +258,10 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-------------------------------+  + safe-area-bottom
 ```
 
-- **Phone top bar overflow (`⋮`):** Holds Project rename, Presets, and Settings so the primary bar stays uncluttered at 390 px with 44 × 44 px buttons.
-- **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled dot/`"Off"` text, and tap-to-select; tapping the active chip's `⋮` menu opens Enable/Disable, Move left (up), Move right (down), Duplicate, Remove. A pinned `+` chip opens Add effect.
-- **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet to a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
+- **App bar and toolbar:** The app bar has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Settings`) on phone width. Undo, Redo, Presets, and Compare/Split live in the editor toolbar directly above the canvas.
+- **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled switch/`"Off"` text, and tap-to-select; tapping the chip's `⋮` menu opens Move left, Move right, Duplicate, Remove. A pinned `+` chip opens Add effect.
+- **Phone bottom sheet:** Starts at **Half** detent (capped so the canvas keeps at least `40%` of viewport height while a parameter is being adjusted), and cycles or drags between **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half**, and **Expanded** (`80%` viewport height, dropping temporarily or remaining clear of the canvas when collapsed/half).
+- **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet and stack strip into a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
 
 ## 7. Feature-specific visual specifications
 
@@ -296,9 +299,9 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - Crop section: aspect-ratio `ToggleGroup` / `Select` (`Free`, `Original`, `1:1`, `4:3`, `3:2`, `16:9`, `9:16`, `4:5`), numeric `X`, `Y`, `W`, `H` inputs, `"Apply crop"` primary button, and `"Reset crop"` ghost button. On-canvas crop box uses a `1 px` `#ffffff` border with `1 px` `#000000` casing, dimmed mask outside (`rgba(0, 0, 0, 0.55)`), rule-of-thirds guides while dragging, and 8 focusable corner/edge handles (`44 × 44 px` hit area on coarse pointer, `24 × 24 px` on fine pointer; keyboard Arrow keys nudge by 1 px, Shift+Arrow by 10 px).
   - Resize section: unit toggle (`px` | `%`), `Width` and `Height` numeric inputs with an aspect-lock `Button` (`Lock` / `Unlock`, default locked), resampling `Select` (`Lanczos-3`, `Bilinear`, `Nearest`), inline limit validation error when exceeding `16,384 px` or `50 MP`, `"Apply resize"` primary button, and `"Reset resize"` ghost button.
 - **Project change history panel (F23):**
-  - **Desktop (`1440 × 900`):** Third tab in the right sidebar `Tabs` bar: `[Stack | Presets | History]`. Selecting `History` replaces the Stack + Parameters area with a full-height `ScrollArea` listing commits newest-first (`Initial` at bottom).
-  - **Tablet (`820 × 1180`):** Third tab in the left column of the docked bottom panel (`[Stack | Presets | History]`).
-  - **Phone (`390 × 844`):** `"History"` action in the top bar overflow (`⋮`) menu (and tab in the bottom sheet header alongside `"Presets"`), opening the History list in a `Sheet`.
+  - **Desktop (`1440 × 900`):** Second tab in the right sidebar `Tabs` bar alongside Stack: `[Stack | History]`. Selecting `History` replaces the Stack + Parameters area with a full-height `ScrollArea` listing commits newest-first (`Initial` at bottom).
+  - **Tablet (`820 × 1180`):** Second tab in the left column of the docked bottom panel (`[Stack | History]`).
+  - **Phone (`390 × 844`):** `"History"` button in the editor toolbar, opening the History list in a `Sheet`.
   - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render muted (`text-muted-foreground opacity-60`) to show they belong to the redo branch and will be discarded on a new commit. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state.
 - **App changelog (F24):**
   - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.

@@ -5,10 +5,16 @@ import react from '@vitejs/plugin-react';
 import {defineConfig} from 'vite-plus';
 import {resolveBuildVersion} from './scripts/release-version.ts';
 
-process.env.VITE_APP_VERSION ||= resolveBuildVersion();
+const appVersion =
+	process.env.VITE_APP_VERSION?.trim() || resolveBuildVersion();
+process.env.VITE_APP_VERSION = appVersion;
 
 export default defineConfig({
 	base: '/',
+	define: {
+		'globalThis.VITE_APP_VERSION': JSON.stringify(appVersion),
+		'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+	},
 	plugins: [react(), tailwindcss()],
 	worker: {
 		format: 'es',

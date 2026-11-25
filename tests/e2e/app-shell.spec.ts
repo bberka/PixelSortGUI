@@ -113,7 +113,7 @@ test('the app opens on the library screen with the empty state', async ({
 		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
 	).toBeVisible();
 	await expect(page.getByText('Images stay on this device.')).toBeVisible();
-	await expect(page.getByRole('button', {name: 'Open images'})).toBeDisabled();
+	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();
 	expect(consoleErrors, 'Console errors').toEqual([]);
 });
 

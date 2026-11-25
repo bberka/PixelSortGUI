@@ -49,8 +49,7 @@ function ThemeOptionIcon({theme}: {readonly theme: ThemePreference}) {
 }
 
 function getAppVersionLabel(): string {
-	const meta = import.meta as {env?: Record<string, unknown>};
-	const stamped = meta.env?.VITE_APP_VERSION;
+	const stamped = (globalThis as {VITE_APP_VERSION?: string}).VITE_APP_VERSION;
 	return typeof stamped === 'string' && stamped.trim().length > 0
 		? stamped.trim()
 		: '0.x (dev)';

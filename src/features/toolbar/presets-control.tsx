@@ -11,6 +11,7 @@ import {
 	RenamePresetDialog,
 	SavePresetDialog,
 } from './preset-dialogs.tsx';
+import {usePhoneLayout} from './use-phone-layout.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
@@ -31,7 +32,6 @@ import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover';
 import {Separator} from '@/components/ui/separator';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {MAX_STACK_INSTANCES} from '@/engine/types.ts';
-import {usePhoneLayout} from '@/features/stack/use-phone-layout.ts';
 import type {BuiltinPreset} from '@/presets/builtin.ts';
 import type {UserPresetRecord} from '@/storage/types.ts';
 

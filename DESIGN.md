@@ -76,7 +76,7 @@ System stacks only (zero network requests):
 ## 4. Spacing, radii and elevation
 
 - **Base grid:** 4 px (`4, 8, 12, 16, 20, 24, 32`).
-- **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges/pills; `9999px` for slider thumbs and the angle dial.
+- **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges, pills, and fader slider tracks/grips; `9999px` for the angle dial.
 - **Chrome dimensions:**
   - Top bar height: `48 px` on desktop; `52 px` plus `env(safe-area-inset-top)` on tablet and phone.
   - Desktop right sidebar width: `340 px` (fixed).
@@ -105,6 +105,17 @@ Every control renders a visible `<label>` (equal to its accessible name, AC-F5.6
 | `range` | Two-thumb `Slider` (`minStepsBetweenThumbs={0}`) + two numeric `Input`s (`Low`, `High`) | Thumbs cannot cross; typing `lo > hi` swaps them to match `validateParams` (engine.md section 3). |
 | `angle` | Custom `AngleDial` + numeric `Input` (unit `°`, step `0.1`) | 44 × 44 px circular dial with pointer/touch drag; snaps within `±4°` to `spec.snaps` (`0, 45, 90, 135, 180, 225, 270, 315`), Shift bypasses snap. Keyboard on dial: Arrow ±1°, Shift+Arrow ±15°, Home 0°. |
 | `seed` | Numeric `Input` (`inputMode="numeric"`, uint32) + `"New seed"` `Button` (`Dices` icon) | `"New seed"` writes a random uint32 from `crypto.getRandomValues` as 1 commit. |
+
+#### Slider presentation
+
+All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/components/ui/slider.tsx`), whose default variant is **`fader`** (`DEFAULT_SLIDER_VARIANT`):
+
+- **Dimensions and radii:** `32 px` (`h-8`) interactive row height; `10 px` (`h-2.5`, `4 px` radius) thick track; `12 × 24 px` (`4 px` radius) rectangular studio-fader grip centered inside a `24 × 28 px` pointer target (`44 × 44 px` under `@media (pointer: coarse)`).
+- **Tokens and contrast:** Unfilled track uses `bg-muted` with `1 px solid` `border-input`; filled range uses `bg-accent` (≥ 4.6:1 against `bg-muted` in both Light and True Black themes). The grip uses `bg-card` with a `2 px` `border-foreground` frame and a `2 × 12 px` `bg-foreground` centre notch (`border-accent` on hover). End ticks at `0%` and `100%` use `bg-input`; the default-value tick uses `bg-foreground`. Focus renders `2 px solid` `outline-ring` with `2 px` offset. Disabled state reduces opacity to `50%` and blocks pointer events.
+- **Range form:** Two-thumb sliders render a filled `bg-accent` band between two identical rectangular grips that cannot cross (`minStepsBetweenThumbs={0}`).
+- **Alternative variants** (selectable via the `variant` prop or `DEFAULT_SLIDER_VARIANT`):
+  - **`fill-bar`:** `32 px` tall scrubby fill bar (`rounded-md`, `border-input`, `bg-muted` track, full-height `bg-accent` fill, vertical bar grip, default-value tick).
+  - **`stepped`:** `28 px` tall segmented track of 16 discrete pixel cells (`rounded-[2px]`, `bg-accent` lit cells over `bg-muted` / `border-input` unlit cells, block cursor thumb, default-value notch).
 
 ### 5.2 Universal effect instance controls
 

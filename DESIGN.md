@@ -308,6 +308,11 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Editor (`src/features/toolbar/editor-toolbar.tsx` / phone overflow):** Add `"Save project file"` action reachable from the editor toolbar (desktop/tablet) and phone top-bar overflow (`⋮`).
   - **Save project file dialog:** Compact `Dialog` (desktop/tablet) / `Sheet` (phone) with project name summary, `"Include undo history"` checkbox (default checked), `"Save"` primary button, and during assembly a `Progress` bar with `"Cancel"`.
   - **Open project file (`src/features/import/`):** `"Open images"` file picker (`use-image-picker.ts`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) updates the drop overlay copy (`drop-overlay.tsx`) to `"Drop images or project files to open"`. Error messages use the existing `ImportProblemDialog`.
+- **Full backup and restore (F17):**
+  - **Settings -> Storage (`src/features/settings/settings-content.tsx`):** Add a `"Backup & restore"` row below the persistence controls with `"Export backup"` and `"Import backup"` outline buttons.
+  - **Library app bar (`src/app/app-bar-actions.ts`):** Add a compact overflow menu button (`⋮`, `aria-label="Library actions"`) next to Settings with `"Export backup"` and `"Import backup"`.
+  - **Export backup dialog:** `Dialog` (desktop/tablet) / full-height `Sheet` (phone) with `"Select all"` / `"Select none"`, scrollable project checkbox list (project name, `W × H px`), `"Include undo history"`, `"Include user presets"`, `"Include settings"`, estimated size readout, `"Export backup"` primary button, and progress bar with `"Cancel"` while packing.
+  - **Import backup dialog:** Two-step modal: validating progress state (with `"Cancel"`), followed by a selection view with a `ToggleGroup` for `"Merge"` / `"Replace"`, scrollable project checkbox list (name, `W × H px`, size, status `Badge` `"New"` / `"Unchanged"` / `"Modified locally"`), presets and settings checkboxes, `"Import"` primary button, and a destructive `AlertDialog` confirmation when `"Replace"` is chosen.
 
 ## 8. Interaction: touch, pointer and keyboard
 

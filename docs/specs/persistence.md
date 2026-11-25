@@ -405,93 +405,131 @@ Single-project import runs in two phases: **strict validation first** (zero Inde
 5. **Thumbnail:** If `thumbnailPath` is present and valid, store `ThumbnailRecord` under the new `projectId`; otherwise omit it so the editor generates a fresh thumbnail on open.
 6. **Activate:** Set `meta.appState.activeProjectId` to the new `projectId` (when imported from picker/drop as a single file, or the first project when multiple files are dropped) and open it in the editor.
 
-### 8.4 Later: Backup export and import (F17) and eviction warnings
+### 8.4 Full backup and restore (F17)
 
-Not built in `v0.1.0` or `v0.2.0`. Kept here so the archive format and eviction-warning design are ready when scheduled.
+Backups archive multiple projects (or the whole library), user presets, and app settings into a single standard ZIP file using the same `fflate` streaming worker (`src/worker/archive.worker.ts`) and project payload schema as `F25`.
 
-#### 8.3.0 Safari 7-day eviction warning (later)
+#### 8.4.1 Archive format (`backupVersion: 1`)
 
-When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
-
-#### 8.3.1 Archive format (`backupVersion: 1`, later)
-
-Backups let the user archive projects or move them between browsers and devices (F17, later). Backups are standard ZIP files built and read with `fflate` (MIT). When implemented, add `lastBackupAt` and `backupReminderDismissedAt` to `AppStateRecord` and add a 30-day Library backup reminder banner (7-day dismiss cooldown).
-
-File naming:
-
-- Whole library: `pixelsort-backup-<YYYYMMDD-HHmmss>.zip`
-- Single project (from card menu): `<project-slug>-backup-<YYYYMMDD-HHmmss>.zip`
-
-Internal directory layout:
+- **Default file name:** `glitch-backup-<YYYYMMDD-HHmmss>.zip` (neutral prefix without the app name).
+- **Internal directory layout:**
 
 ```
-manifest.json
-presets.json
+manifest.json                     (DEFLATE level 6)
+presets.json                      (DEFLATE level 6; present when includesPresets is true)
+settings.json                     (DEFLATE level 6; present when includesSettings is true)
 sources/
-  <sha256>.<ext>
+  <sha256>.<ext>                  (STORE level 0; deduplicated across all included projects and F26 blend sources)
 projects/
   <projectId>/
-    project.json
-    history.json          (present only when includesHistory is true)
+    project.json                  (DEFLATE level 6; identical ProjectFilePayload schema to F25)
+    history.json                  (DEFLATE level 6; present only when includesHistory is true)
+    thumbnail.webp                (or thumbnail.jpg; STORE level 0; optional)
 ```
 
-- `sources/<sha256>.<ext>` entries are stored uncompressed (`fflate` level `0`, ZIP `STORE`) because PNG, JPEG, WebP, and AVIF files are already compressed; this avoids wasted CPU and peak memory on phones.
-- JSON files use `fflate` deflate level `6`.
-- Thumbnails are **not** included in the archive; they regenerate from source + stack after import.
+Using the exact same `ProjectFilePayload`, `ProjectHistoryPayload`, and `ArchiveSourceEntry` schemas as `.glproj` means one parser, one validator, and one migration pipeline handle both single-project files and full backups, while sharing a single deduplicated `sources/` directory across projects.
 
 `manifest.json`:
 
 ```ts
-type BackupManifest = {
+export const BACKUP_FORMAT_VERSION = 1;
+
+export type BackupManifest = {
+	kind: 'backup';
 	backupVersion: 1;
-	appVersion: string; // stamped at build time, e.g. '0.1.0'
+	projectFormatVersion: 1; // matches PROJECT_FORMAT_VERSION for every project.json inside
+	appVersion: string; // stamped at build time, e.g. '0.2.0'
 	exportedAt: string; // ISO 8601 UTC timestamp
 	scope: 'library' | 'selection';
 	includesHistory: boolean;
-	projects: {id: string; name: string; sourceHash: string; sourceFile: string}[];
+	includesPresets: boolean;
+	includesSettings: boolean;
+	sources: ArchiveSourceEntry[];
+	projects: Array<{
+		id: string;
+		name: string;
+		sourceHash: string;
+		sourceWidth: number;
+		sourceHeight: number;
+		updatedAt: number;
+		path: string; // 'projects/<id>/project.json'
+		historyPath: string | null;
+		thumbnailPath: string | null;
+		totalSourceBytes: number; // primary + any F26 secondary sources for UI size display
+	}>;
 	presetCount: number;
 };
 ```
 
-`presets.json` holds `{ presets: UserPresetRecord[] }` containing all user presets (never built-in presets).
+`presets.json`: `{ presets: UserPresetRecord[] }` (user presets only; built-in presets are never exported).
 
-`projects/<projectId>/project.json` holds `ProjectRecord`.
+`settings.json`:
 
-`projects/<projectId>/history.json` holds `{ entries: HistoryEntryRecord[] }`.
+```ts
+export type BackupSettingsPayload = {
+	theme: ThemePreference; // 'system' | 'light' | 'dark'
+	compareMode: CompareMode; // 'toggle' | 'split'
+};
+```
 
-#### 8.3.2 Export flow
+#### 8.4.2 Size limits and streaming
 
-1. User chooses backup scope (whole library from Settings/Library menu, or a single project from its card menu) and whether to include undo history (`"Include undo history"`, default checked).
-2. Read the selected `ProjectRecord`s, their deduplicated `SourceRecord` blobs, optional `HistoryEntryRecord`s, and all `UserPresetRecord`s from IndexedDB.
-3. Stream-assemble the ZIP with `fflate` (reporting progress and allowing Cancel) into a `Blob` (`application/zip`) and trigger download (or Share on devices supporting `navigator.canShare({files})`).
-4. If `scope === 'library'`, update `meta.appState.lastBackupAt = Date.now()` and clear any active backup reminder banner.
+- **Hard limits:** Whole backup ZIP max **4 GB** (`4,294,967,296` bytes, supported by `fflate` ZIP64); each JSON file max **16 MB** uncompressed; each `thumbnail.*` max **2 MB**; each `sources/*` entry max **200 MB** (`209,715,200` bytes).
+- **Streaming:** Export streams each `SourceRecord.blob` through `blob.stream()` into `ZipPassThrough` (STORE, level 0) inside `archive.worker.ts`, reporting `progress` per item (`Reading`, `Packing`) and honouring `Cancel` (which terminates the worker and releases chunks within 1 s).
 
-#### 8.3.3 Import validation, deduplication and error handling
+#### 8.4.3 Selective export and selective import flow
 
-Import runs in two phases: **strict validation first** (zero DB writes), then **atomic commit**.
+**Selective export:**
 
-**Phase 1: Validation (AC-F17.3)**
+1. User opens `"Export backup"` from Settings -> Storage or the Library overflow menu.
+2. Dialog displays all projects with checkboxes (all selected by default, `"Select all"` / `"Select none"`), plus `"Include undo history"` (checked), `"Include user presets (<N>)"` (checked), `"Include settings"` (checked), and the estimated deduplicated size.
+3. Clicking `"Export backup"` runs `archive.worker.ts` with a progress bar and `"Cancel"` button, then triggers browser download (or `navigator.canShare({files})` where supported).
 
-1. Unzip via `fflate`. If the file is not a valid ZIP or decompression fails, abort with `"Can't import backup: the file is damaged or not a valid ZIP archive."`
-2. Parse `manifest.json`. If missing or malformed JSON, abort with `"Can't import backup: missing or invalid manifest."`
-3. Check `manifest.backupVersion`. If not an integer or `> 1`, abort with `"Can't import backup: format version <v> is newer than this app supports."`
-4. Validate `presets.json` and every listed `project.json` and (if `includesHistory`) `history.json` against required field types and ranges (`name` 1..120, `stack.instances.length <= 32`, etc.). Unknown effect types or newer effect versions inside `stack` are **allowed** and preserved (AC-F4.6).
-5. Verify every referenced `sources/<sha256>.<ext>` entry exists in the ZIP and that its computed SHA-256 equals `<sha256>`. On mismatch, abort with `"Can't import backup: image data is damaged (<filename>)."`
-6. Check remaining quota (section 7.4) against the total byte size of sources not already present in `sources`. If insufficient, show the `"Storage is full"` dialog and import nothing.
+**Selective import:**
 
-**Phase 2: Deduplication and write (AC-F17.2)**
+1. User picks a `.zip` file via `"Import backup"` (or drops a backup `.zip` on the Library or Editor).
+2. **Phase 1 (Inspect & validate manifest in worker, zero DB writes):** Stream-read the ZIP, validate `manifest.json` (`kind === 'backup'`, `backupVersion <= BACKUP_FORMAT_VERSION`, `projectFormatVersion <= PROJECT_FORMAT_VERSION`), validate every `project.json`, `history.json`, `presets.json`, and `settings.json`, and verify every referenced `sources/*` entry exists and matches its SHA-256 and `byteLength`.
+3. **Phase 2 (Selection dialog):** Before writing anything, show the `"Import backup"` preview dialog:
+   - Mode selector: **`Merge with current library`** (default) or **`Replace all local data`**.
+   - Scrollable checklist of projects in the backup (all checked by default, except `"Unchanged"` projects in Merge mode which are unchecked by default and labelled `"Unchanged"`). Each row shows project name, `W × H px`, source size, and a status badge computed against local IndexedDB: `"New"`, `"Unchanged"`, or `"Modified locally"`.
+   - Checkboxes for `"User presets (<N>)"` (if `includesPresets`) and `"Settings (Theme, Compare mode)"` (if `includesSettings`).
+   - Summary of required new storage bytes (excluding sources already present in `sources`).
+4. If the user selects **`Replace all local data`**, clicking `"Import"` opens a confirmation `AlertDialog`: `"Replace all local data? This deletes <N> existing project(s) and <M> user preset(s) on this device before importing."`
 
-1. **Sources:** Insert each `SourceRecord` only if its `sha256` does not already exist in `sources`.
-2. **Projects:** For each project in the archive:
-   - Look up `project.id` in `projects`.
-   - If absent: insert `ProjectRecord` and its `history` rows (if `includesHistory` was false, create a single `seq: 0` `"Initial"` entry containing `project.stack`).
-   - If present AND `existing.sourceHash === incoming.sourceHash`, `existing.name === incoming.name`, `existing.updatedAt === incoming.updatedAt`, and `canonicalStackJson(existing.stack) === canonicalStackJson(incoming.stack)`: **skip** as unchanged (prevents duplicates on re-import, AC-F17.2).
-   - If present AND any of those fields differ: generate a new UUID for `incoming.id`, rename to `"<name> (imported)"` (truncated to 120 chars), remap `projectId` on its `history` entries, and insert without overwriting the existing local project.
-3. **User presets:** For each preset in `presets.json`:
-   - If an existing preset has the same `id` OR the same `nameLower` and `canonicalStackJson(stack)`: **skip**.
-   - If an existing preset has the same `id` with different content: assign a new `'user:' + crypto.randomUUID()` id and insert.
-   - Otherwise insert as-is.
-4. Show a summary toast naming counts imported and skipped, and refresh the Library.
+#### 8.4.4 Validation, quota safety, and Merge vs Replace
+
+**Exact error messages (Phase 1):**
+
+| Condition | Exact user-facing error message |
+|---|---|
+| File > 4 GB or any entry exceeds its uncompressed cap | `"Can't import backup: the archive is too large (limit is 4 GB, or 200 MB per image)."` |
+| Not a valid ZIP or decompression failure | `"Can't import backup: the file is damaged or not a valid ZIP archive."` |
+| Missing or invalid `manifest.json`, `presets.json`, `settings.json`, or any `project.json` / `history.json` | `"Can't import backup: missing or invalid manifest."` |
+| `backupVersion > BACKUP_FORMAT_VERSION` or `projectFormatVersion > PROJECT_FORMAT_VERSION` | `"Can't import backup: format version <v> is newer than this app supports. Update the app and try again."` |
+| Missing source entry | `"Can't import backup: missing image data (<path>)."` |
+| SHA-256 or byte-length mismatch on a source entry | `"Can't import backup: image data is damaged (<path>)."` |
+
+**Atomic consistency when storage quota is exceeded part-way:**
+
+Import writes in four strict phases so the library can **never** end up with a project pointing to a missing source or half-deleted local data:
+
+1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources referenced by the user's checked projects that are not already in `sources`. Run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`.
+2. **Stage new source blobs:** Insert each missing `SourceRecord` into `sources` one at a time, tracking `insertedHashes: string[]` and checking for Cancel between blobs. If `QuotaExceededError` or Cancel occurs here, delete every hash in `insertedHashes` in a cleanup transaction, leave all existing projects/presets/settings untouched, and show `"Storage is full"` (or close silently on Cancel).
+3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['projects', 'history', 'thumbnails', 'presets', 'meta']` (pure JSON + optional small thumbnails):
+   - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings (also syncing `localStorage` `psg:theme` if settings were imported).
+   - **Merge mode:**
+     - For each checked project: if `project.id` is absent, insert as-is. If `project.id` exists and matches `(sourceHash, name, updatedAt, canonicalJson({transform, stack}))`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (deduplicated as in section 8.3.5, max 120 chars), remap history/thumbnail `projectId`, and insert without overwriting the local project.
+     - For each preset (when checked): skip if same `id` or same `nameLower` and `canonicalStackJson(stack)`; assign a new `'user:' + crypto.randomUUID()` on `id` clash with different content; otherwise insert as-is.
+     - If settings checked: update `meta.appState.theme` and `compareMode` and sync `localStorage` `psg:theme`.
+   - If this transaction aborts for any reason (including `QuotaExceededError`), IndexedDB rolls back the entire metadata commit cleanly; then delete `insertedHashes` in a cleanup pass and show `"Storage is full"`.
+4. **Orphan cleanup (Replace mode):** Run `cleanupOrphanedSources()` after the metadata commit succeeds so sources that belonged only to replaced projects are freed.
+5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library.
+
+**30-day backup reminder decision:** The earlier 30-day Library backup reminder banner (and `lastBackupAt` / `backupReminderDismissedAt` fields on `AppStateRecord`) is **removed** (see [decisions.md](decisions.md)). Desktop browser storage is durable across sessions and `navigator.storage.persist()` is requested automatically after the first import; a time-based nag banner conflicts with `DESIGN.md` §1.
+
+#### 8.4.5 Safari 7-day eviction warning (later)
+
+When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
 
 ## 9. Restore sequence on startup
 

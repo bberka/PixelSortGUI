@@ -352,6 +352,28 @@ describe('thumbnails', () => {
 		expect(revokeObjectURL).toHaveBeenCalledTimes(1);
 		expect(visibleThumbnails(harness.container)).toHaveLength(0);
 	});
+
+	it('loads a thumbnail written after the card first rendered without reloading', async () => {
+		const harness = await renderLibrary(['Alpha'], {withThumbnail: false});
+		const project = harness.projects[0];
+
+		expect(visibleThumbnails(harness.container)).toHaveLength(0);
+
+		await harness.repository.putThumbnail({
+			projectId: project.id,
+			blob: makeTestBlob('late-thumb'),
+			width: 320,
+			height: 240,
+			stackSignature: 'late-signature',
+			updatedAt: Date.now(),
+		});
+		act(() => {
+			harness.store.getState().notifyThumbnailUpdated(project.id);
+		});
+		await flush();
+
+		expect(visibleThumbnails(harness.container)).toHaveLength(1);
+	});
 });
 
 async function openCardMenu(

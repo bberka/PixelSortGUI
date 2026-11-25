@@ -141,6 +141,7 @@ export type AppState = {
 	activeProject: ProjectRecord | null;
 	activeSource: SourceRecord | null;
 	activeThumbnail: ThumbnailRecord | null;
+	thumbnailVersions: Record<string, number>;
 	history: HistoryEntryRecord[];
 	stackNeedsWriteBack: boolean;
 	stackEnvelopeStatus: 'ok' | 'newer-version';
@@ -173,6 +174,7 @@ export type AppState = {
 	setStorageMetrics(estimate: StorageQuotaEstimate, persisted: boolean): void;
 	clearNotice(): void;
 	clearQuotaFull(): void;
+	notifyThumbnailUpdated(projectId: string): void;
 
 	// Library & project actions
 	importImage(input: CreateProjectInput): Promise<CreateProjectResult>;
@@ -516,9 +518,15 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				};
 				try {
 					await repository.putThumbnail(record);
-					if (store.getState().activeProjectId === projectId) {
-						store.setState({activeThumbnail: record});
-					}
+					store.setState((current) => ({
+						...(current.activeProjectId === projectId && {
+							activeThumbnail: record,
+						}),
+						thumbnailVersions: {
+							...current.thumbnailVersions,
+							[projectId]: (current.thumbnailVersions[projectId] ?? 0) + 1,
+						},
+					}));
 				} catch (error) {
 					handleQuotaError(error);
 				}
@@ -786,6 +794,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		activeProject: null,
 		activeSource: null,
 		activeThumbnail: null,
+		thumbnailVersions: {},
 		history: [],
 		stackNeedsWriteBack: false,
 		stackEnvelopeStatus: 'ok',
@@ -863,6 +872,15 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		clearQuotaFull() {
 			set((state) => ({
 				storage: {...state.storage, quotaFull: false},
+			}));
+		},
+
+		notifyThumbnailUpdated(projectId) {
+			set((state) => ({
+				thumbnailVersions: {
+					...state.thumbnailVersions,
+					[projectId]: (state.thumbnailVersions[projectId] ?? 0) + 1,
+				},
 			}));
 		},
 

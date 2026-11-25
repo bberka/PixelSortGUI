@@ -9,7 +9,7 @@ import {
 	Trash2Icon,
 } from 'lucide-react';
 import {toast} from 'sonner';
-import {ThemeSelector, ThemeToggle} from '@/components/theme-toggle';
+import {ThemeSelector} from '@/components/theme-toggle';
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -159,7 +159,6 @@ export function ComponentGallery() {
 					<div className="hidden sm:block">
 						<ThemeSelector />
 					</div>
-					<ThemeToggle />
 				</div>
 			</header>
 

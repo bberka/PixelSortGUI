@@ -109,7 +109,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D14. Themes (formerly Q1, settled 2026-11-24)
 
-- **Choice:** Two themes — **Light** (`#fafafa`) and **True Black** (`#000000`) — defaulting to **System** (`prefers-color-scheme`), with a toggle in the toolbar and Settings (`F14`, `DESIGN.md` section 2).
+- **Choice:** Two themes — **Light** (`#fafafa`) and **True Black** (`#000000`) — defaulting to **System** (`prefers-color-scheme`), with the selector in Settings (`F14`, `DESIGN.md` section 2).
 
 ### D15. Project licence (formerly Q2, settled 2026-11-24)
 

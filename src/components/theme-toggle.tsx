@@ -1,13 +1,5 @@
-import {CheckIcon, MonitorIcon, MoonIcon, SunIcon} from 'lucide-react';
-import {Button} from '@/components/ui/button';
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import {MonitorIcon, MoonIcon, SunIcon} from 'lucide-react';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
-import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {
 	isThemePreference,
 	useThemeStore,
@@ -32,69 +24,6 @@ function ThemeIcon({theme}: {readonly theme: ThemePreference}) {
 		<MoonIcon className="size-4" aria-hidden="true" />
 	) : (
 		<MonitorIcon className="size-4" aria-hidden="true" />
-	);
-}
-
-function labelForTheme(theme: ThemePreference): string {
-	const match = THEME_OPTIONS.find((option) => option.value === theme);
-	return match ? match.label : 'System';
-}
-
-export type ThemeToggleProps = {
-	/**
-	 Called instead of writing the theme store directly, so the app shell can keep
-	 the stored app state in step.
-	 */
-	readonly onSelect?: (theme: ThemePreference) => void;
-};
-
-export function ThemeToggle({onSelect}: ThemeToggleProps = {}) {
-	const theme = useThemeStore((state) => state.theme);
-	const setTheme = useThemeStore((state) => state.setTheme);
-	const activeLabel = labelForTheme(theme);
-	const selectTheme = (next: ThemePreference) => {
-		if (onSelect) {
-			onSelect(next);
-			return;
-		}
-
-		setTheme(next);
-	};
-
-	return (
-		<DropdownMenu>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<DropdownMenuTrigger asChild>
-						<Button
-							type="button"
-							variant="outline"
-							size="icon-sm"
-							aria-label={`Theme: ${activeLabel}`}
-						>
-							<ThemeIcon theme={theme} />
-						</Button>
-					</DropdownMenuTrigger>
-				</TooltipTrigger>
-				<TooltipContent>Theme: {activeLabel}</TooltipContent>
-			</Tooltip>
-			<DropdownMenuContent align="end">
-				{THEME_OPTIONS.map((option) => (
-					<DropdownMenuItem
-						key={option.value}
-						onSelect={() => {
-							selectTheme(option.value);
-						}}
-					>
-						<ThemeIcon theme={option.value} />
-						<span>{option.label}</span>
-						{theme === option.value && (
-							<CheckIcon className="ml-auto size-4" aria-hidden="true" />
-						)}
-					</DropdownMenuItem>
-				))}
-			</DropdownMenuContent>
-		</DropdownMenu>
 	);
 }
 

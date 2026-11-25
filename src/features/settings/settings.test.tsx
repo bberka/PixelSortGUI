@@ -3,6 +3,7 @@ import {act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
+import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {SettingsButton} from './settings-button.tsx';
 import {
 	APP_LICENSE_TEXT,
@@ -264,6 +265,19 @@ describe('Settings view', () => {
 		for (const link of externalLinks) {
 			expect(link.getAttribute('target')).toBe('_blank');
 			expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+		}
+
+		for (const expected of ABOUT_EXTERNAL_LINKS) {
+			const anchor = dialog.querySelector<HTMLAnchorElement>(
+				`a[href="${CSS.escape(expected.href)}"]`,
+			);
+			expect(anchor).not.toBeNull();
+			expect(anchor?.textContent).toContain(expected.label);
+			expect(anchor?.getAttribute('aria-label')).toBe(expected.accessibleName);
+			expect(anchor?.getAttribute('aria-label')).toContain('opens GitHub');
+			expect(anchor?.getAttribute('target')).toBe('_blank');
+			expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+			expect(anchor?.querySelector('svg')).not.toBeNull();
 		}
 	});
 });

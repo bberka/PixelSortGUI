@@ -11,7 +11,7 @@ PixelSortGUI is an editor for glitch art and pixel sorting of still photos. It r
 - Channel shift effect: move the red, green and blue channels by separate offsets, with stretch or wrap at the edges.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. History holds 200 steps and survives a reload.
 - Presets: six built-in ones, and your own saved from the current stack. Apply one, add one to the stack, rename or delete your own.
-- Parameter panel built from each effect's definition: sliders, a range slider, an angle control, switches, choice lists, a random seed, exact number entry, per-parameter reset and "Reset all". Each effect also has a mix amount and a blend setting.
+- Parameter panel built from each effect's definition: sliders, a range slider, an angle control, switches, choice lists, a random seed, exact number entry, per-parameter reset, "Reset all" and a "Randomize" button that gives every parameter a random valid value. Each effect also has a mix amount and a blend setting.
 - Preview canvas with zoom (including a Fit option) and pan, by wheel, keyboard and touch pinch.
 - Export as PNG, JPEG or WebP (WebP only where the browser can encode it). JPEG and WebP have a quality setting. Size is full, half, quarter or a custom longest side. You can set the file name.
 - Settings: theme (System, Light or True Black), storage usage and storage protection status, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, and a link to their full licence texts.

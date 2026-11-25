@@ -27,14 +27,22 @@ export type TransientDragOverlay = {
 export type TransientState = {
 	activeDrag: TransientDragOverlay | null;
 	splitPosition: number | null;
+	compareLatched: boolean;
+	compareHolding: boolean;
 };
 
 export type TransientStore = StoreApi<TransientState>;
+
+export function selectShowingOriginal(state: TransientState): boolean {
+	return state.compareHolding || state.compareLatched;
+}
 
 export function createTransientStore(): TransientStore {
 	return createStore<TransientState>(() => ({
 		activeDrag: null,
 		splitPosition: null,
+		compareLatched: false,
+		compareHolding: false,
 	}));
 }
 

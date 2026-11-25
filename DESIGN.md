@@ -90,7 +90,7 @@ System stacks only (zero network requests):
 
 ## 5. Controls and shadcn component mapping
 
-All base primitives come from **shadcn/ui** (`new-york` style, Radix UI primitives, `lucide-react` icons, `src/components/ui/`). Scrollable panels use shadcn `ScrollArea`.
+All base primitives come from **shadcn/ui** (`new-york` style, Radix UI primitives, `lucide-react` icons, `src/components/ui/`). Every scrollable region uses the one `ScrollArea` described in 5.4.
 
 ### 5.1 Parameter controls (F5, schema-driven)
 
@@ -132,6 +132,19 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 | Status tags (`Off`, `Original`, `Persistent`) | F4, F11, F16 | `Badge` | Text + icon, never colour alone |
 | Update ready / Deleted project | F3, F15 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
 | Persistent warning (Storage unavailable) | F16 | Inline alert bar (`role="status"` or `role="alert"`) | Docked directly under the top bar; never overlays canvas controls |
+
+### 5.4 Scrollbars
+
+One component, `ScrollArea` in `src/components/ui/scroll-area.tsx` (Radix `ScrollArea`, restyled), draws every scrollbar in the app. No scroll region uses a native `overflow-auto` or `overflow-y-auto` element, and `src/` has no other scrollbar CSS. Radix is chosen over native CSS because Firefox's `scrollbar-width` cannot change thickness on hover or drag and has no `::-webkit-scrollbar`; the Radix bar behaves the same in Chromium and Firefox.
+
+- **Overlay.** The bar sits over the content edge and takes no layout width, so content never shifts when it appears or disappears. It mounts only on an axis that overflows.
+- **Plain thumb.** No arrow buttons, no track background, no border: a rounded thumb only. The track is `transparent`.
+- **Thickness.** The thumb is `4 px` at rest. While the pointer is on the scrollbar strip, or the thumb is being dragged, it widens to `8 px` over `150 ms`, and returns to `4 px` when the pointer leaves and the drag ends. With `prefers-reduced-motion: reduce` there is no transition.
+- **Grab target.** The transparent strip is `12 px` wide, so the thin thumb is as easy to grab as a wide one.
+- **Colour.** The thumb is `--muted-foreground`: at least `7:1` on `--background`, `--card`, `--popover` and `--secondary` in Light, and at least `6.9:1` on the same surfaces in True Black (`#000000`). Both exceed the `3:1` needed for UI components.
+- **Idle.** The bar is invisible while the area is idle and fades in (`150 ms`) while the pointer is over the area, while focus is inside it, while it scrolls (and for `800 ms` after), and during a drag.
+- **Unchanged behaviour.** Wheel, touch, keyboard scrolling and focus work as before. The viewport is an explicit tab stop (`tabIndex=0`) in the parameter panel, the Settings panel and the gallery, as before. Regions that were plain `overflow` elements keep the browser's own rule (`tabStop={false}`), so no tab stop is added.
+- **Regions.** Parameter panel, effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body, licence text and third-party notices, export sheet body, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
 
 ## 6. Layout
 

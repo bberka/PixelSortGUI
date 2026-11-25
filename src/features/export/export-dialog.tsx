@@ -31,6 +31,7 @@ import {announce} from '@/app/announcer.ts';
 import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
 import type {ExportFormat, SupportedEncodeFormats} from '@/codec/encode.ts';
 import {Button} from '@/components/ui/button';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {
 	Dialog,
 	DialogContent,
@@ -776,9 +777,13 @@ export function ExportDialog({
 							image.
 						</SheetDescription>
 					</SheetHeader>
-					<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-						{formBody}
-					</div>
+					<ScrollArea
+						tabStop={false}
+						className="min-h-0 flex-1"
+						viewportClassName="[&>div]:block!"
+					>
+						<div className="px-4 py-4">{formBody}</div>
+					</ScrollArea>
 					<SheetFooter className="flex-row justify-end border-t border-border px-4 py-3">
 						{footerActions}
 					</SheetFooter>

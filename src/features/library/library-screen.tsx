@@ -5,6 +5,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from 'react';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {ImportImagesButton} from '@/features/import/import-images-button.tsx';
@@ -123,11 +124,13 @@ export function LibraryScreen() {
 
 	return (
 		<>
-			<div
-				ref={scrollRef}
-				className="min-h-0 flex-1 overflow-y-auto p-3 md:p-4 lg:p-6"
+			<ScrollArea
+				viewportRef={scrollRef}
+				tabStop={false}
+				className="min-h-0 flex-1"
+				viewportClassName="[&>div]:block!"
 			>
-				<ul className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:gap-4">
+				<ul className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 md:gap-4 md:p-4 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:gap-4 lg:p-6">
 					{ordered.map((project) => (
 						<ProjectCard
 							key={project.id}
@@ -142,7 +145,7 @@ export function LibraryScreen() {
 						/>
 					))}
 				</ul>
-			</div>
+			</ScrollArea>
 			<RenameProjectDialog
 				key={renameRequest?.seq ?? 0}
 				project={renameRequest?.project ?? null}

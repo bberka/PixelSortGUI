@@ -13,6 +13,7 @@ import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {Separator} from '@/components/ui/separator';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
 import {isThemePreference, type ThemePreference} from '@/state/theme.ts';
@@ -292,44 +293,48 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 						</Button>
 					</div>
 					{noticesOpen ? (
-						<ul
+						<ScrollArea
 							id="settings-third-party-notices"
-							className="flex max-h-56 flex-col divide-y divide-border overflow-auto rounded-md border border-border bg-secondary"
+							orientation="both"
+							tabStop={false}
+							className="max-h-56 rounded-md border border-border bg-secondary"
 						>
-							{THIRD_PARTY_NOTICES.map((notice) => (
-								<li
-									key={notice.name}
-									className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
-								>
-									<div className="flex min-w-0 flex-col">
-										{notice.url ? (
-											<a
-												href={notice.url}
-												target="_blank"
-												rel="noopener noreferrer"
-												className="inline-flex items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-											>
-												<span className="truncate">{notice.name}</span>
-												<ExternalLinkIcon
-													className="size-3 shrink-0"
-													aria-hidden="true"
-												/>
-											</a>
-										) : (
-											<span className="truncate font-medium text-foreground">
-												{notice.name}
+							<ul className="flex flex-col divide-y divide-border">
+								{THIRD_PARTY_NOTICES.map((notice) => (
+									<li
+										key={notice.name}
+										className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+									>
+										<div className="flex min-w-0 flex-col">
+											{notice.url ? (
+												<a
+													href={notice.url}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+												>
+													<span className="truncate">{notice.name}</span>
+													<ExternalLinkIcon
+														className="size-3 shrink-0"
+														aria-hidden="true"
+													/>
+												</a>
+											) : (
+												<span className="truncate font-medium text-foreground">
+													{notice.name}
+												</span>
+											)}
+											<span className="font-mono text-muted-foreground tabular-nums">
+												{notice.version}
 											</span>
-										)}
-										<span className="font-mono text-muted-foreground tabular-nums">
-											{notice.version}
-										</span>
-									</div>
-									<Badge variant="outline" className="shrink-0">
-										{notice.license}
-									</Badge>
-								</li>
-							))}
-						</ul>
+										</div>
+										<Badge variant="outline" className="shrink-0">
+											{notice.license}
+										</Badge>
+									</li>
+								))}
+							</ul>
+						</ScrollArea>
 					) : null}
 				</div>
 			</section>

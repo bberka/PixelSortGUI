@@ -421,6 +421,25 @@ Acceptance criteria:
 - AC-F17.6: Triggering a quota error during backup import leaves zero partial or broken projects (every existing project still opens and renders cleanly) and opens the `"Storage is full"` dialog.
 - AC-F17.7: Importing a corrupt ZIP, a backup with a tampered source byte, or a backup with `backupVersion` higher than supported writes nothing and shows the exact error message from [persistence.md section 8.4.4](persistence.md#844-validation-quota-safety-and-merge-vs-replace).
 
+### F26. Blending multiple images (`imageBlend`)
+
+Merge or composite a second (third, ...) image into a project using an **`imageBlend`** effect instance inside the existing effect stack ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)). Because `imageBlend` is a normal effect in the stack, users can apply pixel sorting or glitch effects before the blend, merge another image with blend mode, opacity, fit, scale, offset, and rotation, and apply further effects to the combined result. Stacking multiple `imageBlend` instances merges 3 or more images.
+
+- **Why an effect instead of a full layer model:** Fits the existing same-size-in, same-size-out `EffectDefinition` architecture (`src/engine/types.ts`), reuses undo/redo, stage cache, and responsive stack layouts without introducing a second layer tree UI or rewriting presets (see [decisions.md](decisions.md)).
+- **Choosing an image:** Introduces a new `ParamSpec` kind (`'image'`) rendered by a dedicated `ImageControl` in `src/features/params/`. Users can pick an image from their device (same F1 validation, EXIF normalization, and 50 MP prompt) or reuse any image already stored in the library without duplicating bytes.
+- **Controls:** Image picker, Blend mode (`Normal`, `Multiply`, `Screen`, `Overlay`, `Lighten`, `Darken`, `Difference`, `Exclusion`, `Add`, `Subtract`), Opacity (`0%` to `100%`), Fit (`Cover`, `Contain`, `Stretch`, `Tile`, `None`), Scale (`10%` to `400%`), Offset X / Y (`-100%` to `+100%`), and Rotation (`0°` to `360°`).
+- **Limits and storage:** Up to **8** distinct extra images per project (each subject to F1's 16,384 px / 50 MP / 200 MB limits). Extra images live in the existing `sources` store, deduplicated by SHA-256, reference-counted across projects and undo history, and included automatically in `.glproj` project files (`F25`) and backups (`F17`). Saving a stack as a user preset clears `image` parameters to empty so presets never pin images.
+
+Acceptance criteria:
+
+- AC-F26.1: Adding `imageBlend` to a project, picking a second image from device or library, and setting Blend mode to `Difference` and Opacity to `100%` updates the preview within the visible-update budget and produces bit-identical output on repeated PNG exports.
+- AC-F26.2: Placing `pixelSort` before `imageBlend` and `channelShift` after `imageBlend` applies pixel sort only to the base image, blends the second image on top, and applies channel shift to the merged result.
+- AC-F26.3: Picking an image already used by another project reuses its `SourceRecord` (storage usage grows by less than 1% of the file size); deleting the first project keeps the shared image intact for the second project, and deleting both removes the blob from `sources`.
+- AC-F26.4: Removing an `imageBlend` instance and clicking Undo restores the blended image cleanly (its source blob is retained while referenced by undo history).
+- AC-F26.5: Saving a project containing `imageBlend` to a `.glproj` file (`F25`) or backup (`F17`) and opening it on a fresh browser profile restores both the primary and secondary images and renders the exact same result.
+- AC-F26.6: Attempting to reference a 9th distinct extra image in one project is rejected with `"A project can use at most 8 extra blend images."`
+- AC-F26.7: Saving a stack containing `imageBlend` as a user preset clears the `image` parameter to empty; applying that preset adds `imageBlend` with its blend/fit/transform parameters and `"No image selected"`.
+
 ## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).

@@ -313,6 +313,11 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Library app bar (`src/app/app-bar-actions.ts`):** Add a compact overflow menu button (`⋮`, `aria-label="Library actions"`) next to Settings with `"Export backup"` and `"Import backup"`.
   - **Export backup dialog:** `Dialog` (desktop/tablet) / full-height `Sheet` (phone) with `"Select all"` / `"Select none"`, scrollable project checkbox list (project name, `W × H px`), `"Include undo history"`, `"Include user presets"`, `"Include settings"`, estimated size readout, `"Export backup"` primary button, and progress bar with `"Cancel"` while packing.
   - **Import backup dialog:** Two-step modal: validating progress state (with `"Cancel"`), followed by a selection view with a `ToggleGroup` for `"Merge"` / `"Replace"`, scrollable project checkbox list (name, `W × H px`, size, status `Badge` `"New"` / `"Unchanged"` / `"Modified locally"`), presets and settings checkboxes, `"Import"` primary button, and a destructive `AlertDialog` confirmation when `"Replace"` is chosen.
+- **Image blend parameter control (`kind: 'image'`, F26):**
+  - Rendered by `ImageControl` (`src/features/params/image-control.tsx`) inside `ParamControl` (`src/features/params/param-control.tsx`).
+  - Layout: `48 × 36 px` rounded thumbnail preview (or muted placeholder icon with `"No image selected"`), dimensions metadata (`W × H px`), `"Choose image"` outline button, and `"Clear"` icon button (`X`, shown when an image is set).
+  - Clicking `"Choose image"` opens a `Popover` (desktop/tablet) / `Sheet` (phone) with two options: `"From device"` (opens native image file picker with F1 validation/50 MP flow) and `"From library"` (scrollable grid of existing library project thumbnails to reuse a stored `SourceRecord` without duplicating bytes).
+  - If the referenced source is missing (`'missing-source'` warning), displays a destructive-text inline note `"Missing image"` beside `"Choose image"`.
 
 ## 8. Interaction: touch, pointer and keyboard
 

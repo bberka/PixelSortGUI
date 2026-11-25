@@ -531,6 +531,24 @@ Import writes in four strict phases so the library can **never** end up with a p
 
 When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
 
+### 8.5 Multi-image source reference counting and GC (F26)
+
+When `F26` (`imageBlend`) lands, a project can reference up to **8** additional `SourceRecord`s alongside its primary `sourceHash`, both in its current `stack` and in its retained `history` entries. Extra sources live in the existing `sources` store (zero new object stores) and share SHA-256 deduplication with primary sources.
+
+- **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`, after F20's v2):**
+  - Add `referencedSourceHashes: string[]` to `ProjectRecord`: a sorted, deduplicated array containing `project.sourceHash` plus every valid 64-char SHA-256 found in any `kind: 'image'` parameter of `project.stack` and all retained `history` entries for that project.
+  - Create a `multiEntry: true` index `byReferencedSourceHash` on `projects` keyed on `referencedSourceHashes`.
+  - Migration `dbMigrations[2]` iterates existing `projects` and sets `referencedSourceHashes = [project.sourceHash]` where missing, and updates `meta.schemaInfo.dbVersion = 3`.
+- **Maintaining `referencedSourceHashes`:**
+  - `createProject`, `duplicateProject`, `commitStack`, and project/backup import compute `referencedSourceHashes` inside the same `readwrite` transaction. Because a project holds at most 201 lightweight JSON history entries, scanning them takes under 1 ms.
+  - Adding an extra image to a project checks the 8-distinct-extra-source cap (counting distinct non-empty `image` hashes in `project.stack` excluding `project.sourceHash`). If exceeded, reject with `"A project can use at most 8 extra blend images."`
+- **Reference-counted deletion and orphan GC:**
+  - `deleteProject(id)` deletes the project, its history, and its thumbnail, then for every hash `h` in `existing.referencedSourceHashes`, checks `projectsStore.index('byReferencedSourceHash').count(h)` and deletes `sourcesStore.delete(h)` whenever count is `0`.
+  - `cleanupOrphanedSources()` checks `byReferencedSourceHash` instead of `bySourceHash` so secondary images referenced only by `imageBlend` or undo history are never evicted.
+  - When a `commitStack` prunes old history entries that held the last reference to an extra source, `cleanupOrphanedSources()` frees that blob on idle startup (or immediately if `referencedSourceHashes` shrank and count dropped to `0`).
+- **User presets:** `createPreset` strips any `kind: 'image'` parameter value to `''` before saving so presets never pin source blobs or carry broken hashes across devices.
+- **Project files (`F25`) and backups (`F17`):** Exporting a project collects all hashes in `project.sourceHash` + `project.stack` (+ `history` entries when `includesHistory` is true) and writes each unique source once into `sources/<sha256>.<ext>` and `manifest.sources`.
+
 ## 9. Restore sequence on startup
 
 Startup is designed so that with 50 projects stored, the Library (or the reopened project with a visual placeholder) is visible within 1 s on a reference laptop (AC-F3.7).

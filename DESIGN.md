@@ -18,7 +18,7 @@ Rules every screen follows:
 
 ## 2. Themes and color tokens
 
-Two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with a toggle in the toolbar and Settings.
+Two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with the selector in Settings (the app bar has no theme button).
 
 ### 2.1 Activation and zero-flash boot
 
@@ -149,7 +149,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-------------------------------------------------------------------+
-| PixelSortGUI            [Open images]          [Theme] [Settings] |  <- 48/52 px
+| PixelSortGUI            [Open images]          [Settings] |  <- 48/52 px
 +-------------------------------------------------------------------+
 | [Optional banner: Storage unavailable]                            |
 +-------------------------------------------------------------------+
@@ -170,7 +170,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-----------------------------------------------------------------------------+
-| <- Library | project-name | [Undo][Redo] | [Compare][Split] | [100% v] | [Export] [Theme] [Settings] |  48 px
+| <- Library | project-name | [Undo][Redo] | [Compare][Split] | [100% v] | [Export] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
 | [2 px render progress bar when > 300 ms]               | [Stack | Presets]  |
 |                                                        +--------------------+
@@ -232,7 +232,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-------------------------------+  + safe-area-bottom
 ```
 
-- **Phone top bar overflow (`⋮`):** Holds Project rename, Presets, Theme toggle, and Settings so the primary bar stays uncluttered at 390 px with 44 × 44 px buttons.
+- **Phone top bar overflow (`⋮`):** Holds Project rename, Presets, and Settings so the primary bar stays uncluttered at 390 px with 44 × 44 px buttons.
 - **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled dot/`"Off"` text, and tap-to-select; tapping the active chip's `⋮` menu opens Enable/Disable, Move left (up), Move right (down), Duplicate, Remove. A pinned `+` chip opens Add effect.
 - **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet to a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
 

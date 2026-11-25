@@ -217,7 +217,7 @@ The canvas supports fit-to-view, 100% (one image pixel per CSS pixel) and contin
 
 ### F14. Themes
 
-Two themes, light and true black (pure `#000000` background), plus "System" which follows the operating system setting. Default: System. The choice is made in Settings and from the theme button in the toolbar, applied before first paint on reload (no flash of the other theme). Tokens are in [DESIGN.md](../../DESIGN.md#2-themes-and-color-tokens).
+Two themes, light and true black (pure `#000000` background), plus "System" which follows the operating system setting. Default: System. The choice is made in Settings -> Appearance (the app bar has no theme button), applied before first paint on reload (no flash of the other theme). Tokens are in [DESIGN.md](../../DESIGN.md#2-themes-and-color-tokens).
 
 - AC-F14.1: Switching the OS to dark mode while "System" is selected switches the app to the true black theme without a reload.
 - AC-F14.2: Reloading with the light theme selected on a dark OS shows no dark frame before the light theme appears (checked with a screen recording at 60 fps).

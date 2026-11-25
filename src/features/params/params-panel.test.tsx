@@ -665,6 +665,32 @@ describe('exact entry', () => {
 		expect(historyHead(harness)).toBe(before);
 	});
 
+	it('does not commit the abandoned text when the blur after Escape fires', async () => {
+		const harness = await setup({type: 'pixelSort'});
+		mount(harness);
+		await flush();
+		const before = historyHead(harness);
+		const input = paramInput(harness.instanceId, 'skipChance');
+
+		act(() => {
+			input.focus();
+		});
+		setInputValue(input, '0.5');
+		press(input, 'Escape');
+		await flush();
+
+		// Escape blurs the field; a second blur and the value must both be
+		// unchanged, so the text the user abandoned never reaches the store.
+		act(() => {
+			input.blur();
+		});
+		await flush();
+
+		expect(input.value).toBe('0');
+		expect((await storedParams(harness))?.skipChance).toBe(0);
+		expect(historyHead(harness)).toBe(before);
+	});
+
 	it('commits on blur and swaps a range typed with low above high', async () => {
 		const harness = await setup({type: 'pixelSort'});
 		mount(harness);

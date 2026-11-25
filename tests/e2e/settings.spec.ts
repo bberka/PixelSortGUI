@@ -94,6 +94,47 @@ test.describe('Settings, storage status, and About', () => {
 		expect(externalRequests).toEqual([]);
 	});
 
+	test('Full licence texts opens a same-origin file that names every listed package', async ({
+		page,
+	}) => {
+		await page.goto('/');
+		const dialog = await openSettings(page);
+
+		await dialog.getByRole('button', {name: 'View notices'}).click();
+		const names = (
+			await dialog
+				.locator('#settings-third-party-notices li > div > :first-child')
+				.allTextContents()
+		).map((name) => name.trim());
+		expect(names.length).toBeGreaterThan(10);
+		expect(names).toContain('react');
+		expect(names).toContain('lucide-react');
+
+		const link = dialog.getByRole('link', {name: 'Full licence texts'});
+		await expect(link).toBeVisible();
+		const target = new URL((await link.getAttribute('href')) ?? '', page.url());
+		expect(target.origin).toBe(new URL(page.url()).origin);
+
+		const response = await page.request.get(target.href);
+		expect(response.status()).toBe(200);
+		expect(response.headers()['content-type']).toContain('text/plain');
+		const text = await response.text();
+		expect(text).toContain('Permission is hereby granted');
+		for (const name of names) {
+			expect(text, `${name} is missing from the licence texts`).toContain(name);
+		}
+
+		const [popup] = await Promise.all([
+			page.waitForEvent('popup'),
+			link.click(),
+		]);
+		await popup.waitForLoadState();
+		expect(new URL(popup.url()).origin).toBe(target.origin);
+		await expect(popup.locator('body')).toContainText(
+			'Permission is hereby granted',
+		);
+	});
+
 	test('persistence request stays non-blocking while pending', async ({
 		page,
 	}) => {

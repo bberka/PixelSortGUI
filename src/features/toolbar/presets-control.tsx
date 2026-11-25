@@ -11,7 +11,7 @@ import {
 	RenamePresetDialog,
 	SavePresetDialog,
 } from './preset-dialogs.tsx';
-import {usePhoneLayout} from './use-phone-layout.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';

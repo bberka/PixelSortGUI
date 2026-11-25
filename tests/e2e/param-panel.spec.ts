@@ -569,6 +569,33 @@ test('the drag value is only committed when the pointer is released', async ({
 	);
 });
 
+test('dragging the default single slider by pointer updates the value with one history entry', async ({
+	page,
+}) => {
+	await seedProject(page, ['pixelSort']);
+	await waitForDisplayedSettle(page);
+	const before = await readStack(page);
+	const slider = page.getByRole('slider', {name: 'Skip chance'});
+	await slider.scrollIntoViewIfNeeded();
+	const box = await slider.boundingBox();
+	if (!box) {
+		throw new Error('Skip chance slider thumb has no layout box');
+	}
+
+	const startX = box.x + box.width / 2;
+	const y = box.y + box.height / 2;
+	await page.mouse.move(startX, y);
+	await page.mouse.down();
+	await page.mouse.move(startX + 80, y, {steps: 6});
+	await page.mouse.up();
+
+	await expect
+		.poll(async () => (await readStack(page)).historyHeadSeq)
+		.toBe(before.historyHeadSeq + 1);
+	const after = await readStack(page);
+	expect(after.instances[0].params.skipChance as number).toBeGreaterThan(0);
+});
+
 test('a burst of arrow keys on a slider is one commit after 500 ms', async ({
 	page,
 }) => {

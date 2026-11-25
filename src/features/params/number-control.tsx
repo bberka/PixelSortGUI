@@ -13,7 +13,6 @@ import {controlId} from './ids.ts';
 import {steppedValue} from './keyboard.ts';
 import {ParamRow} from './param-row.tsx';
 import {useTransientParam} from './use-drag-value.ts';
-import {sliderThumbTarget} from './slider-thumb.ts';
 import {Slider} from '@/components/ui/slider';
 import {useAppStore} from '@/app/runtime-context.tsx';
 
@@ -79,7 +78,7 @@ export function NumberControl({
 			valueText={formatNumericParam(spec, current)}
 		>
 			<Slider
-				className={sliderThumbTarget}
+				defaultMark={spec.default}
 				max={spec.max}
 				min={spec.min}
 				step={step}

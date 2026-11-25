@@ -3,13 +3,17 @@ import {
 	ChevronDownIcon,
 	ChevronRightIcon,
 	ExternalLinkIcon,
+	FileTextIcon,
 	MonitorIcon,
 	MoonIcon,
 	ShieldCheckIcon,
 	SunIcon,
 } from 'lucide-react';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
-import {THIRD_PARTY_NOTICES} from './third-party-notices.generated.ts';
+import {
+	THIRD_PARTY_NOTICES,
+	THIRD_PARTY_NOTICES_FILE,
+} from './third-party-notices.generated.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
@@ -115,6 +119,7 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 
 	const usageText = formatStorageUsage(storage.estimate);
 	const versionLabel = getAppVersionLabel();
+	const licenceTextsHref = `/${THIRD_PARTY_NOTICES_FILE}`;
 
 	return (
 		<div className="flex flex-col gap-5 text-sm">
@@ -292,6 +297,15 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 							<span>{noticesOpen ? 'Hide notices' : 'View notices'}</span>
 						</Button>
 					</div>
+					<a
+						href={licenceTextsHref}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="inline-flex min-h-6 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					>
+						<FileTextIcon className="size-3.5 shrink-0" aria-hidden="true" />
+						<span>Full licence texts</span>
+					</a>
 					{noticesOpen ? (
 						<ScrollArea
 							id="settings-third-party-notices"

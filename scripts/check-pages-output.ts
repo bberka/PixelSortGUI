@@ -2,6 +2,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import {pathToFileURL} from 'node:url';
+import {NOTICES_FILE_NAME} from './notices.ts';
 
 export const expectedCname = 'glitch.bbay.dev';
 
@@ -13,6 +14,13 @@ export function findPagesOutputProblems(distDirectory: string): string[] {
 		problems.push('CNAME is missing');
 	} else if (readFileSync(cnamePath, 'utf8') !== expectedCname) {
 		problems.push(`CNAME must contain exactly ${expectedCname}`);
+	}
+
+	const noticesPath = path.join(distDirectory, NOTICES_FILE_NAME);
+	if (!existsSync(noticesPath)) {
+		problems.push(`${NOTICES_FILE_NAME} is missing`);
+	} else if (!readFileSync(noticesPath, 'utf8').includes('Copyright')) {
+		problems.push(`${NOTICES_FILE_NAME} holds no copyright line`);
 	}
 
 	const indexPath = path.join(distDirectory, 'index.html');

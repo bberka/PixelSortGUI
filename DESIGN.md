@@ -144,7 +144,7 @@ One component, `ScrollArea` in `src/components/ui/scroll-area.tsx` (Radix `Scrol
 - **Colour.** The thumb is `--muted-foreground`: at least `7:1` on `--background`, `--card`, `--popover` and `--secondary` in Light, and at least `6.9:1` on the same surfaces in True Black (`#000000`). Both exceed the `3:1` needed for UI components.
 - **Idle.** The bar is invisible while the area is idle and fades in (`150 ms`) while the pointer is over the area, while focus is inside it, while it scrolls (and for `800 ms` after), and during a drag.
 - **Unchanged behaviour.** Wheel, touch, keyboard scrolling and focus work as before. The viewport is an explicit tab stop (`tabIndex=0`) in the parameter panel, the Settings panel and the gallery, as before. Regions that were plain `overflow` elements keep the browser's own rule (`tabStop={false}`), so no tab stop is added.
-- **Regions.** Parameter panel, effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body, licence text and third-party notices, export sheet body, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
+- **Regions.** Parameter panel, effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body and third-party notices, export sheet body, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
 
 ## 6. Layout
 

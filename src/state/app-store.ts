@@ -107,6 +107,7 @@ export type StorageStatus = {
 	estimate: StorageQuotaEstimate;
 	persisted: boolean;
 	quotaFull: boolean;
+	databaseClosedByUpgrade: boolean;
 	versionErrorMessage: string | null;
 };
 
@@ -174,6 +175,7 @@ export type AppState = {
 	setStorageMetrics(estimate: StorageQuotaEstimate, persisted: boolean): void;
 	clearNotice(): void;
 	clearQuotaFull(): void;
+	markDatabaseClosedByUpgrade(): void;
 	notifyThumbnailUpdated(projectId: string): void;
 
 	// Library & project actions
@@ -809,6 +811,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			estimate: {usage: null, quota: null, available: null},
 			persisted: false,
 			quotaFull: false,
+			databaseClosedByUpgrade: false,
 			versionErrorMessage: null,
 		},
 		render: createDefaultRenderStatus(),
@@ -870,6 +873,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		clearQuotaFull() {
 			set((state) => ({
 				storage: {...state.storage, quotaFull: false},
+			}));
+		},
+
+		markDatabaseClosedByUpgrade() {
+			set((state) => ({
+				storage: {...state.storage, databaseClosedByUpgrade: true},
 			}));
 		},
 

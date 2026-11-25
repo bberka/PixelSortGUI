@@ -126,9 +126,18 @@ export async function restoreStartup(
 	const scheduleIdle = options.scheduleIdle ?? defaultScheduleIdle;
 
 	// Step 2: Open database (VersionError stops; other errors fall back to memory)
+	let versionChanged = false;
+	let createdBundle: AppStoreBundle | null = null;
 	let opened: OpenStorageResult;
 	try {
-		opened = await openStorageFn(options.storageOptions);
+		opened = await openStorageFn({
+			...options.storageOptions,
+			onVersionChange(event) {
+				versionChanged = true;
+				createdBundle?.store.getState().markDatabaseClosedByUpgrade();
+				options.storageOptions?.onVersionChange?.(event);
+			},
+		});
 	} catch (error) {
 		if (error instanceof StorageVersionError) {
 			return {
@@ -217,6 +226,10 @@ export async function restoreStartup(
 		notice,
 		activeProject,
 	});
+	createdBundle = bundle;
+	if (versionChanged) {
+		bundle.store.getState().markDatabaseClosedByUpgrade();
+	}
 
 	// Step 6: Async editor hydration (Editor target only)
 	const hydrationPromise = activeProject

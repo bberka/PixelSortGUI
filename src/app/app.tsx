@@ -14,7 +14,10 @@ import {
 	StartupFailureScreen,
 	VersionErrorScreen,
 } from '@/app/startup-screens.tsx';
-import {StorageUnavailableBanner} from '@/app/storage-banner.tsx';
+import {
+	DatabaseReloadBanner,
+	StorageUnavailableBanner,
+} from '@/app/storage-banner.tsx';
 import {StorageFullDialog} from '@/app/storage-full-dialog.tsx';
 import {
 	useAppBoot,
@@ -111,6 +114,7 @@ function AppFrame({screens}: {readonly screens?: ScreenRegistry}) {
 		<div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
 			<AppBar />
 			<StorageUnavailableBanner />
+			<DatabaseReloadBanner />
 			<main className="flex min-h-0 flex-1 flex-col">
 				<RouteHost route={route} screens={screens} />
 			</main>

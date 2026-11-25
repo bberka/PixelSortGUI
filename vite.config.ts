@@ -1,7 +1,11 @@
 import path from 'node:path';
+import process from 'node:process';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {defineConfig} from 'vite-plus';
+import {resolveBuildVersion} from './scripts/release-version.ts';
+
+process.env.VITE_APP_VERSION ||= resolveBuildVersion();
 
 export default defineConfig({
 	base: '/',

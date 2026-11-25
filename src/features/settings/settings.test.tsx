@@ -230,6 +230,8 @@ describe('Settings view', () => {
 
 		const dialog = document.querySelector('[role="dialog"]')!;
 		expect(dialog.textContent).toContain('PixelSortGUI');
+		expect(dialog.textContent).not.toContain('0.x (dev)');
+		expect(dialog.textContent).toMatch(/0\.\d+\./);
 		expect(dialog.textContent).toContain(
 			"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort.",
 		);

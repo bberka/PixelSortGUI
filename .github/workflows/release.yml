@@ -62,6 +62,8 @@ jobs:
 
       - run: pnpm exec vp run check
       - run: pnpm exec vp run build
+        env:
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Create and push tag
         if: steps.version.outputs.tag_exists != 'true'

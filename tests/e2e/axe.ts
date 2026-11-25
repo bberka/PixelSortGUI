@@ -19,6 +19,15 @@ export async function assertNoA11yViolations(
 	page: Page,
 	options: A11yCheckOptions = {},
 ): Promise<void> {
+	// The scan runs in Chromium only. In Playwright's Firefox the content
+	// process segfaults inside the scan about once in twenty runs on the editor
+	// (a null dereference in Gecko with no script frame; see pull request 35).
+	// The rules judge the DOM and computed styles, which the two engines share
+	// for this app, so Chromium's verdict stands for both.
+	if (page.context().browser()?.browserType().name() === 'firefox') {
+		return;
+	}
+
 	let builder = new AxeBuilder({page}).withTags([...WCAG_AA_TAGS]);
 
 	for (const selector of options.include ?? []) {

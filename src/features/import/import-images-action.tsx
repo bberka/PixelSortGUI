@@ -1,9 +1,7 @@
 import {ImagePlusIcon} from 'lucide-react';
-import {DropOverlay} from './drop-overlay.tsx';
 import {ImportFeedback} from './import-feedback.tsx';
 import {useImageImport, type ImageImportOptions} from './use-image-import.ts';
 import {useImagePicker} from './use-image-picker.ts';
-import {useWindowFileDrop} from './use-window-file-drop.ts';
 import {Button} from '@/components/ui/button';
 
 export type ImportImagesActionProps = {
@@ -15,9 +13,7 @@ export type ImportImagesActionProps = {
 };
 
 /**
- The library action in the app bar (DESIGN.md section 6.1). It also owns the
- window-wide drop target, so dropping files anywhere on the library screen
- works whether or not the empty state is showing (AC-F1.2).
+ The library action in the app bar (DESIGN.md section 6.1).
  */
 export function ImportImagesAction({
 	probe,
@@ -25,7 +21,6 @@ export function ImportImagesAction({
 }: ImportImagesActionProps = {}) {
 	const flow = useImageImport({probe, downscale});
 	const picker = useImagePicker(flow.start);
-	const dragging = useWindowFileDrop(flow.start);
 
 	return (
 		<>
@@ -57,7 +52,6 @@ export function ImportImagesAction({
 			>
 				<ImagePlusIcon aria-hidden="true" />
 			</Button>
-			{dragging && !flow.busy ? <DropOverlay /> : null}
 			<ImportFeedback flow={flow} />
 		</>
 	);

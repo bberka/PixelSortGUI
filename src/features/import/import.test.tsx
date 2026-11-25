@@ -5,8 +5,11 @@ import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
 import {ImportImagesAction} from './import-images-action.tsx';
 import {ImportImagesButton} from './import-images-button.tsx';
+import {WindowFileDrop} from './window-file-drop.tsx';
 import type {ImportDownscale, ImportProbe} from './use-image-import.ts';
+import {App} from '@/app/app.tsx';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
+import * as decode from '@/codec/decode.ts';
 import type {CodecError, CodecResult, ImageDimensions} from '@/codec/decode.ts';
 import type {AppRuntime} from '@/state/index.ts';
 import {MemoryStorageAdapter} from '@/storage/memory-adapter.ts';
@@ -57,6 +60,7 @@ type HarnessOptions = {
 	readonly probe?: ImportProbe;
 	readonly downscale?: ImportDownscale;
 	readonly button?: boolean;
+	readonly drop?: boolean;
 };
 
 function setup(options: HarnessOptions = {}) {
@@ -95,7 +99,9 @@ function setup(options: HarnessOptions = {}) {
 		mount(): HTMLDivElement {
 			const element: ReactElement = (
 				<AppRuntimeProvider value={{runtime, bundle: test.bundle}}>
-					{options.button ? (
+					{options.drop ? (
+						<WindowFileDrop {...flowProps} />
+					) : options.button ? (
 						<ImportImagesButton {...flowProps} />
 					) : (
 						<ImportImagesAction {...flowProps} />
@@ -420,7 +426,7 @@ describe('several files', () => {
 
 describe('drag and drop onto the window', () => {
 	it('shows the overlay while files are dragged and hides it again', async () => {
-		const harness = setup();
+		const harness = setup({drop: true});
 		harness.mount();
 
 		expect(bodyText()).not.toContain('Drop images to open');
@@ -432,7 +438,7 @@ describe('drag and drop onto the window', () => {
 	});
 
 	it('imports the dropped files', async () => {
-		const harness = setup();
+		const harness = setup({drop: true});
 		harness.mount();
 
 		dispatchFileDrag('drop', [imageFile('dropped.png')]);
@@ -443,6 +449,68 @@ describe('drag and drop onto the window', () => {
 
 		expect(bodyText()).not.toContain('Drop images to open');
 		expect(harness.store.getState().projects[0]?.name).toBe('dropped');
+	});
+
+	it('imports and opens a dropped file while the editor screen is active', async () => {
+		const probeSpy = vi
+			.spyOn(decode, 'probeImageDimensions')
+			.mockImplementation(okProbe(120, 80));
+		const repository = new MemoryStorageAdapter();
+		const created = await repository.createProject({
+			name: 'existing',
+			blob: new Blob([new Uint8Array([9, 8, 7])], {type: 'image/png'}),
+			width: 100,
+			height: 100,
+		});
+		const test = createTestStore({repository});
+		test.store.getState().hydrateFromRestore({
+			projects: [created.project],
+			presets: [],
+			theme: 'system',
+			compareMode: 'toggle',
+			storageUnavailable: false,
+			route: {screen: 'editor', projectId: created.project.id},
+			notice: null,
+			activeProject: created.project,
+		});
+		const result: RestoreResult = {
+			status: 'ready',
+			bundle: test.bundle,
+			storageUnavailable: false,
+			route: {screen: 'editor', projectId: created.project.id},
+			notice: null,
+			hydrationPromise: Promise.resolve(),
+			housekeepingPromise: Promise.resolve(),
+		};
+		const runtime: AppRuntime = {
+			ready: Promise.resolve(result),
+			result: null,
+			dispose() {},
+		};
+
+		container = document.createElement('div');
+		document.body.append(container);
+		root = createRoot(container);
+		act(() => {
+			root!.render(<App runtime={runtime} />);
+		});
+		await settle(8);
+
+		dispatchFileDrag('dragenter', [imageFile('from-editor.png')]);
+		expect(bodyText()).toContain('Drop images to open');
+
+		dispatchFileDrag('drop', [imageFile('from-editor.png')]);
+		await waitFor(
+			() => test.store.getState().projects.length === 2,
+			'the dropped project from editor',
+		);
+
+		expect(test.store.getState().activeProject?.name).toBe('from-editor');
+		expect(test.store.getState().route).toEqual({
+			screen: 'editor',
+			projectId: test.store.getState().activeProject?.id,
+		});
+		probeSpy.mockRestore();
 	});
 });
 

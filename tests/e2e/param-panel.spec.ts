@@ -824,6 +824,138 @@ test('a new seed is written as one commit and changes the rendered result', asyn
 	expect((await readPreview(page)).data).not.toEqual(before.data);
 });
 
+/**
+Replaces `crypto.getRandomValues` with a fixed sequence so Randomize draws the
+same values on every run; the app code under test is unchanged.
+*/
+async function fixRandomBytes(page: Page): Promise<void> {
+	await page.addInitScript(() => {
+		let state = 20_251_125;
+		globalThis.crypto.getRandomValues = <T extends ArrayBufferView | null>(
+			array: T,
+		): T => {
+			if (array) {
+				const bytes = new Uint8Array(
+					array.buffer,
+					array.byteOffset,
+					array.byteLength,
+				);
+				for (let index = 0; index < bytes.length; index++) {
+					state = (state * 1_664_525 + 1_013_904_223) % 2 ** 32;
+					bytes[index] = Math.floor(state / 2 ** 24);
+				}
+			}
+
+			return array;
+		};
+	});
+}
+
+async function displayedValues(page: Page): Promise<string[]> {
+	return page
+		.locator(
+			'[data-slot="parameter-panel"] input[type="text"], [data-slot="parameter-panel"] input:not([type])',
+		)
+		.evaluateAll((inputs) =>
+			inputs.map((input) => (input as HTMLInputElement).value),
+		);
+}
+
+test('Randomize changes the values and the canvas as one commit, and Undo restores the exact previous values', async ({
+	page,
+}) => {
+	const consoleErrors = collectConsoleErrors(page);
+	await fixRandomBytes(page);
+	await seedProject(page, ['pixelSort']);
+	await waitForDisplayedSettle(page);
+	const canvasBefore = await readPreview(page);
+	const stackBefore = await readStack(page);
+	const valuesBefore = await displayedValues(page);
+
+	const generation = await frameGeneration(page);
+	await page.getByRole('button', {name: 'Randomize', exact: true}).click();
+	await waitForSettle(page, generation);
+
+	await expect(page.getByRole('status', {name: 'Status messages'})).toHaveText(
+		'Randomized Pixel sort',
+	);
+	const stackAfter = await readStack(page);
+	expect(stackAfter.historyHeadSeq).toBe(stackBefore.historyHeadSeq + 1);
+	expect(stackAfter.instances[0].params).not.toEqual(
+		stackBefore.instances[0].params,
+	);
+	expect(stackAfter.mix).toBe(stackBefore.mix);
+	expect(stackAfter.blend).toBe(stackBefore.blend);
+	expect(stackAfter.instances[0].enabled).toBe(true);
+	await expect.poll(() => displayedValues(page)).not.toEqual(valuesBefore);
+	expect((await readPreview(page)).data).not.toEqual(canvasBefore.data);
+
+	const undoButton = page.getByRole('button', {name: /^Undo/});
+	await expect(undoButton).toHaveAccessibleName('Undo Randomize Pixel sort');
+	await undoButton.click();
+	await expect
+		.poll(async () => (await readStack(page)).historyHeadSeq)
+		.toBe(stackBefore.historyHeadSeq);
+	expect(await readParams(page)).toEqual(stackBefore.instances[0].params);
+	await expect.poll(() => displayedValues(page)).toEqual(valuesBefore);
+	expect(consoleErrors, 'Console errors').toEqual([]);
+});
+
+test('Randomize works from the keyboard and leaves Mix, Blend and the off state alone', async ({
+	page,
+}) => {
+	await fixRandomBytes(page);
+	await seedProject(page, ['pixelSort']);
+	await setMix(page, 0.4);
+	await setBlend(page, 'difference');
+	await setEnabled(page, false);
+	const before = await readStack(page);
+
+	const button = page.getByRole('button', {name: 'Randomize', exact: true});
+	await button.focus();
+	await page.keyboard.press('Enter');
+	await expect
+		.poll(async () => (await readStack(page)).historyHeadSeq)
+		.toBe(before.historyHeadSeq + 1);
+	const afterEnter = await readStack(page);
+	await expect(button).toBeFocused();
+	await page.keyboard.press('Space');
+	await expect
+		.poll(async () => (await readStack(page)).historyHeadSeq)
+		.toBe(before.historyHeadSeq + 2);
+
+	const after = await readStack(page);
+	expect(after.instances[0].params).not.toEqual(afterEnter.instances[0].params);
+	expect(after.mix).toBe(0.4);
+	expect(after.blend).toBe('difference');
+	expect(after.instances[0].enabled).toBe(false);
+});
+
+test('at 390 px Randomize is an icon-only button with a tooltip beside Reset all @a11y', async ({
+	page,
+}) => {
+	await page.setViewportSize({width: 390, height: 844});
+	await seedProject(page, ['pixelSort']);
+
+	const button = page.getByRole('button', {name: 'Randomize', exact: true});
+	const reset = page.getByRole('button', {name: 'Reset all'});
+	await expect(button).toBeVisible();
+	await expect(button).toHaveText('');
+	await button.hover();
+	await expect(page.getByRole('tooltip')).toContainText('random');
+
+	const boxes = await Promise.all([button.boundingBox(), reset.boundingBox()]);
+	const [randomBox, resetBox] = boxes;
+	if (!randomBox || !resetBox) {
+		throw new Error('A header button has no layout box');
+	}
+
+	expect(randomBox.x + randomBox.width).toBeLessThanOrEqual(resetBox.x);
+	expect(resetBox.x + resetBox.width).toBeLessThanOrEqual(390);
+	expect(randomBox.y).toBe(resetBox.y);
+	await assertNoA11yViolations(page);
+});
+
 test('the selection view changes only the preview, never an export', async ({
 	page,
 }) => {

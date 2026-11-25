@@ -1,5 +1,6 @@
 import {createStore, type StoreApi} from 'zustand/vanilla';
 import {effectRegistry} from '../engine/effects/index.ts';
+import {validateParams} from '../engine/params.ts';
 import {
 	canonicalStackJson,
 	type BlendMode,
@@ -224,6 +225,11 @@ export type AppState = {
 	setBlend(instanceId: string, blend: BlendMode): Promise<void>;
 	resetParam(instanceId: string, paramKey: string): Promise<void>;
 	resetInstance(instanceId: string): Promise<void>;
+	commitInstanceParams(
+		instanceId: string,
+		params: Readonly<Record<string, ParamValue>>,
+		label: string,
+	): Promise<void>;
 	cancelDrag(): void;
 	flushPendingCommit(): Promise<void>;
 
@@ -1639,6 +1645,32 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				active.selectedInstanceId,
 				`Reset ${definition.label}`,
 			);
+		},
+
+		async commitInstanceParams(instanceId, params, label) {
+			await flushPendingCommitImpl();
+			const active = requireActiveProject();
+			const target = active.stack.instances.find(
+				(item) => item.id === instanceId,
+			);
+			const definition = target ? registry.get(target.type) : undefined;
+			if (!target || !definition) {
+				return;
+			}
+
+			const nextStack: EffectStack = {
+				schemaVersion: active.stack.schemaVersion,
+				instances: active.stack.instances.map((item) =>
+					item.id === instanceId
+						? {
+								...item,
+								version: definition.version,
+								params: validateParams(definition.params, params),
+							}
+						: item,
+				),
+			};
+			await commitNextStack(nextStack, active.selectedInstanceId, label);
 		},
 
 		cancelDrag() {

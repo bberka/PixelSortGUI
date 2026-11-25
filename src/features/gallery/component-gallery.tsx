@@ -80,7 +80,12 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from '@/components/ui/sheet';
-import {Slider} from '@/components/ui/slider';
+import {
+	DEFAULT_SLIDER_VARIANT,
+	SLIDER_VARIANTS,
+	Slider,
+	type SliderVariant,
+} from '@/components/ui/slider';
 import {Switch} from '@/components/ui/switch';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
@@ -124,6 +129,25 @@ const SCROLL_PARAMS = [
 	{name: 'Order', value: 'Ascending'},
 	{name: 'Fill mode', value: 'Sort'},
 ] as const;
+
+const VARIANT_META: Record<
+	SliderVariant,
+	{readonly title: string; readonly subtitle: string}
+> = {
+	fader: {
+		title: 'Fader',
+		subtitle:
+			'Thick 10 px track, 12 × 24 px rectangular grip, end & default ticks',
+	},
+	'fill-bar': {
+		title: 'Fill Bar',
+		subtitle: '32 px scrubby bar with full-height accent fill & vertical grip',
+	},
+	stepped: {
+		title: 'Stepped',
+		subtitle: '28 px segmented track of 16 discrete pixel cells & block cursor',
+	},
+};
 
 function SectionHeading({children}: {readonly children: string}) {
 	return (
@@ -197,6 +221,137 @@ export function ComponentGallery() {
 								--checker
 							</span>
 						</div>
+					</div>
+				</section>
+
+				<Separator />
+
+				<section
+					aria-label="Slider variants comparison"
+					data-slot="slider-variants-gallery"
+					className="space-y-3"
+				>
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<SectionHeading>Slider Variants</SectionHeading>
+						<Badge variant="outline">Default: {DEFAULT_SLIDER_VARIANT}</Badge>
+					</div>
+					<div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+						{SLIDER_VARIANTS.map((variant) => {
+							const meta = VARIANT_META[variant];
+							return (
+								<Card
+									key={variant}
+									data-variant-card={variant}
+									className="min-w-0"
+								>
+									<CardHeader className="pb-2">
+										<div className="flex items-center justify-between gap-2">
+											<CardTitle className="text-sm">{meta.title}</CardTitle>
+											{variant === DEFAULT_SLIDER_VARIANT ? (
+												<Badge>Default</Badge>
+											) : (
+												<Badge variant="secondary">Alternative</Badge>
+											)}
+										</div>
+										<CardDescription className="text-xs">
+											{meta.subtitle}
+										</CardDescription>
+									</CardHeader>
+									<CardContent className="space-y-3">
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-xs text-muted-foreground">
+												<span>Single · Min (0%)</span>
+												<span className="font-mono tabular-nums">0</span>
+											</div>
+											<Slider
+												variant={variant}
+												defaultValue={[0]}
+												defaultMark={50}
+												min={0}
+												max={100}
+												thumbLabels={[`${meta.title} min`]}
+											/>
+										</div>
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-xs text-muted-foreground">
+												<span>Single · Mid (50%)</span>
+												<span className="font-mono tabular-nums">50</span>
+											</div>
+											<Slider
+												variant={variant}
+												defaultValue={[50]}
+												defaultMark={50}
+												min={0}
+												max={100}
+												thumbLabels={[`${meta.title} mid`]}
+											/>
+										</div>
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-xs text-muted-foreground">
+												<span>Single · Max (100%)</span>
+												<span className="font-mono tabular-nums">100</span>
+											</div>
+											<Slider
+												variant={variant}
+												defaultValue={[100]}
+												defaultMark={50}
+												min={0}
+												max={100}
+												thumbLabels={[`${meta.title} max`]}
+											/>
+										</div>
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-xs text-muted-foreground">
+												<span>Range · Mid (25–75)</span>
+												<span className="font-mono tabular-nums">25 – 75</span>
+											</div>
+											<Slider
+												variant={variant}
+												defaultValue={[25, 75]}
+												defaultMark={[25, 80]}
+												min={0}
+												max={100}
+												minStepsBetweenThumbs={0}
+												thumbLabels={[
+													`${meta.title} range low`,
+													`${meta.title} range high`,
+												]}
+											/>
+										</div>
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-xs text-muted-foreground">
+												<span>Focused ring preview</span>
+												<span className="font-mono tabular-nums">60</span>
+											</div>
+											<Slider
+												variant={variant}
+												defaultValue={[60]}
+												defaultMark={50}
+												min={0}
+												max={100}
+												className="[&_[data-slot=slider-thumb]]:outline-2 [&_[data-slot=slider-thumb]]:outline-offset-2 [&_[data-slot=slider-thumb]]:outline-ring"
+												thumbLabels={[`${meta.title} focused`]}
+											/>
+										</div>
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-xs text-muted-foreground">
+												<span>Disabled</span>
+												<span className="font-mono tabular-nums">40</span>
+											</div>
+											<Slider
+												disabled
+												variant={variant}
+												defaultValue={[40]}
+												defaultMark={50}
+												min={0}
+												max={100}
+												thumbLabels={[`${meta.title} disabled`]}
+											/>
+										</div>
+									</CardContent>
+								</Card>
+							);
+						})}
 					</div>
 				</section>
 

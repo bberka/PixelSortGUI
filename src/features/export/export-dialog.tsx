@@ -583,6 +583,7 @@ export function ExportDialog({
 						/>
 					</div>
 					<Slider
+						defaultMark={92}
 						min={MIN_EXPORT_QUALITY}
 						max={MAX_EXPORT_QUALITY}
 						step={1}

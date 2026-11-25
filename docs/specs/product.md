@@ -180,12 +180,13 @@ Every commit (parameter change, add, remove, reorder, enable or disable, preset 
 
 ### F10. Presets
 
-The preset list shows built-in presets first (the six listed in [engine.md section 7](engine.md#7-built-in-presets)), then user presets by name. Applying a preset replaces the stack (one commit). "Add to stack" appends the preset's instances instead. "Save as preset" stores the current stack under a name. User presets can be renamed and deleted. Presets are global, not per project.
+The preset list shows built-in presets first (the six listed in [engine.md section 7](engine.md#7-built-in-presets)), then user presets by name. Applying a preset replaces the stack (one commit). When the stack already has effects, a confirmation asks first: "Replace current effects?", with the number of effects that will be removed and a note that the change can be undone. Cancel changes nothing and adds no history entry. With an empty stack the preset applies immediately. "Add to stack" appends the preset's instances instead. "Save as preset" stores the current stack under a name. User presets can be renamed and deleted. Presets are global, not per project.
 
 - AC-F10.1: Applying "ASDF classic" to a project with an empty stack yields two pixel sort instances (angle 270, then angle 0) and a visible result.
 - AC-F10.2: Saving a stack as "Mine", then applying "Mine" to another project, reproduces the same parameters and seeds.
 - AC-F10.3: Built-in presets cannot be renamed or deleted (the actions are absent).
 - AC-F10.4: User presets survive a reload.
+- AC-F10.5: Applying a preset to a project with one or more effects opens a confirmation (`Replace current effects?`, `Applying "<name>" removes the <n> effect(s) in this project. You can undo this.`, buttons `Cancel` and `Replace`). Cancel and Escape leave the stack and history unchanged; Replace applies the preset as one history entry. An empty stack and "Add to stack" never ask. On phone widths the confirmation opens over the Presets dialog, and undo and redo shortcuts stay inactive while it is open.
 
 ### F11. Compare
 

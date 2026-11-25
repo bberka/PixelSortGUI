@@ -302,6 +302,124 @@ describe('EditorToolbar presets', () => {
 		expect(getLiveText()).toBe('Added preset ASDF classic to stack');
 	});
 
+	it('asks before replacing a non-empty stack, with singular wording, and Cancel changes nothing', async () => {
+		const context = await setup({effects: ['pixelSort']});
+		mountToolbar(context);
+		const headBefore = context.store.getState().activeProject?.historyHeadSeq;
+
+		act(() => {
+			getButtonByLabel(/^Presets$/).click();
+		});
+		await flush();
+		act(() => {
+			getButtonByLabel(/^ASDF classic/).click();
+		});
+		await flush();
+
+		const dialog = document.querySelector('[role="alertdialog"]');
+		expect(dialog?.textContent).toContain('Replace current effects?');
+		expect(dialog?.textContent).toContain(
+			'Applying "ASDF classic" removes the 1 effect in this project. You can undo this.',
+		);
+		expect(
+			context.store.getState().activeProject?.stack.instances,
+		).toHaveLength(1);
+
+		act(() => {
+			getButtonByLabel(/^Cancel$/).click();
+		});
+		await flush();
+
+		expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+		const project = context.store.getState().activeProject;
+		expect(project?.stack.instances.map((item) => item.type)).toEqual([
+			'pixelSort',
+		]);
+		expect(project?.historyHeadSeq).toBe(headBefore);
+		expect(getLiveText()).not.toContain('Applied preset');
+	});
+
+	it('uses the plural in the confirmation and Replace applies one history entry that one undo reverts', async () => {
+		const context = await setup({effects: ['pixelSort', 'channelShift']});
+		mountToolbar(context);
+		const headBefore = context.store.getState().activeProject?.historyHeadSeq;
+
+		act(() => {
+			getButtonByLabel(/^Presets$/).click();
+		});
+		await flush();
+		act(() => {
+			getButtonByLabel(/^ASDF classic/).click();
+		});
+		await flush();
+
+		expect(
+			document.querySelector('[role="alertdialog"]')?.textContent,
+		).toContain('removes the 2 effects in this project');
+
+		act(() => {
+			getButtonByLabel(/^Replace$/).click();
+		});
+		await flush();
+
+		const project = context.store.getState().activeProject;
+		expect(project?.stack.instances).toHaveLength(2);
+		expect(project?.stack.instances.map((item) => item.type)).toEqual([
+			'pixelSort',
+			'pixelSort',
+		]);
+		expect(project?.historyHeadSeq).toBe((headBefore ?? 0) + 1);
+		expect(getLiveText()).toBe('Applied preset ASDF classic');
+
+		act(() => {
+			getButtonByLabel(/^Undo Apply ASDF classic$/).click();
+		});
+		await flush();
+		expect(
+			context.store
+				.getState()
+				.activeProject?.stack.instances.map((item) => item.type),
+		).toEqual(['pixelSort', 'channelShift']);
+	});
+
+	it('applies immediately without a dialog when the stack is empty', async () => {
+		const context = await setup();
+		mountToolbar(context);
+
+		act(() => {
+			getButtonByLabel(/^Presets$/).click();
+		});
+		await flush();
+		act(() => {
+			getButtonByLabel(/^ASDF classic/).click();
+		});
+		await flush();
+
+		expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+		expect(
+			context.store.getState().activeProject?.stack.instances,
+		).toHaveLength(2);
+	});
+
+	it('does not ask for Add to stack on a non-empty stack', async () => {
+		const context = await setup({effects: ['pixelSort']});
+		mountToolbar(context);
+
+		act(() => {
+			getButtonByLabel(/^Presets$/).click();
+		});
+		await flush();
+		act(() => {
+			getButtonByLabel(/^Add ASDF classic to stack$/).click();
+		});
+		await flush();
+
+		expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+		expect(
+			context.store.getState().activeProject?.stack.instances,
+		).toHaveLength(3);
+	});
+
 	it('saves a user preset, lists it under Saved, and rejects an empty name', async () => {
 		const context = await setup({effects: ['pixelSort']});
 		mountToolbar(context);

@@ -325,3 +325,42 @@ export function DeletePresetDialog({
 		</AlertDialog>
 	);
 }
+
+export function formatEffectCount(count: number): string {
+	return count === 1 ? '1 effect' : `${count} effects`;
+}
+
+export type ReplaceEffectsDialogProps = {
+	readonly presetName: string | null;
+	readonly effectCount: number;
+	readonly onOpenChange: (open: boolean) => void;
+	readonly onConfirm: () => void;
+	readonly onCloseAutoFocus: (event: Event) => void;
+};
+
+export function ReplaceEffectsDialog({
+	presetName,
+	effectCount,
+	onOpenChange,
+	onConfirm,
+	onCloseAutoFocus,
+}: ReplaceEffectsDialogProps) {
+	return (
+		<AlertDialog open={presetName !== null} onOpenChange={onOpenChange}>
+			<AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Replace current effects?</AlertDialogTitle>
+					<AlertDialogDescription>
+						{presetName === null
+							? ''
+							: `Applying "${presetName}" removes the ${formatEffectCount(effectCount)} in this project. You can undo this.`}
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction onClick={onConfirm}>Replace</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+}

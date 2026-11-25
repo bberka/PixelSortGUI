@@ -1,4 +1,4 @@
-import {useId, useState} from 'react';
+import {useId, useRef, useState} from 'react';
 import {
 	BookmarkIcon,
 	MoreHorizontalIcon,
@@ -8,7 +8,9 @@ import {
 } from 'lucide-react';
 import {
 	DeletePresetDialog,
+	formatEffectCount,
 	RenamePresetDialog,
+	ReplaceEffectsDialog,
 	SavePresetDialog,
 } from './preset-dialogs.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
@@ -34,10 +36,6 @@ import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {MAX_STACK_INSTANCES} from '@/engine/types.ts';
 import type {BuiltinPreset} from '@/presets/builtin.ts';
 import type {UserPresetRecord} from '@/storage/types.ts';
-
-function formatEffectCount(count: number): string {
-	return count === 1 ? '1 effect' : `${count} effects`;
-}
 
 type PresetItem = BuiltinPreset | UserPresetRecord;
 
@@ -249,11 +247,44 @@ export function PresetsControl() {
 		null,
 	);
 
-	const handleApply = (preset: PresetItem) => {
-		setOpen(false);
+	const [replacing, setReplacing] = useState<{
+		readonly preset: PresetItem;
+		readonly effectCount: number;
+	} | null>(null);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const focusTriggerOnCloseRef = useRef(false);
+
+	const runApply = (preset: PresetItem) => {
 		void applyPreset(preset.id).then(() => {
 			announce(`Applied preset ${preset.name}`);
 		});
+	};
+
+	const handleApply = (preset: PresetItem) => {
+		if (stackLength === 0) {
+			setOpen(false);
+			runApply(preset);
+			return;
+		}
+
+		// On phones the list is a dialog: keep it open underneath so Cancel
+		// returns to it. The desktop popover closes and focus goes to the trigger.
+		focusTriggerOnCloseRef.current = !compact;
+		if (!compact) {
+			setOpen(false);
+		}
+
+		setReplacing({preset, effectCount: stackLength});
+	};
+
+	const handleConfirmReplace = () => {
+		if (!replacing) {
+			return;
+		}
+
+		focusTriggerOnCloseRef.current = true;
+		setOpen(false);
+		runApply(replacing.preset);
 	};
 
 	const handleAddToStack = (preset: PresetItem) => {
@@ -283,6 +314,7 @@ export function PresetsControl() {
 
 	const trigger = (
 		<Button
+			ref={triggerRef}
 			type="button"
 			variant="ghost"
 			size="sm"
@@ -343,6 +375,24 @@ export function PresetsControl() {
 				</Popover>
 			)}
 
+			<ReplaceEffectsDialog
+				presetName={replacing?.preset.name ?? null}
+				effectCount={replacing?.effectCount ?? 0}
+				onOpenChange={(nextOpen) => {
+					if (!nextOpen) {
+						setReplacing(null);
+					}
+				}}
+				onConfirm={handleConfirmReplace}
+				onCloseAutoFocus={(event) => {
+					if (!focusTriggerOnCloseRef.current) {
+						return;
+					}
+
+					event.preventDefault();
+					triggerRef.current?.focus();
+				}}
+			/>
 			<SavePresetDialog
 				open={saveOpen}
 				effectCount={stackLength}

@@ -761,6 +761,7 @@ Shifts each row (or column) horizontally (or vertically) by a periodic wave func
   Source offset `os = roundHalfAway(amplitude * wave) + (jitter > 0 ? intIn(-jitter, jitter, seed, 1, ys) : 0)`. Render offset `or = ctx.px(os)`. Set `out(x, y) = in(E(x - or, W), y)` for all four channels.
 - **Determinism & locality:** Deterministic via `DIRECTION_TABLE` and `hash32` (purpose code `1`). Per line. Cost class: Low. Debug views: none.
 - **Provenance:** Classic scanline/CRT wave displacement. Clean-room own implementation reusing `DIRECTION_TABLE` from section 5.2.
+- **Tests:** hand-computed line offsets for all four waveforms on both axes and in both edge modes, with the same offset on all four channels; `phase` advances the cycle; `amplitude` 0 with `jitter` 0 is the identity; jitter is one draw per source line, repeats for a seed, changes with the seed, and the seed is ignored without jitter; a proxy render evaluates the wave and jitter at source lines; input is never written and the same input and parameters give the same output; parameters survive a saved-stack round trip and out-of-range values are repaired; golden cases for each waveform.
 
 #### 5. `posterize` (version 1, `color`, top 5): "Reduce colour depth by quantising levels or crushing low bits."
 

@@ -618,6 +618,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	let detachCoordinator: (() => void) | null = null;
 	let detachRouter: (() => void) | null = null;
 	let detachLifecycle: (() => void) | null = null;
+	let editQueue: Promise<unknown> = Promise.resolve();
 	let disposed = false;
 	let unsubscribeSideA: (() => void) | null = null;
 	let lastSideInputs: readonly unknown[] = [];
@@ -1116,7 +1117,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		}
 	};
 
-	const flushPendingCommitImpl = async (): Promise<void> => {
+	const commitHeldKeys = async (): Promise<void> => {
 		const pending = pendingKeyboard;
 		if (!pending) {
 			return;
@@ -1142,6 +1143,26 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		}
 
 		await store.getState().commitMix(pending.instanceId, pending.mix);
+	};
+
+	// Commits a held keyboard change and waits for every edit still being written.
+	const flushPendingCommitImpl = async (): Promise<void> => {
+		await commitHeldKeys();
+		await editQueue;
+	};
+
+	// Runs `edit` after the held keyboard change and every edit asked for before
+	// it. An edit reads the project, writes it, then updates the state, so one
+	// started during another's write would build on the old stack and drop it.
+	// `edit` must not call another queued action: that would never finish.
+	const editInOrder = async <T>(edit: () => T | Promise<T>): Promise<T> => {
+		const held = commitHeldKeys();
+		const result = editQueue.then(async () => {
+			await held;
+			return edit();
+		});
+		editQueue = result.catch(() => {});
+		return result;
 	};
 
 	const loadActiveProjectResources = async (
@@ -1690,151 +1711,156 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		async addEffect(type) {
 			// The new effect's parameters take the place of the geometry panel.
 			closeGeometry();
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const side = selectEditingSide(get());
-			const stack = sideStack(active, side);
-			assertStackCapacity(stack.instances.length + 1);
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const side = selectEditingSide(get());
+				const stack = sideStack(active, side);
+				assertStackCapacity(stack.instances.length + 1);
 
-			const instance = createEffectInstance(
-				type,
-				registry,
-				projectInstanceIds(active),
-				getRandomValues,
-			);
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: [...stack.instances, instance],
-			};
-			const label = `Add ${getEffectLabel(instance, registry)}`;
-			await commitNextStack(side, nextStack, instance.id, label);
-			return instance;
+				const instance = createEffectInstance(
+					type,
+					registry,
+					projectInstanceIds(active),
+					getRandomValues,
+				);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: [...stack.instances, instance],
+				};
+				const label = `Add ${getEffectLabel(instance, registry)}`;
+				await commitNextStack(side, nextStack, instance.id, label);
+				return instance;
+			});
 		},
 
 		async removeEffect(instanceId) {
-			await flushPendingCommitImpl();
-			const found = locateInstance(requireActiveProject(), instanceId);
-			if (!found) {
-				return;
-			}
-
-			const {side, stack, target: removed} = found;
-			const index = stack.instances.indexOf(removed);
-			const remaining = stack.instances.filter(
-				(item) => item.id !== instanceId,
-			);
-			let nextSelected = found.selectedId;
-			if (nextSelected === instanceId) {
-				if (remaining.length === 0) {
-					nextSelected = null;
-				} else {
-					const fallbackIndex = Math.min(index, remaining.length - 1);
-					nextSelected = remaining[fallbackIndex].id;
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found) {
+					return;
 				}
-			}
 
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: remaining,
-			};
-			await commitNextStack(
-				side,
-				nextStack,
-				nextSelected,
-				`Remove ${getEffectLabel(removed, registry)}`,
-			);
+				const {side, stack, target: removed} = found;
+				const index = stack.instances.indexOf(removed);
+				const remaining = stack.instances.filter(
+					(item) => item.id !== instanceId,
+				);
+				let nextSelected = found.selectedId;
+				if (nextSelected === instanceId) {
+					if (remaining.length === 0) {
+						nextSelected = null;
+					} else {
+						const fallbackIndex = Math.min(index, remaining.length - 1);
+						nextSelected = remaining[fallbackIndex].id;
+					}
+				}
+
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: remaining,
+				};
+				await commitNextStack(
+					side,
+					nextStack,
+					nextSelected,
+					`Remove ${getEffectLabel(removed, registry)}`,
+				);
+			});
 		},
 
 		async reorderEffect(fromIndex, toIndex) {
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const side = selectEditingSide(get());
-			const stack = sideStack(active, side);
-			const {instances} = stack;
-			if (
-				fromIndex === toIndex ||
-				fromIndex < 0 ||
-				toIndex < 0 ||
-				fromIndex >= instances.length ||
-				toIndex >= instances.length
-			) {
-				return;
-			}
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const side = selectEditingSide(get());
+				const stack = sideStack(active, side);
+				const {instances} = stack;
+				if (
+					fromIndex === toIndex ||
+					fromIndex < 0 ||
+					toIndex < 0 ||
+					fromIndex >= instances.length ||
+					toIndex >= instances.length
+				) {
+					return;
+				}
 
-			const nextInstances = [...instances];
-			const [moved] = nextInstances.splice(fromIndex, 1);
-			nextInstances.splice(toIndex, 0, moved);
+				const nextInstances = [...instances];
+				const [moved] = nextInstances.splice(fromIndex, 1);
+				nextInstances.splice(toIndex, 0, moved);
 
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: nextInstances,
-			};
-			await commitNextStack(
-				side,
-				nextStack,
-				sideSelectedId(active, side),
-				`Reorder ${getEffectLabel(moved, registry)}`,
-			);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: nextInstances,
+				};
+				await commitNextStack(
+					side,
+					nextStack,
+					sideSelectedId(active, side),
+					`Reorder ${getEffectLabel(moved, registry)}`,
+				);
+			});
 		},
 
 		async duplicateEffect(instanceId) {
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const found = locateInstance(active, instanceId);
-			if (!found) {
-				throw new StorageValidationError(
-					`Effect instance "${instanceId}" not found`,
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const found = locateInstance(active, instanceId);
+				if (!found) {
+					throw new StorageValidationError(
+						`Effect instance "${instanceId}" not found`,
+					);
+				}
+
+				const {side, stack, target: sourceInstance} = found;
+				assertStackCapacity(stack.instances.length + 1);
+				const duplicate = cloneInstanceWithNewId(
+					sourceInstance,
+					projectInstanceIds(active),
+					getRandomValues,
 				);
-			}
+				const nextInstances = [...stack.instances];
+				nextInstances.splice(
+					stack.instances.indexOf(sourceInstance) + 1,
+					0,
+					duplicate,
+				);
 
-			const {side, stack, target: sourceInstance} = found;
-			assertStackCapacity(stack.instances.length + 1);
-			const duplicate = cloneInstanceWithNewId(
-				sourceInstance,
-				projectInstanceIds(active),
-				getRandomValues,
-			);
-			const nextInstances = [...stack.instances];
-			nextInstances.splice(
-				stack.instances.indexOf(sourceInstance) + 1,
-				0,
-				duplicate,
-			);
-
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: nextInstances,
-			};
-			await commitNextStack(
-				side,
-				nextStack,
-				duplicate.id,
-				`Duplicate ${getEffectLabel(sourceInstance, registry)}`,
-			);
-			return duplicate;
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: nextInstances,
+				};
+				await commitNextStack(
+					side,
+					nextStack,
+					duplicate.id,
+					`Duplicate ${getEffectLabel(sourceInstance, registry)}`,
+				);
+				return duplicate;
+			});
 		},
 
 		async setEffectEnabled(instanceId, enabled) {
-			await flushPendingCommitImpl();
-			const found = locateInstance(requireActiveProject(), instanceId);
-			if (!found || found.target.enabled === enabled) {
-				return;
-			}
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found || found.target.enabled === enabled) {
+					return;
+				}
 
-			const {side, stack, target} = found;
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: stack.instances.map((item) =>
-					item.id === instanceId ? {...item, enabled} : item,
-				),
-			};
-			const verb = enabled ? 'Enable' : 'Disable';
-			await commitNextStack(
-				side,
-				nextStack,
-				found.selectedId,
-				`${verb} ${getEffectLabel(target, registry)}`,
-			);
+				const {side, stack, target} = found;
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: stack.instances.map((item) =>
+						item.id === instanceId ? {...item, enabled} : item,
+					),
+				};
+				const verb = enabled ? 'Enable' : 'Disable';
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					`${verb} ${getEffectLabel(target, registry)}`,
+				);
+			});
 		},
 
 		selectEffect(instanceId) {
@@ -1935,58 +1961,58 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				pendingKeyboard.paramKey === paramKey
 			) {
 				clearKeyboardTimer();
-			} else if (pendingKeyboard) {
-				await flushPendingCommitImpl();
 			}
 
-			const found = locateInstance(requireActiveProject(), instanceId);
-			if (!found) {
-				transientStore.setState({activeDrag: null});
-				return;
-			}
-
-			const {side, stack, target} = found;
-			const definition = registry.get(target.type);
-			if (!definition) {
-				transientStore.setState({activeDrag: null});
-				return;
-			}
-
-			const validated = validateSingleParam(
-				definition,
-				target.params,
-				paramKey,
-				value,
-			);
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: stack.instances.map((item) =>
-					item.id === instanceId ? {...item, params: validated} : item,
-				),
-			};
-
-			if (
-				!get().stackNeedsWriteBack &&
-				canonicalStackJson(nextStack) === canonicalStackJson(stack)
-			) {
-				transientStore.setState({activeDrag: null});
-				if (side === 'b') {
-					coordinator.endDrag();
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found) {
+					transientStore.setState({activeDrag: null});
+					return;
 				}
 
-				return;
-			}
+				const {side, stack, target} = found;
+				const definition = registry.get(target.type);
+				if (!definition) {
+					transientStore.setState({activeDrag: null});
+					return;
+				}
 
-			await commitNextStack(
-				side,
-				nextStack,
-				found.selectedId,
-				label ??
-					formatParamCommitLabel(
-						definition.params[paramKey],
-						validated[paramKey],
+				const validated = validateSingleParam(
+					definition,
+					target.params,
+					paramKey,
+					value,
+				);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: stack.instances.map((item) =>
+						item.id === instanceId ? {...item, params: validated} : item,
 					),
-			);
+				};
+
+				if (
+					!get().stackNeedsWriteBack &&
+					canonicalStackJson(nextStack) === canonicalStackJson(stack)
+				) {
+					transientStore.setState({activeDrag: null});
+					if (side === 'b') {
+						coordinator.endDrag();
+					}
+
+					return;
+				}
+
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					label ??
+						formatParamCommitLabel(
+							definition.params[paramKey],
+							validated[paramKey],
+						),
+				);
+			});
 		},
 
 		nudgeParam(instanceId, paramKey, value, label) {
@@ -2001,14 +2027,14 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					pendingKeyboard.instanceId !== instanceId ||
 					pendingKeyboard.paramKey !== paramKey)
 			) {
-				void flushPendingCommitImpl();
+				void commitHeldKeys();
 			} else if (pendingKeyboard) {
 				timerEnv.clearTimeout(pendingKeyboard.timer);
 			}
 
 			get().dragParam(instanceId, paramKey, value);
 			const timer = timerEnv.setTimeout(() => {
-				void flushPendingCommitImpl();
+				void commitHeldKeys();
 			}, KEYBOARD_COMMIT_DEBOUNCE_MS);
 
 			pendingKeyboard = {
@@ -2054,39 +2080,39 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				pendingKeyboard.instanceId === instanceId
 			) {
 				clearKeyboardTimer();
-			} else if (pendingKeyboard) {
-				await flushPendingCommitImpl();
 			}
 
-			const found = locateInstance(requireActiveProject(), instanceId);
-			if (!found) {
-				transientStore.setState({activeDrag: null});
-				return;
-			}
-
-			const {side, stack, target} = found;
-			const normalized = normalizeMix(mix);
-			if (!get().stackNeedsWriteBack && target.mix === normalized) {
-				transientStore.setState({activeDrag: null});
-				if (side === 'b') {
-					coordinator.endDrag();
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found) {
+					transientStore.setState({activeDrag: null});
+					return;
 				}
 
-				return;
-			}
+				const {side, stack, target} = found;
+				const normalized = normalizeMix(mix);
+				if (!get().stackNeedsWriteBack && target.mix === normalized) {
+					transientStore.setState({activeDrag: null});
+					if (side === 'b') {
+						coordinator.endDrag();
+					}
 
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: stack.instances.map((item) =>
-					item.id === instanceId ? {...item, mix: normalized} : item,
-				),
-			};
-			await commitNextStack(
-				side,
-				nextStack,
-				found.selectedId,
-				formatMixCommitLabel(normalized),
-			);
+					return;
+				}
+
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: stack.instances.map((item) =>
+						item.id === instanceId ? {...item, mix: normalized} : item,
+					),
+				};
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					formatMixCommitLabel(normalized),
+				);
+			});
 		},
 
 		nudgeMix(instanceId, mix) {
@@ -2100,14 +2126,14 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				(pendingKeyboard.kind !== 'mix' ||
 					pendingKeyboard.instanceId !== instanceId)
 			) {
-				void flushPendingCommitImpl();
+				void commitHeldKeys();
 			} else if (pendingKeyboard) {
 				timerEnv.clearTimeout(pendingKeyboard.timer);
 			}
 
 			get().dragMix(instanceId, mix);
 			const timer = timerEnv.setTimeout(() => {
-				void flushPendingCommitImpl();
+				void commitHeldKeys();
 			}, KEYBOARD_COMMIT_DEBOUNCE_MS);
 
 			pendingKeyboard = {
@@ -2120,34 +2146,35 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async setBlend(instanceId, blend) {
-			await flushPendingCommitImpl();
-			const found = locateInstance(requireActiveProject(), instanceId);
-			if (!found) {
-				return;
-			}
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found) {
+					return;
+				}
 
-			const {side, stack, target} = found;
-			const normalized = normalizeBlend(blend);
-			if (!get().stackNeedsWriteBack && target.blend === normalized) {
-				return;
-			}
+				const {side, stack, target} = found;
+				const normalized = normalizeBlend(blend);
+				if (!get().stackNeedsWriteBack && target.blend === normalized) {
+					return;
+				}
 
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: stack.instances.map((item) =>
-					item.id === instanceId ? {...item, blend: normalized} : item,
-				),
-			};
-			await commitNextStack(
-				side,
-				nextStack,
-				found.selectedId,
-				formatBlendCommitLabel(normalized),
-			);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: stack.instances.map((item) =>
+						item.id === instanceId ? {...item, blend: normalized} : item,
+					),
+				};
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					formatBlendCommitLabel(normalized),
+				);
+			});
 		},
 
 		async resetParam(instanceId, paramKey) {
-			await flushPendingCommitImpl();
+			const held = commitHeldKeys();
 			const target = locateInstance(requireActiveProject(), instanceId)?.target;
 			if (!target) {
 				return;
@@ -2159,70 +2186,75 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			}
 
 			const defaults = createInstanceDefaults(definition, getRandomValues);
-			await get().commitParam(
-				instanceId,
-				paramKey,
-				defaults[paramKey],
-				`Reset ${definition.params[paramKey].label}`,
-			);
+			await Promise.all([
+				held,
+				get().commitParam(
+					instanceId,
+					paramKey,
+					defaults[paramKey],
+					`Reset ${definition.params[paramKey].label}`,
+				),
+			]);
 		},
 
 		async resetInstance(instanceId) {
-			await flushPendingCommitImpl();
-			const found = locateInstance(requireActiveProject(), instanceId);
-			if (!found) {
-				return;
-			}
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found) {
+					return;
+				}
 
-			const {side, stack, target} = found;
-			const definition = registry.get(target.type);
-			if (!definition) {
-				return;
-			}
+				const {side, stack, target} = found;
+				const definition = registry.get(target.type);
+				if (!definition) {
+					return;
+				}
 
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: stack.instances.map((item) =>
-					item.id === instanceId
-						? {
-								...item,
-								version: definition.version,
-								params: createInstanceDefaults(definition, getRandomValues),
-								mix: 1,
-								blend: 'normal',
-							}
-						: item,
-				),
-			};
-			await commitNextStack(
-				side,
-				nextStack,
-				found.selectedId,
-				`Reset ${definition.label}`,
-			);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: stack.instances.map((item) =>
+						item.id === instanceId
+							? {
+									...item,
+									version: definition.version,
+									params: createInstanceDefaults(definition, getRandomValues),
+									mix: 1,
+									blend: 'normal',
+								}
+							: item,
+					),
+				};
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					`Reset ${definition.label}`,
+				);
+			});
 		},
 
 		async commitInstanceParams(instanceId, params, label) {
-			await flushPendingCommitImpl();
-			const found = locateInstance(requireActiveProject(), instanceId);
-			const definition = found ? registry.get(found.target.type) : undefined;
-			if (!found || !definition) {
-				return;
-			}
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				const definition = found ? registry.get(found.target.type) : undefined;
+				if (!found || !definition) {
+					return;
+				}
 
-			const nextStack: EffectStack = {
-				schemaVersion: found.stack.schemaVersion,
-				instances: found.stack.instances.map((item) =>
-					item.id === instanceId
-						? {
-								...item,
-								version: definition.version,
-								params: validateParams(definition.params, params),
-							}
-						: item,
-				),
-			};
-			await commitNextStack(found.side, nextStack, found.selectedId, label);
+				const nextStack: EffectStack = {
+					schemaVersion: found.stack.schemaVersion,
+					instances: found.stack.instances.map((item) =>
+						item.id === instanceId
+							? {
+									...item,
+									version: definition.version,
+									params: validateParams(definition.params, params),
+								}
+							: item,
+					),
+				};
+				await commitNextStack(found.side, nextStack, found.selectedId, label);
+			});
 		},
 
 		cancelDrag() {
@@ -2241,62 +2273,67 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		flushPendingCommit: flushPendingCommitImpl,
 
 		async undo() {
-			await flushPendingCommitImpl();
-			const active = get().activeProject;
-			return active
-				? applyHistoryStep(active, await repository.undo(active.id))
-				: false;
+			return editInOrder(async () => {
+				const active = get().activeProject;
+				return active
+					? applyHistoryStep(active, await repository.undo(active.id))
+					: false;
+			});
 		},
 
 		async redo() {
-			await flushPendingCommitImpl();
-			const active = get().activeProject;
-			return active
-				? applyHistoryStep(active, await repository.redo(active.id))
-				: false;
+			return editInOrder(async () => {
+				const active = get().activeProject;
+				return active
+					? applyHistoryStep(active, await repository.redo(active.id))
+					: false;
+			});
 		},
 
 		async jumpToHistory(projectId, seq) {
-			await flushPendingCommitImpl();
-			const active = get().activeProject;
-			if (active?.id !== projectId) {
-				return false;
-			}
+			return editInOrder(async () => {
+				const active = get().activeProject;
+				if (active?.id !== projectId) {
+					return false;
+				}
 
-			return applyHistoryStep(
-				active,
-				await repository.jumpToHistory(projectId, seq),
-			);
+				return applyHistoryStep(
+					active,
+					await repository.jumpToHistory(projectId, seq),
+				);
+			});
 		},
 
 		async setTransform(projectId, transform, label) {
-			await flushPendingCommitImpl();
-			const active = get().activeProject;
-			if (active?.id !== projectId) {
-				return false;
-			}
+			return editInOrder(async () => {
+				const active = get().activeProject;
+				if (active?.id !== projectId) {
+					return false;
+				}
 
-			const {transform: next} = geometryForWrite(
-				active.sourceWidth,
-				active.sourceHeight,
-				transform,
-			);
-			if (transformKey(next) === transformKey(active.transform)) {
-				return false;
-			}
+				const {transform: next} = geometryForWrite(
+					active.sourceWidth,
+					active.sourceHeight,
+					transform,
+				);
+				if (transformKey(next) === transformKey(active.transform)) {
+					return false;
+				}
 
-			await commitSides(
-				active,
-				label ?? formatTransformCommitLabel(active.transform, next),
-				false,
-				next,
-			);
-			return true;
+				await commitSides(
+					active,
+					label ?? formatTransformCommitLabel(active.transform, next),
+					false,
+					next,
+				);
+				return true;
+			});
 		},
 
 		async setEditSide(side) {
-			await flushPendingCommitImpl();
-			patchViewState({editSide: side});
+			await editInOrder(() => {
+				patchViewState({editSide: side});
+			});
 		},
 
 		setSplitOrientation(orientation) {
@@ -2304,49 +2341,51 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async copyToOtherSide() {
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const from = selectEditingSide(get());
-			const to = otherSide(from);
-			const source = sideStack(active, from);
-			if (source.instances.length === 0) {
-				return;
-			}
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const from = selectEditingSide(get());
+				const to = otherSide(from);
+				const source = sideStack(active, from);
+				if (source.instances.length === 0) {
+					return;
+				}
 
-			const copy = cloneStackWithNewIds(
-				source,
-				new Set(source.instances.map((item) => item.id)),
-				getRandomValues,
-			);
-			const selectedIndex = source.instances.findIndex(
-				(item) => item.id === sideSelectedId(active, from),
-			);
-			const selected = copy.instances[Math.max(0, selectedIndex)]?.id ?? null;
-			await commitSides(
-				withSide(active, to, copy, selected),
-				`Copy ${sideLetter(from)} to ${sideLetter(to)}`,
-				to === 'b',
-			);
+				const copy = cloneStackWithNewIds(
+					source,
+					new Set(source.instances.map((item) => item.id)),
+					getRandomValues,
+				);
+				const selectedIndex = source.instances.findIndex(
+					(item) => item.id === sideSelectedId(active, from),
+				);
+				const selected = copy.instances[Math.max(0, selectedIndex)]?.id ?? null;
+				await commitSides(
+					withSide(active, to, copy, selected),
+					`Copy ${sideLetter(from)} to ${sideLetter(to)}`,
+					to === 'b',
+				);
+			});
 		},
 
 		async swapSides() {
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const sideA = sideStack(active, 'a');
-			if (sideA.instances.length + active.stack.instances.length === 0) {
-				return;
-			}
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const sideA = sideStack(active, 'a');
+				if (sideA.instances.length + active.stack.instances.length === 0) {
+					return;
+				}
 
-			await commitSides(
-				{
-					stack: sideA,
-					selectedInstanceId: sideSelectedId(active, 'a'),
-					stackA: active.stack,
-					selectedInstanceIdA: active.selectedInstanceId,
-				},
-				'Swap sides',
-				true,
-			);
+				await commitSides(
+					{
+						stack: sideA,
+						selectedInstanceId: sideSelectedId(active, 'a'),
+						stackA: active.stack,
+						selectedInstanceIdA: active.selectedInstanceId,
+					},
+					'Swap sides',
+					true,
+				);
+			});
 		},
 
 		setRenderViewScale,
@@ -2357,18 +2396,19 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async applyStack(stack, label) {
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const side = selectEditingSide(get());
-			const nextStack = cloneStackWithNewIds(
-				stack,
-				new Set(
-					sideStack(active, otherSide(side)).instances.map((item) => item.id),
-				),
-				getRandomValues,
-			);
-			const selectedId = nextStack.instances[0]?.id ?? null;
-			await commitNextStack(side, nextStack, selectedId, label);
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const side = selectEditingSide(get());
+				const nextStack = cloneStackWithNewIds(
+					stack,
+					new Set(
+						sideStack(active, otherSide(side)).instances.map((item) => item.id),
+					),
+					getRandomValues,
+				);
+				const selectedId = nextStack.instances[0]?.id ?? null;
+				await commitNextStack(side, nextStack, selectedId, label);
+			});
 		},
 
 		async applyPreset(presetId) {
@@ -2383,32 +2423,38 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async addPresetToStack(presetId) {
-			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const preset =
-				getBuiltinPreset(presetId) ??
-				get().presets.find((item) => item.id === presetId);
-			if (!preset) {
-				throw new StorageValidationError(`Preset "${presetId}" not found`);
-			}
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				const preset =
+					getBuiltinPreset(presetId) ??
+					get().presets.find((item) => item.id === presetId);
+				if (!preset) {
+					throw new StorageValidationError(`Preset "${presetId}" not found`);
+				}
 
-			const side = selectEditingSide(get());
-			const stack = sideStack(active, side);
-			assertStackCapacity(
-				stack.instances.length + preset.stack.instances.length,
-			);
-			const cloned = cloneStackWithNewIds(
-				preset.stack,
-				projectInstanceIds(active),
-				getRandomValues,
-			);
-			const nextStack: EffectStack = {
-				schemaVersion: stack.schemaVersion,
-				instances: [...stack.instances, ...cloned.instances],
-			};
-			const selectedId =
-				cloned.instances[0]?.id ?? sideSelectedId(active, side);
-			await commitNextStack(side, nextStack, selectedId, `Add ${preset.name}`);
+				const side = selectEditingSide(get());
+				const stack = sideStack(active, side);
+				assertStackCapacity(
+					stack.instances.length + preset.stack.instances.length,
+				);
+				const cloned = cloneStackWithNewIds(
+					preset.stack,
+					projectInstanceIds(active),
+					getRandomValues,
+				);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: [...stack.instances, ...cloned.instances],
+				};
+				const selectedId =
+					cloned.instances[0]?.id ?? sideSelectedId(active, side);
+				await commitNextStack(
+					side,
+					nextStack,
+					selectedId,
+					`Add ${preset.name}`,
+				);
+			});
 		},
 
 		async saveStackAsPreset(name) {
@@ -2584,7 +2630,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				void get().syncFromHash();
 			});
 			detachLifecycle = timerEnv.addLifecycleListeners(() => {
-				void flushPendingCommitImpl();
+				void commitHeldKeys();
 				void flushViewStateImpl();
 			});
 

@@ -1,13 +1,17 @@
 import {describe, expect, it} from 'vite-plus/test';
 import {effectRegistry} from '../../src/engine/effects/index.ts';
-import {resolveInstance, validateParams} from '../../src/engine/params.ts';
+import {
+	defaultParams,
+	resolveInstance,
+	validateParams,
+} from '../../src/engine/params.ts';
 import {renderStack} from '../../src/engine/pipeline.ts';
 import {canonicalJson} from '../../src/engine/types.ts';
 import {BUILTIN_PRESETS, getBuiltinPreset} from '../../src/presets/builtin.ts';
 import {createGradient64x48} from '../fixtures/synthetic.ts';
 
 describe('built-in presets (engine.md section 7)', () => {
-	it('defines the six first-release presets with unique ids and excludes deferred presets', () => {
+	it('defines the eight presets with unique ids', () => {
 		const ids = BUILTIN_PRESETS.map((preset) => preset.id);
 		expect(ids).toEqual([
 			'builtin:bright-streaks',
@@ -16,10 +20,10 @@ describe('built-in presets (engine.md section 7)', () => {
 			'builtin:grey-band',
 			'builtin:hue-bands',
 			'builtin:edge-melt',
+			'builtin:vhs-split',
+			'builtin:tile-scramble',
 		]);
-		expect(new Set(ids).size).toBe(6);
-		expect(getBuiltinPreset('builtin:vhs-split')).toBeUndefined();
-		expect(getBuiltinPreset('builtin:tile-scramble')).toBeUndefined();
+		expect(new Set(ids).size).toBe(8);
 		for (const preset of BUILTIN_PRESETS) {
 			expect(getBuiltinPreset(preset.id)).toBe(preset);
 		}
@@ -61,6 +65,25 @@ describe('built-in presets (engine.md section 7)', () => {
 				expect(resolved.fixed).toBe(false);
 			}
 		}
+	});
+
+	it('gives vhs-split and tile-scramble the instances and values of the spec table', () => {
+		const instances = (id: string) =>
+			getBuiltinPreset(id)?.stack.instances.map(({type, params}) => ({
+				type,
+				params,
+			}));
+		const defaults = (type: string) =>
+			defaultParams(effectRegistry.get(type)!.params);
+
+		expect(instances('builtin:vhs-split')).toEqual([
+			{type: 'sliceShift', params: {...defaults('sliceShift'), seed: 7}},
+			{type: 'channelShift', params: defaults('channelShift')},
+		]);
+		expect(instances('builtin:tile-scramble')).toEqual([
+			{type: 'blockShuffle', params: {tileSize: 96, amount: 0.25, seed: 3}},
+			{type: 'channelSwap', params: {order: 'gbr'}},
+		]);
 	});
 
 	it('applying each preset to gradient-64x48 runs without error or warnings and changes the image', async () => {

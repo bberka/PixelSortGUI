@@ -1,0 +1,33 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "bltlsc01",
+				"type": "blockShuffle",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"tileSize": 96,
+					"amount": 0.25,
+					"seed": 3
+				},
+				"mix": 1,
+				"blend": "normal"
+			},
+			{
+				"id": "cstlsc02",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "gbr"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

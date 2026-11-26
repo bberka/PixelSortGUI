@@ -1,0 +1,43 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "slvhsp01",
+				"type": "sliceShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"axis": "horizontal",
+					"sliceMin": 4,
+					"sliceMax": 48,
+					"probability": 0.3,
+					"maxOffset": 80,
+					"edge": "wrap",
+					"seed": 7
+				},
+				"mix": 1,
+				"blend": "normal"
+			},
+			{
+				"id": "chvhsp02",
+				"type": "channelShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"redX": 6,
+					"redY": 0,
+					"greenX": 0,
+					"greenY": 0,
+					"blueX": -6,
+					"blueY": 0,
+					"edge": "clamp"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

@@ -1,6 +1,10 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
 import {
+	blockShuffleSpec,
+	type BlockShuffleParams,
+} from './block-shuffle-spec.ts';
+import {
 	channelShiftSpec,
 	type ChannelShiftParams,
 } from './channel-shift-spec.ts';
@@ -45,6 +49,14 @@ const lazySliceShiftEffect: EffectDefinition<SliceShiftParams> = {
 	},
 };
 
+const lazyBlockShuffleEffect: EffectDefinition<BlockShuffleParams> = {
+	...blockShuffleSpec,
+	async render(input, output, params, ctx) {
+		const {blockShuffleEffect} = await import('./block-shuffle.ts');
+		return blockShuffleEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyPosterizeEffect: EffectDefinition<PosterizeParams> = {
 	...posterizeSpec,
 	async render(input, output, params, ctx) {
@@ -72,6 +84,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyChannelShiftEffect,
 	lazyChannelSwapEffect,
 	lazySliceShiftEffect,
+	lazyBlockShuffleEffect,
 	lazyPosterizeEffect,
 	lazyScanlineWaveEffect,
 ];

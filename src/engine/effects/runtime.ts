@@ -1,5 +1,6 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
+import {blockShuffleEffect} from './block-shuffle.ts';
 import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
@@ -16,6 +17,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	channelShiftEffect,
 	channelSwapEffect,
 	sliceShiftEffect,
+	blockShuffleEffect,
 	posterizeEffect,
 	scanlineWaveEffect,
 ];

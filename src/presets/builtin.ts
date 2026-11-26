@@ -1,12 +1,18 @@
+import {blockShuffleSpec} from '../engine/effects/block-shuffle-spec.ts';
+import {channelShiftSpec} from '../engine/effects/channel-shift-spec.ts';
+import {channelSwapSpec} from '../engine/effects/channel-swap-spec.ts';
 import {
 	pixelSortSpec,
 	type PixelSortParams,
 } from '../engine/effects/pixel-sort/spec.ts';
+import {sliceShiftSpec} from '../engine/effects/slice-shift-spec.ts';
 import {defaultParams} from '../engine/params.ts';
 import {
 	STACK_SCHEMA_VERSION,
+	type EffectDefinition,
 	type EffectInstance,
 	type EffectStack,
+	type ParamValue,
 } from '../engine/types.ts';
 
 export type BuiltinPreset = {
@@ -15,24 +21,30 @@ export type BuiltinPreset = {
 	readonly stack: EffectStack;
 };
 
-const PIXEL_SORT_DEFAULTS = defaultParams(pixelSortSpec.params);
-
-function pixelSortInstance(
+function effectInstance<P extends Record<string, ParamValue>>(
+	spec: Omit<EffectDefinition<P>, 'render'>,
 	id: string,
-	overrides: Partial<PixelSortParams>,
+	overrides: Partial<P> = {},
 ): EffectInstance {
 	return {
 		id,
-		type: pixelSortSpec.type,
-		version: pixelSortSpec.version,
+		type: spec.type,
+		version: spec.version,
 		enabled: true,
 		params: {
-			...PIXEL_SORT_DEFAULTS,
+			...defaultParams(spec.params),
 			...overrides,
 		},
 		mix: 1,
 		blend: 'normal',
 	};
+}
+
+function pixelSortInstance(
+	id: string,
+	overrides: Partial<PixelSortParams>,
+): EffectInstance {
+	return effectInstance(pixelSortSpec, id, overrides);
 }
 
 function preset(
@@ -98,6 +110,18 @@ export const BUILTIN_PRESETS: readonly BuiltinPreset[] = [
 			edgeThreshold: 0.2,
 			edgeBlur: 2,
 		}),
+	]),
+	preset('builtin:vhs-split', 'VHS split', [
+		effectInstance(sliceShiftSpec, 'slvhsp01', {seed: 7}),
+		effectInstance(channelShiftSpec, 'chvhsp02'),
+	]),
+	preset('builtin:tile-scramble', 'Tile scramble', [
+		effectInstance(blockShuffleSpec, 'bltlsc01', {
+			tileSize: 96,
+			amount: 0.25,
+			seed: 3,
+		}),
+		effectInstance(channelSwapSpec, 'cstlsc02', {order: 'gbr'}),
 	]),
 ];
 

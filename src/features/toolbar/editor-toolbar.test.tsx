@@ -236,7 +236,7 @@ describe('EditorToolbar undo and redo', () => {
 });
 
 describe('EditorToolbar presets', () => {
-	it('lists all 6 built-in presets with no rename/delete actions and applies one as a single commit', async () => {
+	it('lists all 8 built-in presets with no rename/delete actions and applies one as a single commit', async () => {
 		const context = await setup();
 		mountToolbar(context);
 

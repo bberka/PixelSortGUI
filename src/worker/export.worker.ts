@@ -8,7 +8,7 @@ import {
 	type Size,
 	type SourceTransform,
 } from '../engine/transform.ts';
-import type {RgbaImage} from '../engine/types.ts';
+import type {ExtraSource, RgbaImage} from '../engine/types.ts';
 import {checkedDimensions, exportTransform, isIdentity} from './geometry.ts';
 import {
 	FULL_TILE_SIZE,
@@ -16,6 +16,7 @@ import {
 	type ExportRequest,
 	type ExportResponse,
 	type ExportStage,
+	type ExtraSourceFile,
 	type FullTile,
 	type StackRequest,
 } from './protocol.ts';
@@ -48,6 +49,7 @@ type Job = {
 	sourceHeight: number;
 	scale: number;
 	transform?: SourceTransform;
+	extraSources?: readonly ExtraSourceFile[];
 } & StackRequest;
 
 // Imported on first use: the AVIF encoder is a 3.4 MB Wasm file.
@@ -100,11 +102,29 @@ async function decodeSource(
 	};
 }
 
+// Each extra source at the export scale (engine.md section 16.5), one at a time.
+async function decodeExtras(job: Job): Promise<Map<string, ExtraSource>> {
+	const files = job.extraSources ?? [];
+	const decoded = new Map<string, ExtraSource>();
+	for (const [index, file] of files.entries()) {
+		const {sha256, blob, sourceWidth, sourceHeight} = file;
+		// The project source was the first of the `files.length + 1` decodes.
+		postProgress(job.jobId, 'decode', (index + 1) / (files.length + 1));
+		const size = renderSize(sourceWidth, sourceHeight, job.scale);
+		const smaller = size.width < sourceWidth || size.height < sourceHeight;
+		const image = await decode(blob, smaller ? size : undefined);
+		decoded.set(sha256, {...image, sourceWidth, sourceHeight});
+	}
+
+	return decoded;
+}
+
 // This worker is cancelled by terminating it, so the render never yields.
 async function decodeAndRender(job: Job): Promise<RgbaImage> {
 	const {jobId} = job;
 	postProgress(jobId, 'decode', 0);
 	const {image, effective} = await decodeSource(job);
+	const extraSources = await decodeExtras(job);
 	postProgress(jobId, 'decode', 1);
 	postProgress(jobId, 'render', 0);
 	let lastProgress = performance.now();
@@ -113,6 +133,7 @@ async function decodeAndRender(job: Job): Promise<RgbaImage> {
 		sourceWidth: effective.width,
 		sourceHeight: effective.height,
 		debug: job.debug,
+		extraSources,
 		checkpoint: () => undefined,
 		onProgress(fraction) {
 			const now = performance.now();

@@ -13,16 +13,19 @@ import {
 	type Size,
 	type SourceTransform,
 } from '../engine/transform.ts';
-import {Cancelled, type RgbaImage} from '../engine/types.ts';
+import {Cancelled, type ExtraSource, type RgbaImage} from '../engine/types.ts';
 import {checkedDimensions, isIdentity, planProxy} from './geometry.ts';
-import type {
-	EngineErrorCode,
-	PreviewRequest,
-	PreviewResponse,
+import {
+	DRAG_PIXEL_CAP_MAX,
+	SETTLE_PIXEL_CAP,
+	type EngineErrorCode,
+	type PreviewRequest,
+	type PreviewResponse,
 } from './protocol.ts';
 
 type RenderRequest = Extract<PreviewRequest, {type: 'render'}>;
 type LoadRequest = Extract<PreviewRequest, {type: 'loadSource'}>;
+type LoadExtraRequest = Extract<PreviewRequest, {type: 'loadExtraSource'}>;
 // What the last `loadSource` asked for, as changed by `setTransform` and `setDragCap`.
 type Wanted = Omit<LoadRequest, 'type' | 'requestId' | 'transform'> & {
 	transform: SourceTransform;
@@ -45,6 +48,14 @@ type Source = {
 	height: number;
 	settle: RgbaImage;
 	drag: RgbaImage;
+};
+
+type Extra = {
+	// Size of the stored image.
+	sourceWidth: number;
+	sourceHeight: number;
+	// Missing while the file is being decoded.
+	proxies?: {settle: RgbaImage; drag: RgbaImage};
 };
 
 const scope = globalThis as unknown as WorkerScope;
@@ -70,7 +81,12 @@ function yieldToEventLoop(): Promise<void> {
 	});
 }
 
-const cache = createStageCache();
+let cache = createStageCache();
+// Extra sources by SHA-256. They do not depend on the project source.
+const extras = new Map<string, Extra>();
+// Extra sources are decoded one at a time to bound the memory of full decodes.
+let extraDecodes = Promise.resolve();
+let dragCap = DRAG_PIXEL_CAP_MAX;
 let wanted: Wanted | undefined;
 let source: Source | undefined;
 let loadCount = 0;
@@ -195,6 +211,106 @@ async function loadProxies(requestId: number, spec: Wanted): Promise<void> {
 	}
 }
 
+async function loadExtra(
+	request: LoadExtraRequest,
+	extra: Extra,
+): Promise<void> {
+	const {requestId, sha256, blob} = request;
+	const {sourceWidth, sourceHeight} = extra;
+	// Unloaded, or unloaded and asked for again, since it was queued.
+	const superseded = () => extras.get(sha256) !== extra;
+	if (superseded()) {
+		return;
+	}
+
+	const fail = (code: EngineErrorCode, message: string) => {
+		extras.delete(sha256);
+		scope.postMessage({type: 'error', requestId, code, message});
+	};
+
+	try {
+		const target = renderSizeForPixelCap(
+			sourceWidth,
+			sourceHeight,
+			SETTLE_PIXEL_CAP,
+		);
+		const decoded = await decodeImage(
+			blob,
+			target.width < sourceWidth || target.height < sourceHeight
+				? {resizeWidth: target.width, resizeHeight: target.height}
+				: {},
+		);
+		if (superseded()) {
+			return;
+		}
+
+		if (!decoded.ok) {
+			fail(decoded.error.code, decoded.error.message);
+			return;
+		}
+
+		const settle = decoded.value;
+		const drag = deriveDrag(settle, sourceWidth, sourceHeight, dragCap);
+		extra.proxies = {settle, drag};
+		scope.postMessage({type: 'extraSourceLoaded', requestId, sha256});
+	} catch (error) {
+		if (!superseded()) {
+			fail(errorCode(error), errorMessage(error));
+		}
+	}
+}
+
+// The extra sources loaded now, at the proxy of `level`.
+function loadedExtras(level: RenderRequest['level']): Map<string, ExtraSource> {
+	const loaded = new Map<string, ExtraSource>();
+	for (const [sha256, {proxies, sourceWidth, sourceHeight}] of extras) {
+		if (!proxies) {
+			continue;
+		}
+
+		loaded.set(sha256, {...proxies[level], sourceWidth, sourceHeight});
+	}
+
+	return loaded;
+}
+
+// Remakes every `drag` proxy for a new cap.
+function applyDragCap(pixels: number): void {
+	dragCap = pixels;
+	try {
+		if (source) {
+			const {settle, width, height, drag} = source;
+			const next = deriveDrag(settle, width, height, pixels);
+			if (next.width !== drag.width || next.height !== drag.height) {
+				source.drag = next;
+				cache.clear();
+			}
+		}
+
+		for (const {proxies, sourceWidth, sourceHeight} of extras.values()) {
+			if (!proxies) {
+				continue;
+			}
+
+			const {settle, drag} = proxies;
+			const next = deriveDrag(settle, sourceWidth, sourceHeight, pixels);
+			if (next.width === drag.width && next.height === drag.height) {
+				continue;
+			}
+
+			proxies.drag = next;
+			// Stage keys do not name this size (engine.md section 8.5).
+			cache = createStageCache();
+		}
+	} catch (error) {
+		scope.postMessage({
+			type: 'error',
+			code: errorCode(error),
+			message: errorMessage(error),
+		});
+	}
+}
+
 async function runRender(request: RenderRequest, from: Source): Promise<void> {
 	const {jobId, generation, level} = request;
 	const started = performance.now();
@@ -231,6 +347,8 @@ async function runRender(request: RenderRequest, from: Source): Promise<void> {
 				debug: request.debug,
 				cache,
 				sourceKey: from.cacheKey,
+				// A snapshot: loads and unloads during the render do not reach it.
+				extraSources: loadedExtras(level),
 				checkpoint,
 				onProgress(fraction) {
 					const now = performance.now();
@@ -329,6 +447,8 @@ scope.addEventListener('message', (event) => {
 			} = message;
 			wanted = {...rest, transform};
 			void loadProxies(requestId, wanted);
+			applyDragCap(wanted.caps.drag);
+
 			dropStalePending();
 			break;
 		}
@@ -375,32 +495,7 @@ scope.addEventListener('message', (event) => {
 				wanted.caps = {...wanted.caps, drag: message.pixels};
 			}
 
-			if (!source) {
-				break;
-			}
-
-			try {
-				const drag = deriveDrag(
-					source.settle,
-					source.width,
-					source.height,
-					message.pixels,
-				);
-				if (
-					drag.width !== source.drag.width ||
-					drag.height !== source.drag.height
-				) {
-					source.drag = drag;
-					cache.clear();
-				}
-			} catch (error) {
-				scope.postMessage({
-					type: 'error',
-					code: errorCode(error),
-					message: errorMessage(error),
-				});
-			}
-
+			applyDragCap(message.pixels);
 			break;
 		}
 
@@ -412,6 +507,28 @@ scope.addEventListener('message', (event) => {
 				source = undefined;
 				cache.clear();
 				dropStalePending();
+			}
+
+			break;
+		}
+
+		case 'loadExtraSource': {
+			const {requestId, sha256, sourceWidth, sourceHeight} = message;
+			// The hash names the bytes, so a loaded source never needs a new decode.
+			if (extras.get(sha256)?.proxies) {
+				scope.postMessage({type: 'extraSourceLoaded', requestId, sha256});
+				break;
+			}
+
+			const extra: Extra = {sourceWidth, sourceHeight};
+			extras.set(sha256, extra);
+			extraDecodes = extraDecodes.then(async () => loadExtra(message, extra));
+			break;
+		}
+
+		case 'unloadExtraSource': {
+			if (extras.delete(message.sha256)) {
+				cache = createStageCache();
 			}
 
 			break;

@@ -75,6 +75,8 @@ export async function startWorker<Request, Response>(
 	const decodes: Array<Size | undefined> = [];
 	// The pixels each encode received.
 	const encoded: RgbaImage[] = [];
+	// Files that decode to other pixels than `source`; `broken` ones fail.
+	const files = new Map<Blob, RgbaImage | 'broken'>();
 	let listener: ((event: {data: Request}) => void) | undefined;
 
 	class FakeCanvas {
@@ -136,10 +138,13 @@ export async function startWorker<Request, Response>(
 				? {width: options.resizeWidth, height: options.resizeHeight!}
 				: undefined;
 			decodes.push(size);
+			const file = files.get(input) ?? source;
+			if (file === 'broken') {
+				throw new Error('The source image could not be decoded.');
+			}
+
 			return bitmapOf(
-				size
-					? boxDownscale(source, size.width, size.height)
-					: copyImage(source),
+				size ? boxDownscale(file, size.width, size.height) : copyImage(file),
 			);
 		},
 	);
@@ -166,5 +171,12 @@ export async function startWorker<Request, Response>(
 			{timeout: 20_000, interval: 5},
 		);
 
-	return {send, next, posted, decodes, encoded};
+	// A new blob that decodes to `image`.
+	const addFile = (image: RgbaImage | 'broken'): Blob => {
+		const blob = new Blob([`file ${files.size}`]);
+		files.set(blob, image);
+		return blob;
+	};
+
+	return {send, next, posted, decodes, encoded, addFile};
 }

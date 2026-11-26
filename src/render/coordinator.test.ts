@@ -12,6 +12,7 @@ import {
 	createRenderCoordinator,
 	nextDragCap,
 	type CoordinatorEnv,
+	type ExtraSourceRecord,
 	type RenderEvent,
 	type WorkerHandlers,
 } from './coordinator.ts';
@@ -1186,5 +1187,503 @@ describe('geometry transform', () => {
 		expect(previews).toHaveLength(2);
 		coordinator.retry();
 		expect(posted('loadSource')).toMatchObject([{transform: moved}]);
+	});
+});
+
+describe('extra sources (engine.md section 8.3)', () => {
+	const RED = 'a'.repeat(64);
+	const BLUE = 'b'.repeat(64);
+
+	type Instance = EffectStack['instances'][number];
+
+	function blend(hash: string, overrides: Partial<Instance> = {}): Instance {
+		return {
+			id: `blend${hash.slice(0, 3)}`,
+			type: 'imageBlend',
+			version: 1,
+			enabled: true,
+			params: {image: hash},
+			mix: 1,
+			blend: 'normal',
+			...overrides,
+		};
+	}
+
+	const stackWith = (...instances: Instance[]): EffectStack => ({
+		schemaVersion: 1,
+		instances,
+	});
+
+	const records = new Map<string, ExtraSourceRecord>([
+		[RED, {blob: new Blob(['red']), width: 640, height: 480}],
+		[BLUE, {blob: new Blob(['blue']), width: 300, height: 900}],
+	]);
+	const fileOf = (sha256: string) => {
+		const {blob, width, height} = records.get(sha256)!;
+		return {sha256, blob, sourceWidth: width, sourceHeight: height};
+	};
+
+	// Lets storage answers and what follows them run.
+	const settled = async () => vi.advanceTimersByTimeAsync(0);
+
+	function withStorage(stored: Iterable<string> = records.keys()) {
+		const context = setup();
+		const held = new Set(stored);
+		const loader = vi.fn(async (sha256: string) =>
+			held.has(sha256) ? records.get(sha256) : undefined,
+		);
+		context.coordinator.setExtraSourceLoader(loader);
+		context.coordinator.setSource(SOURCE);
+		context.finishLoad();
+		const loads = () => context.posted('loadExtraSource');
+		return {
+			...context,
+			held,
+			loader,
+			loads,
+			unloads: () =>
+				context.posted('unloadExtraSource').map((message) => message.sha256),
+			finishExtra(sha256: string) {
+				const load = loads().findLast((message) => message.sha256 === sha256)!;
+				context.preview().reply({
+					type: 'extraSourceLoaded',
+					requestId: load.requestId,
+					sha256,
+				});
+			},
+		};
+	}
+
+	// A stack with `RED`, rendered with the source loaded.
+	async function blended() {
+		const context = withStorage();
+		context.coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		context.finishExtra(RED);
+		context.answer(context.renders().at(-1)!);
+		context.answer(context.renders().at(-1)!);
+		return context;
+	}
+
+	it('loads each referenced image once, with its stored size', async () => {
+		const {coordinator, loader, loads} = withStorage();
+		coordinator.setStack({
+			stack: stackWith(
+				blend(RED),
+				blend(BLUE, {enabled: false}),
+				blend(RED, {id: 'again000'}),
+				blend(''),
+			),
+		});
+		await settled();
+
+		expect(loader.mock.calls).toEqual([[RED], [BLUE]]);
+		expect(loads()).toMatchObject([fileOf(RED), fileOf(BLUE)]);
+		expect(new Set(loads().map((load) => load.requestId)).size).toBe(2);
+	});
+
+	it('renders at once, marks that frame as pending and renders again when the source arrives', async () => {
+		const {coordinator, renders, answer, frames, finishExtra} = withStorage();
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		expect(renders()).toHaveLength(1);
+		await settled();
+		answer(renders()[0]);
+		expect(frames()[0].sourcesPending).toBe(true);
+		expect(renders()).toHaveLength(1);
+
+		finishExtra(RED);
+		expect(renders()).toHaveLength(2);
+		expect(renders()[1]).toMatchObject({
+			level: 'settle',
+			stack: stackWith(blend(RED)),
+		});
+		expect(renders()[1].generation).toBeGreaterThan(renders()[0].generation);
+		answer(renders()[1]);
+		expect(frames()[1].sourcesPending).toBeUndefined();
+		// An answer that is repeated changes nothing.
+		coordinator.endDrag();
+		expect(renders()).toHaveLength(2);
+	});
+
+	it('cancels the render that is in flight when the source arrives', async () => {
+		const {coordinator, renders, posted, answer, frames, finishExtra} =
+			withStorage();
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		finishExtra(RED);
+		const newest = coordinator.getState().generation;
+		expect(posted('cancel')).toEqual([
+			{type: 'cancel', belowGeneration: newest},
+		]);
+		// One settle render in flight at a time: the next waits for this answer.
+		expect(renders()).toHaveLength(1);
+		answer(renders()[0]);
+		expect(renders()).toHaveLength(2);
+		expect(renders()[1].generation).toBe(newest);
+		expect(frames()).toHaveLength(1);
+	});
+
+	it('renders again at drag while a control is moving, then settles', async () => {
+		const {coordinator, renders, answer, finishExtra} = withStorage();
+		coordinator.setStack({stack: stackWith(blend(RED))}, {dragging: true});
+		await settled();
+		answer(renders()[0]);
+		finishExtra(RED);
+
+		expect(renders().map((message) => message.level)).toEqual(['drag', 'drag']);
+		answer(renders()[1]);
+		vi.advanceTimersByTime(150);
+		expect(renders().at(-1)).toMatchObject({
+			level: 'settle',
+			generation: renders()[1].generation,
+		});
+	});
+
+	it('does not render again after cancel until the next stack', async () => {
+		const {coordinator, renders, finishExtra} = withStorage();
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		coordinator.cancel();
+		finishExtra(RED);
+		expect(renders()).toHaveLength(1);
+	});
+
+	it('keeps loaded images across stack changes and unloads the ones no longer referenced', async () => {
+		const context = await blended();
+		const {coordinator, loader, loads, unloads} = context;
+		coordinator.setStack({stack: stackWith(blend(RED), blend(BLUE))});
+		await settled();
+		expect(unloads()).toEqual([]);
+		expect(loads().map((load) => load.sha256)).toEqual([RED, BLUE]);
+
+		coordinator.setStack({stack: stackWith(blend(BLUE))});
+		expect(unloads()).toEqual([RED]);
+		coordinator.setStack({stack: stackOf(0)});
+		expect(unloads()).toEqual([RED, BLUE]);
+		expect(loader).toHaveBeenCalledTimes(2);
+
+		// Undo: it is read and loaded again.
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		expect(loads().map((load) => load.sha256)).toEqual([RED, BLUE, RED]);
+	});
+
+	it('sends the unload before the render of the stack that dropped the image', async () => {
+		const {coordinator, preview} = await blended();
+		coordinator.setStack({stack: stackOf(0)});
+		expect(
+			preview()
+				.posted.slice(-2)
+				.map((message) => message.type),
+		).toEqual(['unloadExtraSource', 'render']);
+	});
+
+	it('ignores storage and the worker for an image the stack dropped meanwhile', async () => {
+		const {coordinator, loads, unloads, renders, finishExtra} = withStorage();
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		coordinator.setStack({stack: stackOf(0)});
+		await settled();
+		expect(loads()).toEqual([]);
+		expect(unloads()).toEqual([]);
+
+		coordinator.setStack({stack: stackWith(blend(BLUE))});
+		await settled();
+		coordinator.setStack({stack: stackOf(0)});
+		const count = renders().length;
+		finishExtra(BLUE);
+		expect(unloads()).toEqual([BLUE]);
+		expect(renders()).toHaveLength(count);
+	});
+
+	it('asks again for a missing image and renders once it arrives', async () => {
+		const context = withStorage([]);
+		const {coordinator, held, loader, loads, renders, answer, frames, errors} =
+			context;
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		expect(loads()).toEqual([]);
+		expect(errors()).toEqual([]);
+		// Once, so the displayed frame stops being pending.
+		answer(renders()[0]);
+		answer(renders()[1]);
+		expect(frames().at(-1)!.sourcesPending).toBeUndefined();
+		expect(renders()).toHaveLength(2);
+
+		// Moving a control does not read storage again.
+		coordinator.setStack({stack: stackWith(blend(RED))}, {dragging: true});
+		await settled();
+		expect(loader).toHaveBeenCalledTimes(1);
+		answer(renders()[2]);
+
+		// Still missing: no extra render.
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		expect(loader).toHaveBeenCalledTimes(2);
+		answer(renders()[3]);
+		expect(renders()).toHaveLength(4);
+
+		held.add(RED);
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		answer(renders()[4]);
+		context.finishExtra(RED);
+		expect(renders()).toHaveLength(6);
+		answer(renders()[5]);
+		expect(frames().at(-1)!.sourcesPending).toBeUndefined();
+	});
+
+	it('reports a failed read and reads again later', async () => {
+		const {coordinator, loader, loads, errors} = withStorage();
+		loader.mockRejectedValueOnce(new Error('database closed'));
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		expect(errors()).toEqual([
+			{
+				type: 'error',
+				error: {code: 'internal', message: 'database closed'},
+				failed: false,
+			},
+		]);
+
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		expect(loads()).toMatchObject([fileOf(RED)]);
+	});
+
+	it('reports an image the worker cannot decode, renders again and does not retry', async () => {
+		const {coordinator, loader, loads, renders, answer, errors, preview} =
+			withStorage();
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		answer(renders()[0]);
+		preview().reply({
+			type: 'error',
+			requestId: loads()[0].requestId,
+			code: 'decode-failed',
+			message: 'bad image',
+		});
+		expect(errors()).toMatchObject([
+			{error: {code: 'decode-failed', message: 'bad image'}, failed: false},
+		]);
+		expect(renders()).toHaveLength(2);
+
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		expect(loader).toHaveBeenCalledTimes(1);
+		expect(loads()).toHaveLength(1);
+	});
+
+	it('unloads every image when the source is closed', async () => {
+		const {coordinator, unloads, preview, finishLoad} = await blended();
+		coordinator.setSource(undefined);
+		expect(unloads()).toEqual([RED]);
+
+		const count = preview().posted.length;
+		coordinator.setSource(SOURCE);
+		finishLoad();
+		// The closed stack is neither rendered nor loaded again.
+		expect(
+			preview()
+				.posted.slice(count)
+				.map((message) => message.type),
+		).toEqual(['loadSource']);
+	});
+
+	it('keeps them across a geometry change', async () => {
+		const {coordinator, posted, loads, unloads} = await blended();
+		coordinator.setSource({
+			...SOURCE,
+			transform: {...IDENTITY_TRANSFORM, flipX: true},
+		});
+		expect(posted('setTransform')).toHaveLength(1);
+		expect(loads()).toHaveLength(1);
+		expect(unloads()).toEqual([]);
+	});
+
+	it('loads a restarted worker with the images it already read', async () => {
+		const context = await blended();
+		const {preview, previews, posted, loader, loads, renders, frames} = context;
+		const stale = loads()[0].requestId;
+		preview().fail('boom');
+
+		expect(previews).toHaveLength(2);
+		expect(preview().posted.map((message) => message.type)).toEqual([
+			'loadSource',
+			'loadExtraSource',
+		]);
+		expect(loads()).toMatchObject([fileOf(RED)]);
+		expect(loader).toHaveBeenCalledTimes(1);
+
+		context.finishLoad();
+		context.answer(renders()[0]);
+		expect(frames().at(-1)!.sourcesPending).toBe(true);
+		preview().reply({
+			type: 'extraSourceLoaded',
+			requestId: stale,
+			sha256: RED,
+		});
+		expect(renders()).toHaveLength(1);
+		context.finishExtra(RED);
+		expect(renders()).toHaveLength(2);
+		expect(posted('unloadExtraSource')).toEqual([]);
+	});
+
+	it('loads them into the worker started by retry', async () => {
+		const {coordinator, preview, loads, previews} = await blended();
+		preview().fail('boom');
+		preview().fail('boom');
+		coordinator.setStack({stack: stackWith(blend(RED), blend(BLUE))});
+		await settled();
+		coordinator.retry();
+
+		expect(previews).toHaveLength(3);
+		expect(loads().map((load) => load.sha256)).toEqual([RED, BLUE]);
+	});
+
+	it('sends what was read before there was a worker', async () => {
+		const {coordinator, posted} = setup();
+		coordinator.setExtraSourceLoader(async (sha256) => records.get(sha256));
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		coordinator.setSource(SOURCE);
+		expect(posted('loadExtraSource')).toMatchObject([fileOf(RED)]);
+	});
+
+	it('waits for pending images before a full render, and sends those of enabled instances', async () => {
+		const {coordinator, renders, answer, exports, finishExtra} = withStorage();
+		const stack = stackWith(blend(RED), blend(BLUE, {enabled: false}));
+		coordinator.setViewScale(4);
+		coordinator.setStack({stack});
+		await settled();
+		answer(renders()[0]);
+		vi.advanceTimersByTime(1000);
+		expect(exports).toHaveLength(0);
+
+		finishExtra(RED);
+		finishExtra(BLUE);
+		answer(renders().at(-1)!);
+		answer(renders().at(-1)!);
+		vi.advanceTimersByTime(500);
+		expect(exports).toHaveLength(1);
+		expect(exports[0].posted[0]).toMatchObject({type: 'renderFull'});
+		expect(exports[0].posted[0].extraSources).toEqual([fileOf(RED)]);
+	});
+
+	it('discards a full result when a missing image arrives', async () => {
+		const context = withStorage([]);
+		const {coordinator, renders, answer, exports, held, events} = context;
+		coordinator.setViewScale(4);
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		answer(renders()[0]);
+		answer(renders()[1]);
+		vi.advanceTimersByTime(500);
+		expect(exports[0].posted[0].extraSources).toEqual([]);
+		exports[0].reply({
+			type: 'fullRendered',
+			jobId: exports[0].posted[0].jobId,
+			generation: coordinator.getState().generation,
+			width: 1,
+			height: 1,
+			tiles: [],
+		});
+		expect(coordinator.getState().full).toBeDefined();
+
+		held.add(RED);
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		await settled();
+		context.finishExtra(RED);
+		expect(coordinator.getState().full).toBeUndefined();
+		expect(events).toContainEqual({type: 'full', full: undefined});
+	});
+
+	it('reads what an export needs, even for a stack it never previewed', async () => {
+		const {coordinator, exports, loader} = await blended();
+		const stack = stackWith(
+			blend(RED),
+			blend(BLUE),
+			blend('c'.repeat(64), {enabled: false}),
+		);
+		coordinator.exportImage({stack, scale: 0.5, format: 'png'});
+		await settled();
+
+		expect(exports).toHaveLength(1);
+		expect(exports[0].posted[0]).toMatchObject({type: 'export', scale: 0.5});
+		expect(exports[0].posted[0].extraSources).toEqual([
+			fileOf(RED),
+			fileOf(BLUE),
+		]);
+		// The previewed one was already held.
+		expect(loader.mock.calls).toEqual([[RED], [BLUE]]);
+	});
+
+	it('leaves an image storage does not hold out of an export', async () => {
+		const {coordinator, exports} = withStorage([BLUE]);
+		coordinator.exportImage({
+			stack: stackWith(blend(RED), blend(BLUE)),
+			scale: 1,
+			format: 'png',
+		});
+		await settled();
+		expect(exports[0].posted[0].extraSources).toEqual([fileOf(BLUE)]);
+	});
+
+	it('fails an export whose image cannot be read', async () => {
+		const {coordinator, exports, loader} = withStorage();
+		loader.mockRejectedValueOnce(new Error('database closed'));
+		const task = coordinator.exportImage({
+			stack: stackWith(blend(RED)),
+			scale: 1,
+			format: 'png',
+		});
+		await expect(task.result).resolves.toEqual({
+			status: 'error',
+			error: {code: 'internal', message: 'database closed'},
+		});
+		expect(exports).toHaveLength(0);
+	});
+
+	it.each(['cancel', 'dispose'] as const)(
+		'ends an export stopped by %s while its images are read, without a worker',
+		async (how) => {
+			const {coordinator, exports} = withStorage();
+			const task = coordinator.exportImage({
+				stack: stackWith(blend(RED)),
+				scale: 1,
+				format: 'png',
+			});
+			if (how === 'cancel') {
+				task.cancel();
+			} else {
+				coordinator.dispose();
+			}
+
+			await expect(task.result).resolves.toEqual({status: 'cancelled'});
+			await settled();
+			expect(exports).toHaveLength(0);
+		},
+	);
+
+	it('cancels an export that has started its worker', async () => {
+		const {coordinator, exports} = withStorage();
+		const task = coordinator.exportImage({
+			stack: stackWith(blend(RED)),
+			scale: 1,
+			format: 'png',
+		});
+		await settled();
+		task.cancel();
+		await expect(task.result).resolves.toEqual({status: 'cancelled'});
+		expect(exports[0].terminated).toBe(true);
+	});
+
+	it('leaves images missing without a loader', async () => {
+		const {coordinator, renders, answer, frames, posted} = opened();
+		coordinator.setStack({stack: stackWith(blend(RED))});
+		answer(renders()[0]);
+		await settled();
+		expect(posted('loadExtraSource')).toEqual([]);
+		expect(frames()[0].sourcesPending).toBeUndefined();
+		expect(renders()).toHaveLength(1);
 	});
 });

@@ -10,6 +10,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Pixel sort effect: sort direction by angle, selection by threshold range, edges or whole line, interval length with jitter and skip chance, sort key (luma, lightness, value, saturation, hue, red, green, blue), order (ascending, descending, shuffle, random direction), and fill (sort, average, gradient).
 - Channel shift effect: move the red, green and blue channels by separate offsets, with stretch or wrap at the edges.
 - Channel swap effect: reassign the red, green and blue channels in any of the six orders.
+- Slice shift effect: shift random bands of rows or columns sideways, with a band size range, a probability, a maximum offset, wrap or stretch at the edges, and a seed.
 - Posterize effect: reduce colour depth to a set number of levels per channel or by dropping low bits, with an optional monochrome output.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. Each step is named after the change, for example "Angle 90°". History holds 200 steps and survives a reload.
 - Presets: six built-in ones, and your own saved from the current stack. Apply one, add one to the stack, rename or delete your own.

@@ -6,6 +6,7 @@ import {
 } from './channel-shift-spec.ts';
 import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
+import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
@@ -32,6 +33,14 @@ const lazyChannelSwapEffect: EffectDefinition<ChannelSwapParams> = {
 	},
 };
 
+const lazySliceShiftEffect: EffectDefinition<SliceShiftParams> = {
+	...sliceShiftSpec,
+	async render(input, output, params, ctx) {
+		const {sliceShiftEffect} = await import('./slice-shift.ts');
+		return sliceShiftEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyPosterizeEffect: EffectDefinition<PosterizeParams> = {
 	...posterizeSpec,
 	async render(input, output, params, ctx) {
@@ -50,6 +59,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyPixelSortEffect,
 	lazyChannelShiftEffect,
 	lazyChannelSwapEffect,
+	lazySliceShiftEffect,
 	lazyPosterizeEffect,
 ];
 

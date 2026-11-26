@@ -164,7 +164,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			},
 			{
 				kind: 'paragraph',
-				text: 'Drift opens JPEG, PNG, WebP, GIF, BMP and AVIF files, as far as your browser can decode them. An animated image imports its first frame. HEIC/HEIF and camera RAW files are not supported: convert them first. Files over 200 MB or over 16,384 px on the longest side are refused. Above 50 megapixels you can import at 50 megapixels or import the full size.',
+				text: 'Drift opens JPEG, PNG, WebP, GIF, BMP and AVIF files, as far as your browser can decode them. An SVG becomes a still image, and links to outside files in it are not loaded. An animated image imports its first frame. HEIC/HEIF and camera RAW files are not supported: convert them first. Files over 200 MB or over 16,384 px on the longest side are refused. Above 50 megapixels you can import at 50 megapixels or import the full size.',
 			},
 		],
 	},

@@ -57,6 +57,9 @@ export type GeometryController = {
 function createGeometryController(bundle: AppStoreBundle): GeometryController {
 	const {store, transientStore} = bundle;
 	let queue = Promise.resolve();
+	// Counts what the user does to crop mode and its box, so a save can tell
+	// whether it would write over something newer than it saw.
+	let edits = 0;
 
 	const geometry = () => transientStore.getState().geometry;
 	const patch = (next: Partial<GeometryState>) => {
@@ -73,6 +76,7 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 			return;
 		}
 
+		edits++;
 		releaseCompare();
 		patch({
 			aspect,
@@ -106,8 +110,20 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 		label?: string,
 	) => store.getState().setTransform(project.id, transform, label);
 
+	// Moves a box drawn over the geometry before a save onto the one it wrote,
+	// so the save does not drop it.
+	const carryDraft = (project: ProjectRecord, transform: SourceTransform) => {
+		const {draft} = geometry();
+		if (draft?.key === cropDraftKey(project.id, projectTransform(project))) {
+			patch({
+				draft: {key: cropDraftKey(project.id, transform), crop: draft.crop},
+			});
+		}
+	};
+
 	return {
 		open() {
+			edits++;
 			releaseCompare();
 			transientStore.setState({
 				geometry: {...CLOSED_GEOMETRY, open: true, cropping: true},
@@ -115,10 +131,12 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 		},
 
 		close() {
+			edits++;
 			transientStore.setState({geometry: CLOSED_GEOMETRY});
 		},
 
 		startCrop() {
+			edits++;
 			releaseCompare();
 			patch({cropping: true});
 		},
@@ -128,6 +146,7 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 				return;
 			}
 
+			edits++;
 			patch({cropping: false, draft: null, dragging: false});
 			announce('Crop cancelled');
 		},
@@ -161,39 +180,54 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 				}
 
 				const crop = draftCrop(project, geometry().draft);
+				const seen = edits;
 				const changed = !sameCrop(crop, savedCrop(project));
+				const transform = cropTransform(
+					projectTransform(project),
+					crop,
+					projectOrientedDimensions(project),
+				);
 				if (changed) {
-					await save(
-						project,
-						cropTransform(
-							projectTransform(project),
-							crop,
-							projectOrientedDimensions(project),
-						),
-					);
+					await save(project, transform);
 				}
 
-				// Only now, so the canvas never shows the old crop in between.
-				patch({cropping: false, draft: null, dragging: false});
+				const {cropping, draft} = geometry();
+				// Crop mode stays if, during the save, the box moved elsewhere or the
+				// mode was left and started again.
+				if (
+					edits !== seen &&
+					cropping &&
+					!(draft && sameCrop(draft.crop, crop))
+				) {
+					carryDraft(project, transform);
+				} else {
+					// Only now, so the canvas never shows the old crop in between.
+					patch({cropping: false, draft: null, dragging: false});
+				}
+
 				announce(changed ? 'Crop applied' : 'Crop unchanged');
 			}),
 
-		resetCrop: async () =>
-			enqueue(async (project) => {
+		async resetCrop() {
+			const asked = edits;
+			return enqueue(async (project) => {
 				const bounds = projectOrientedDimensions(project);
 				const transform = projectTransform(project);
-				patch({draft: null, aspect: 'free'});
+				// A box set since the click is newer than the reset, so it stays.
+				if (edits === asked) {
+					patch({draft: null, aspect: 'free'});
+				}
+
 				if (transform.crop === null) {
 					return;
 				}
 
-				await save(
-					project,
-					cropTransform(transform, {x: 0, y: 0, ...bounds}, bounds),
-					'Reset crop',
-				);
+				const next = cropTransform(transform, {x: 0, y: 0, ...bounds}, bounds);
+				await save(project, next, 'Reset crop');
+				carryDraft(project, next);
 				announce('Crop reset');
-			}),
+			});
+		},
 
 		orient: async (step) =>
 			enqueue(async (project) => {
@@ -222,18 +256,26 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 				announce(ORIENTATION_ANNOUNCEMENTS[step]);
 			}),
 
-		applyResize: async (resize) =>
-			enqueue(async (project) => {
+		async applyResize(resize) {
+			const asked = edits;
+			return enqueue(async (project) => {
 				const cropped = savedCrop(project);
 				const same =
 					resize.width === cropped.width && resize.height === cropped.height;
-				await save(project, {
+				const next = {
 					...projectTransform(project),
 					resize: same ? null : resize,
-				});
-				patch({cropping: false, draft: null});
+				};
+				await save(project, next);
+				if (edits === asked) {
+					patch({cropping: false, draft: null});
+				} else {
+					carryDraft(project, next);
+				}
+
 				announce(`Resized to ${resize.width} × ${resize.height} px`);
-			}),
+			});
+		},
 
 		resetResize: async () =>
 			enqueue(async (project) => {
@@ -242,7 +284,9 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 					return;
 				}
 
-				await save(project, {...transform, resize: null});
+				const next = {...transform, resize: null};
+				await save(project, next);
+				carryDraft(project, next);
 				announce('Resize reset');
 			}),
 	};

@@ -1,0 +1,23 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "ti000005",
+				"type": "thresholdInvert",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"selectKey": "luma",
+					"threshold": [0, 1],
+					"invertSelection": false,
+					"channels": "rgb"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

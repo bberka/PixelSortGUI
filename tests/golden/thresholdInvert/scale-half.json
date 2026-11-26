@@ -1,0 +1,23 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "ti000007",
+				"type": "thresholdInvert",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"selectKey": "luma",
+					"threshold": [0.5, 1],
+					"invertSelection": false,
+					"channels": "rgb"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 0.5
+}

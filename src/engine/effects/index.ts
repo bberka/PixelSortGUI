@@ -19,6 +19,10 @@ import {
 	scanlineWaveSpec,
 	type ScanlineWaveParams,
 } from './scanline-wave-spec.ts';
+import {
+	thresholdInvertSpec,
+	type ThresholdInvertParams,
+} from './threshold-invert-spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
 	...pixelSortSpec,
@@ -100,6 +104,14 @@ const lazyRgbNoiseEffect: EffectDefinition<RgbNoiseParams> = {
 	},
 };
 
+const lazyThresholdInvertEffect: EffectDefinition<ThresholdInvertParams> = {
+	...thresholdInvertSpec,
+	async render(input, output, params, ctx) {
+		const {thresholdInvertEffect} = await import('./threshold-invert.ts');
+		return thresholdInvertEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -117,6 +129,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyMirrorFoldEffect,
 	lazyBayerDitherEffect,
 	lazyRgbNoiseEffect,
+	lazyThresholdInvertEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

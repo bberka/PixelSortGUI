@@ -1,6 +1,9 @@
 import {useEffect, useMemo, useRef} from 'react';
 import {moveCrop} from './crop-math.ts';
-import {geometryController} from './geometry-controller.ts';
+import {
+	geometryController,
+	onSavedGeometryChange,
+} from './geometry-controller.ts';
 import type {CropRect} from '@/engine/transform.ts';
 import {
 	sourceAt,
@@ -32,7 +35,8 @@ export function useCropBodyDrag(
 	bundle: AppStoreBundle,
 	active: boolean,
 ): CropBodyDrag {
-	const dragRef = useRef<{start: CropRect; from: Point} | null>(null);
+	// `ended` keeps the rest of a dropped press from panning the image.
+	const dragRef = useRef<'ended' | {start: CropRect; from: Point} | null>(null);
 	const spaceRef = useRef(false);
 
 	useEffect(() => {
@@ -52,17 +56,27 @@ export function useCropBodyDrag(
 			spaceRef.current = false;
 		};
 
+		const unsubscribe = onSavedGeometryChange(bundle, () => {
+			if (!dragRef.current) {
+				return;
+			}
+
+			dragRef.current = 'ended';
+			geometryController(bundle).setDragging(false);
+		});
+
 		globalThis.addEventListener('keydown', handleDown);
 		globalThis.addEventListener('keyup', handleUp);
 		globalThis.addEventListener('blur', handleBlur);
 		return () => {
 			spaceRef.current = false;
 			dragRef.current = null;
+			unsubscribe();
 			globalThis.removeEventListener('keydown', handleDown);
 			globalThis.removeEventListener('keyup', handleUp);
 			globalThis.removeEventListener('blur', handleBlur);
 		};
-	}, [active]);
+	}, [active, bundle]);
 
 	return useMemo(() => {
 		const state = () => {
@@ -112,6 +126,10 @@ export function useCropBodyDrag(
 					return false;
 				}
 
+				if (drag === 'ended') {
+					return true;
+				}
+
 				geometryController(bundle).setBox(
 					moveCrop(
 						drag.start,
@@ -137,6 +155,10 @@ export function useCropBodyDrag(
 				}
 
 				dragRef.current = null;
+				if (drag === 'ended') {
+					return;
+				}
+
 				geometryController(bundle).setBox(drag.start);
 				geometryController(bundle).setDragging(false);
 			},

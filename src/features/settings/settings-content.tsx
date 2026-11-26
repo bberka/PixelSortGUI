@@ -14,6 +14,11 @@ import {
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {CHANGELOG_TEXT} from './changelog.generated.ts';
 import {
+	browserFamily,
+	protectionMessage,
+	type ProtectionResult,
+} from './protection-feedback.ts';
+import {
 	THIRD_PARTY_NOTICES,
 	THIRD_PARTY_NOTICES_FILE,
 } from './third-party-notices.generated.ts';
@@ -43,6 +48,11 @@ const THEME_OPTIONS: ReadonlyArray<{
 	{value: 'light', label: 'Light'},
 	{value: 'dark', label: 'True Black'},
 ];
+
+/**
+ How long an unanswered request keeps the button disabled.
+ */
+export const PROTECTION_WAIT_MS = 5000;
 
 function ThemeOptionIcon({theme}: {readonly theme: ThemePreference}) {
 	if (theme === 'light') {
@@ -88,12 +98,17 @@ export function SettingsContent({
 	const [requestingPersistence, setRequestingPersistence] = useState(false);
 	const [noticesOpen, setNoticesOpen] = useState(false);
 	const [changelogOpen, setChangelogOpen] = useState(false);
+	const [protectionResult, setProtectionResult] =
+		useState<ProtectionResult | null>(null);
 	const mountedRef = useRef(true);
+	const requestIdRef = useRef(0);
+	const waitTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
 	useEffect(() => {
 		mountedRef.current = true;
 		return () => {
 			mountedRef.current = false;
+			clearTimeout(waitTimerRef.current);
 		};
 	}, []);
 
@@ -123,17 +138,36 @@ export function SettingsContent({
 			return;
 		}
 
+		requestIdRef.current += 1;
+		const requestId = requestIdRef.current;
 		setRequestingPersistence(true);
-		requestPersistentStorage(storageManager, (persisted) => {
+		setProtectionResult(null);
+		clearTimeout(waitTimerRef.current);
+		waitTimerRef.current = setTimeout(() => {
+			setRequestingPersistence(false);
+			setProtectionResult('pending');
+		}, PROTECTION_WAIT_MS);
+		requestPersistentStorage(storageManager, (persisted, outcome) => {
 			void (async () => {
 				const estimate = await getStorageEstimate(storageManager);
 				setStorageMetrics(estimate, persisted);
-				if (mountedRef.current) {
-					setRequestingPersistence(false);
+				// A late answer to an earlier click must not replace a newer one.
+				if (!(mountedRef.current && requestId === requestIdRef.current)) {
+					return;
 				}
+
+				clearTimeout(waitTimerRef.current);
+				setRequestingPersistence(false);
+				setProtectionResult(outcome);
 			})();
 		});
 	};
+
+	// A grant from any source makes an earlier refusal or wait message stale.
+	const shownResult =
+		storage.persisted && protectionResult !== null
+			? 'granted'
+			: protectionResult;
 
 	const usageText = formatStorageUsage(storage.estimate);
 	const versionLabel = getAppVersionLabel();
@@ -244,9 +278,22 @@ export function SettingsContent({
 							</div>
 						</>
 					)}
+					<p
+						aria-live="polite"
+						data-testid="protection-feedback"
+						className="text-xs leading-4 text-foreground empty:sr-only"
+					>
+						{shownResult === null
+							? null
+							: protectionMessage(
+									shownResult,
+									browserFamily(globalThis.navigator.userAgent),
+								)}
+					</p>
 				</div>
 				<p className="text-xs leading-4 text-muted-foreground">
-					Private Browsing windows clear all stored data when closed.
+					If you use a private or incognito window, everything Drift saves in it
+					is deleted when you close it.
 				</p>
 			</section>
 

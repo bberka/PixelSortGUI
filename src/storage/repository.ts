@@ -183,9 +183,9 @@ export class IndexedDbRepository implements StorageRepository {
 		this.#keyRange = options.keyRange ?? globalThis.IDBKeyRange;
 	}
 
-	async #stepHistory(
+	async #moveHistoryHead(
 		projectId: string,
-		delta: -1 | 1,
+		resolveSeq: (project: ProjectRecord) => number,
 	): Promise<HistoryStepResult | null> {
 		const now = this.#now();
 		return runTransaction(
@@ -203,8 +203,9 @@ export class IndexedDbRepository implements StorageRepository {
 					throw new StorageNotFoundError(`Project "${projectId}" not found`);
 				}
 
-				const targetSeq = existing.historyHeadSeq + delta;
+				const targetSeq = resolveSeq(existing);
 				if (
+					!Number.isSafeInteger(targetSeq) ||
 					targetSeq < existing.historyMinSeq ||
 					targetSeq > existing.historyMaxSeq
 				) {
@@ -678,11 +679,24 @@ export class IndexedDbRepository implements StorageRepository {
 	}
 
 	async undo(projectId: string): Promise<HistoryStepResult | null> {
-		return this.#stepHistory(projectId, -1);
+		return this.#moveHistoryHead(
+			projectId,
+			(project) => project.historyHeadSeq - 1,
+		);
 	}
 
 	async redo(projectId: string): Promise<HistoryStepResult | null> {
-		return this.#stepHistory(projectId, 1);
+		return this.#moveHistoryHead(
+			projectId,
+			(project) => project.historyHeadSeq + 1,
+		);
+	}
+
+	async jumpToHistory(
+		projectId: string,
+		seq: number,
+	): Promise<HistoryStepResult | null> {
+		return this.#moveHistoryHead(projectId, () => seq);
 	}
 
 	async getHistory(projectId: string): Promise<HistoryEntryRecord[]> {

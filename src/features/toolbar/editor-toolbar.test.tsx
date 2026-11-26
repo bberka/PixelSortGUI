@@ -158,7 +158,7 @@ describe('EditorToolbar undo and redo', () => {
 		expect(
 			context.store.getState().activeProject?.stack.instances[0].params.angle,
 		).toBe(0);
-		expect(getLiveText()).toBe('Undid Change Angle');
+		expect(getLiveText()).toBe('Undid Angle 45°');
 
 		act(() => {
 			globalThis.dispatchEvent(
@@ -175,7 +175,7 @@ describe('EditorToolbar undo and redo', () => {
 		expect(
 			context.store.getState().activeProject?.stack.instances[0].params.angle,
 		).toBe(45);
-		expect(getLiveText()).toBe('Redid Change Angle');
+		expect(getLiveText()).toBe('Redid Angle 45°');
 
 		act(() => {
 			globalThis.dispatchEvent(
@@ -270,7 +270,7 @@ describe('EditorToolbar presets', () => {
 
 		// One undo restores the empty stack
 		act(() => {
-			getButtonByLabel(/^Undo Apply ASDF classic$/).click();
+			getButtonByLabel(/^Undo Apply preset ASDF classic$/).click();
 		});
 		await flush();
 		expect(
@@ -372,7 +372,7 @@ describe('EditorToolbar presets', () => {
 		expect(getLiveText()).toBe('Applied preset ASDF classic');
 
 		act(() => {
-			getButtonByLabel(/^Undo Apply ASDF classic$/).click();
+			getButtonByLabel(/^Undo Apply preset ASDF classic$/).click();
 		});
 		await flush();
 		expect(

@@ -450,7 +450,7 @@ test('full editing flow at 390x844: open project, add effect, change parameter, 
 	await expect(angleInput).toHaveValue('90.0');
 
 	// Undo restores angle to 0.0.
-	await page.getByRole('button', {name: 'Undo Change Angle'}).click();
+	await page.getByRole('button', {name: 'Undo Angle 90°'}).click();
 	await expect(angleInput).toHaveValue('0.0');
 
 	// Open export sheet.

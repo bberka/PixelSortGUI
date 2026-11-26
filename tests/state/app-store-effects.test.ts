@@ -385,7 +385,7 @@ describe('app store — effect stack, selection, drag, keyboard burst, and limit
 		).toBe(90);
 		const historyAfter = await repository.getHistory(project.id);
 		expect(historyAfter).toHaveLength(historyBefore + 1);
-		expect(historyAfter.at(-1)?.label).toBe('Change Angle');
+		expect(historyAfter.at(-1)?.label).toBe('Angle 90°');
 		expect(
 			(await repository.getProject(project.id))?.stack.instances[0].params
 				.angle,
@@ -462,7 +462,7 @@ describe('app store — effect stack, selection, drag, keyboard burst, and limit
 		await flushMicrotasks();
 		const historyAfter = await repository.getHistory(project.id);
 		expect(historyAfter).toHaveLength(historyBefore + 1);
-		expect(historyAfter.at(-1)?.label).toBe('Change Angle');
+		expect(historyAfter.at(-1)?.label).toBe('Angle 30°');
 		expect(
 			store.getState().activeProject?.stack.instances[0].params.angle,
 		).toBe(30);
@@ -500,7 +500,7 @@ describe('app store — effect stack, selection, drag, keyboard burst, and limit
 		await flushMicrotasks();
 		const historyAfter = await repository.getHistory(project.id);
 		expect(historyAfter).toHaveLength(historyBefore + 1);
-		expect(historyAfter.at(-1)?.label).toBe('Change Mix');
+		expect(historyAfter.at(-1)?.label).toBe('Mix 50%');
 		expect(
 			(await repository.getProject(project.id))?.stack.instances[0].mix,
 		).toBe(0.5);
@@ -517,7 +517,7 @@ describe('app store — effect stack, selection, drag, keyboard burst, and limit
 			(await repository.getProject(project.id))?.stack.instances[0].mix,
 		).toBe(0.42);
 		expect((await repository.getHistory(project.id)).at(-1)?.label).toBe(
-			'Change Mix',
+			'Mix 42%',
 		);
 		expect(coordinator.calls).toHaveLength(1);
 
@@ -537,7 +537,7 @@ describe('app store — effect stack, selection, drag, keyboard burst, and limit
 			(await repository.getProject(project.id))?.stack.instances[0].blend,
 		).toBe('difference');
 		expect((await repository.getHistory(project.id)).at(-1)?.label).toBe(
-			'Change Blend',
+			'Blend Difference',
 		);
 		expect(coordinator.calls).toHaveLength(1);
 

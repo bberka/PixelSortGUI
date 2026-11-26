@@ -39,6 +39,7 @@ import {
 	requestPersistentStorage,
 	type StorageManagerLike,
 } from '@/storage/quota.ts';
+import {getAppVersionLabel} from '@/lib/app-version.ts';
 
 const THEME_OPTIONS: ReadonlyArray<{
 	readonly value: ThemePreference;
@@ -64,13 +65,6 @@ function ThemeOptionIcon({theme}: {readonly theme: ThemePreference}) {
 	) : (
 		<MonitorIcon className="size-4" aria-hidden="true" />
 	);
-}
-
-function getAppVersionLabel(): string {
-	const stamped = (globalThis as {VITE_APP_VERSION?: string}).VITE_APP_VERSION;
-	return typeof stamped === 'string' && stamped.trim().length > 0
-		? stamped.trim()
-		: '0.x (dev)';
 }
 
 export type SettingsContentProps = {

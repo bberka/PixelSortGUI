@@ -8,6 +8,7 @@ Updated with split orientation and side A fields by Claude Sonnet 5.5 (apx, high
 Updated with database version 2 storage rules for geometry transforms by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with cloud backup and sync (section 11) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with the project file reader, save errors and archive modules (section 8.3) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
+Updated with single-project save and import in the repository and app store (section 8.3.5) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift persistence spec
 
@@ -177,6 +178,8 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Generate result thumbnail (F2) | `thumbnails` | Within 500 ms after `settle` render of a commit or initial import | Worker or OffscreenCanvas scales the `settle` bitmap to longest side ≤ 512 px, encodes WebP (or JPEG q=0.80 where WebP encoding is unavailable), writes `ThumbnailRecord`. Must finish within 5 s of commit (AC-F2.2). |
 | Rename project (F2) | `projects` | Immediate | Validates 1..120 chars trimmed, updates `name` and `updatedAt` (AC-F2.3). |
 | Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState` centred on the effective size, same `stack`, `stackA`, `transform` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
+| Save project file (F25) | none (reads only) | On request | Reads the project, its source, thumbnail and history (when included) in one `readonly` transaction, then writes the file in the archive worker (section 8.3.5). |
+| Open project file (F25) | `sources`, `projects`, `history`, `thumbnails`, `meta` | Immediate per file | Validates the whole file first, then writes one atomic transaction (section 8.3.5). Ends the first launch and triggers the automatic persistence request, as an image import does (section 7.3). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
@@ -481,6 +484,12 @@ Single-project import runs in two phases: **strict validation first** (zero Inde
 
 The checks run in this order: file size, ZIP structure and entry caps, `manifest.json` (`kind`, then `formatVersion`, then migration), the other metadata, the sources, the thumbnail. A thumbnail that `thumbnailPath` names but the archive lacks is ignored. Effect instances are checked for their envelope fields only (`id`, `type`, `version`, `enabled`, `params`, `mix`, `blend`), so unknown effects pass through unchanged. The last two rows are checked by the import step (they need the database and an image decoder); the codec checks the rows above them.
 
+The import step then checks each source in this order:
+
+- A source already in `sources` is not decoded again. The file's width and height for it must equal the stored ones, else the metadata is invalid.
+- A new source is decoded with `probeImageDimensions`. A source that does not decode, or has a side over 16,384 px, is unreadable. A decoded size that differs from the file's declared width and height is invalid metadata.
+- The quota check runs last, and only when there is at least one new source. The in-memory fallback uses no browser storage, so it has no quota check.
+
 **Save errors.** The writer checks the metadata and sizes it writes against the same rules. It does not re-hash the stored source bytes:
 
 | Condition | Exact user-facing error message |
@@ -489,7 +498,7 @@ The checks run in this order: file size, ZIP structure and entry caps, `manifest
 | A source the project refers to is not available | `"Can't save <project name>: its image data is missing."` |
 | The stored project or history breaks the rules above | `"Can't save <project name>: its stored data is invalid."` |
 
-An invalid stored transform does not stop a save: it is written as the repaired value (section 8.1).
+An invalid stored transform does not stop a save: it is written as the repaired value (section 8.1). A file being opened is never repaired (section 8.3.3).
 
 **Phase 2: Atomic commit and clash handling**
 
@@ -497,8 +506,17 @@ An invalid stored transform does not stop a save: it is written as the repaired 
 2. **Project ID:** Always generate a fresh UUID v4 (`crypto.randomUUID()`) for single-project import so an existing local project is never overwritten.
 3. **Name clash:** Compare trimmed `project.name.toLocaleLowerCase('en')` against all existing projects. If a match exists, rename to `"<name> (imported)"`; if that also exists, `"<name> (imported 2)"`, `"<name> (imported 3)"`, and so on, truncating the base name if needed to stay within 120 characters.
 4. **History:** If `includesHistory` is true, insert all validated entries from `history.json` remapped to the new `projectId` (preserving `historyHeadSeq`, `historyMinSeq`, `historyMaxSeq`, capped at 201 entries). If `includesHistory` is false, insert one `seq: 0` `"Initial"` entry containing the imported `stack` (and `transform`) and set head/min/max seq to `0`.
-5. **Thumbnail:** If `thumbnailPath` is present and valid, store `ThumbnailRecord` under the new `projectId`; otherwise omit it so the editor generates a fresh thumbnail on open.
+5. **Thumbnail:** If the thumbnail is present and decodes with a longest side of at most 512 px, store a `ThumbnailRecord` under the new `projectId`; otherwise omit it. The file does not say which stack the picture shows, so the record gets an empty `stackSignature`: the library shows it, and the next `settle` render of the project replaces it.
 6. **Activate:** Set `meta.appState.activeProjectId` to the new `projectId` (when imported from picker/drop as a single file, or the first project when multiple files are dropped) and open it in the editor.
+
+The imported record keeps the file's `createdAt`, `updatedAt` and `openedAt`; opening it in the editor then sets `openedAt` as any open does. It also keeps the transform, both stacks and their selections (split side A included), view state, and export settings. The `Initial` entry written without history holds side A too. Effective dimensions are derived from the transform.
+
+**Repository and app store:**
+
+- `StorageRepository.exportProjectFile(projectId, options)` returns `{blob, fileName}`. `includeHistory` defaults to `true`; `signal` and `onProgress` go to the archive worker. An unknown project throws `StorageNotFoundError`.
+- `StorageRepository.importProjectFile(file, fileName, options)` returns the new project, its primary source and whether that source was already stored. `setActive` defaults to `true`; `signal` cancels before anything is written. File errors throw `ProjectFileError` with the message above; a failed quota check or write throws `StorageQuotaError`.
+- App store `exportProjectFile` saves a pending keyboard commit and view state before reading the active project.
+- App store `importProjectFile` adds the project to the library and, unless `setActive` is `false`, opens it. A quota error opens the `"Storage is full"` dialog. When the current stacks of the imported project hold unsupported effects, it shows the notice from section 8.3.3, with the imported project's name.
 
 ### 8.4 Full backup and restore (F17)
 
@@ -690,6 +708,7 @@ src/storage/
   project-file-error.ts  Error codes and exact messages, free of fflate
   zip-reader.ts        Central directory ZIP reader with byte caps
   archive-client.ts    Starts the archive worker, forwards progress, cancels by terminating it
+  project-transfer.ts  Project file save and import shared by both adapters (section 8.3.5)
   restore.ts           Startup restore coordinator (steps 1 to 7)
 tests/storage/
   repository.test.ts   CRUD, SHA-256 dedup, ref-counted delete, 201-entry history cap, atomicity
@@ -698,6 +717,7 @@ tests/storage/
   project-file.test.ts  .glproj round trip, errors, caps, progress and cancel
   zip-reader.test.ts   Archive structure, ZIP64 and unsafe paths
   archive-client.test.ts  Worker messages and cancel
+  project-transfer.test.ts  AC-F25.1 to AC-F25.8 against both adapters, quota rollback
 ```
 
 (`src/worker/archive.worker.ts` runs the codec. `backup.ts` and its tests are added in Milestone 8 for `F17`.)

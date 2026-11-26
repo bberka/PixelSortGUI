@@ -5,6 +5,7 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup/restore (F17), and multi-image blending (F26) decisions (D27 to D30) and open questions (Q16 to Q19) by Gemini 4 Neon (Antigravity, thought level low), specification subagent.
 Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with cloud backup and sync decisions (D39 to D41, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift decisions and open questions
 
@@ -222,7 +223,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D32. In-app guide instead of a landing page (2026-11-26)
 
-- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch (since replaced by the introduction on the empty Library, D38).
+- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch (since replaced by the introduction on the empty Library, D39).
 - **Reason:** The first thing a user wants is to open a photo and get a result. A landing page adds a step on every visit and marketing copy that `DESIGN.md` section 1 rules out. An in-app guide is part of the offline precache, so it also works without a connection.
 - **Revisit if:** The owner wants a public page that explains Drift to people who have not opened it.
 
@@ -268,11 +269,36 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** The empty screen was mostly blank and asked for a photo twice. Someone without a photo at hand could not see what the app does. Generating the sample and its previews adds no binary assets, works offline from the precached code and always matches the current engine.
 - **Revisit if:** The previews noticeably delay the first launch, or the owner wants a public page for people who have not opened the app.
 
+### D39. Opt-in cloud backup and sync as the one exception to the offline rule (2026-11-26)
+
+- **Status:** proposed; the owner approves it by merging the pull request that adds this entry.
+- **Request:** "can we implement dropbox / google drive sync between devices and backup when I can get client ids and secrets for login?"
+- **Options considered:** (a) Keep the rule and move data between devices with F17 files by hand, optionally saved into a folder the provider's desktop app syncs; (b) opt-in sync from the browser to the user's own Dropbox or Google Drive; (c) a Drift server with accounts.
+- **Choice:** Option (b) (`product.md` F28, `persistence.md` section 11). The rule in `AGENTS.md` changes from "Nothing leaves the browser at runtime: no network calls for app features, no accounts, no analytics, no remote fonts or scripts. Photos stay on the device." to the same text followed by: "Only exception: opt-in cloud backup/sync (product.md F28) may reach its provider and load Google's sign-in script."
+- **Limits of the exception:** off until the user connects; hidden when the build has no client ID; one provider at a time; the browser talks to that provider only; no Drift account, server or analytics; no client secret anywhere. Without a connection the app behaves as before.
+- **Reason:** (a) needs nothing new but gives no safe way to merge changes from two devices, and (c) ends the static, serverless design. The user's own storage keeps Drift from ever holding photos.
+- **Revisit if:** A feature wants a second exception; it needs its own decision.
+
+### D40. Browser-only sign-in: Dropbox with PKCE, Google with its token model (2026-11-26)
+
+- **Options considered:** (a) Dropbox code flow with PKCE and Google Identity Services (GIS) token model; (b) the same for Dropbox and a hand-built Google redirect without the script; (c) a small token service that holds the secrets and gives both providers refresh tokens; (d) Dropbox only.
+- **Choice:** Option (a), Dropbox first. Public client IDs only. Dropbox keeps a refresh token limited to 90 days. Google Drive uses the `drive.appdata` scope; Dropbox uses an App folder app (`persistence.md` section 11.3).
+- **Reason:** A secret in a static app is public, and (c) adds a server to run and trust. Google documents the token model for browser-only apps and calls the hand-built redirect strongly discouraged. The price of (a): Google's script, which cannot be self-hosted and can reach everything in the page, and no Google refresh token, so Drive sync pauses about hourly until a click.
+- **Revisit if:** Google documents PKCE without a secret for web clients (which removes both costs), or the hourly click makes Drive sync useless in practice.
+
+### D41. Per-project cloud layout, backup first, sync second (2026-11-26)
+
+- **Options considered:** (a) One F17 ZIP of the whole library per backup or sync; (b) the F17 payloads stored as separate, content-addressed files, one folder per project revision.
+- **Choice:** Option (b) (`persistence.md` section 11.6). Manual "Back up now" and "Restore from cloud" ship first; automatic sync follows. Each device writes only its own head file, compared with version vectors. A conflict keeps both versions: the later `updatedAt` keeps the project ID and the other becomes a conflict copy. Histories are not merged.
+- **Reason:** A whole ZIP sends every photo again after one slider change (up to 4 GB) and two devices would overwrite each other. Separate immutable files upload only what changed, need no compare-and-swap from either provider, and reuse the F17 schemas, validator and atomic restore. Clocks alone cannot tell a newer change from a concurrent one; version vectors can.
+- **Cost:** The cloud folder is not a single file that can be imported by hand.
+- **Revisit if:** Users need one downloadable file in the cloud, or merged histories.
+
 ---
 
 ## Open questions for the owner
 
-Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, and Q11 through Q19 arise from the post-v0.1.0 specifications:
+Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, Q11 through Q19 arise from the post-v0.1.0 specifications, and Q20 through Q27 from cloud backup and sync:
 
 ### Q10. Optional pre-commit guards and skills management
 
@@ -323,6 +349,46 @@ Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains ope
 
 - **Question:** Does implementing multi-image blending as a stackable `imageBlend` effect (with up to 8 distinct extra images per project, `D29`/`D30`) match how you want to blend images, or do you want a separate layer tree?
 - **Recommended default:** Keep the stackable `imageBlend` effect with the 8-extra-image cap.
+
+### Q20. Allowing the network exception
+
+- **Question:** Do you approve opt-in Dropbox and Google Drive backup and sync as the one exception to "nothing leaves the browser" (`D39`)?
+- **Recommended default:** Yes, with the limits in `D39`. Merging the proposal is the approval.
+
+### Q21. Google Drive's costs
+
+- **Question:** Google Drive needs Google's script inside the page and a click about every hour for sync (`D40`). Build it with those limits, build Dropbox only, or run a token service for Google (a server, against the current design)?
+- **Recommended default:** Dropbox first, then Google Drive with the limits.
+
+### Q22. How long Dropbox stays connected
+
+- **Question:** A 90 day refresh token (reconnect four times a year), one that lasts until disconnect, or none, as Dropbox's guide advises for browser apps (the page redirects every few hours)?
+- **Recommended default:** 90 days.
+
+### Q23. Google Drive folder
+
+- **Question:** A hidden app folder (`drive.appdata`) or a visible folder you can browse (`drive.file`)? Both need only basic verification.
+- **Recommended default:** The hidden app folder.
+
+### Q24. Encryption
+
+- **Question:** Cloud files hold the original photos, including location data, readable by the provider. Is that acceptable, or must uploads be encrypted with a passphrase you cannot recover?
+- **Recommended default:** Accept it, say so in Settings, and add passphrase encryption only if asked.
+
+### Q25. What sync does
+
+- **Question:** Conflict copies instead of merging, deletions that reach other devices, and theme and compare mode kept per device: correct?
+- **Recommended default:** Yes (`product.md` F28).
+
+### Q26. Google audience and public use
+
+- **Question:** Only you ("Personal" mode: no verification, one account, cannot be changed later), or anyone using `drift.bbay.dev` ("External", published, with home and privacy pages and a verified domain)? For Dropbox, more than 50 linked users needs production approval.
+- **Recommended default:** External and published.
+
+### Q27. Release timing
+
+- **Question:** After Milestone 8 (backup in `v0.4.0`, automatic sync in `v0.5.0`), or ahead of project files and image blending (it still needs F17)?
+- **Recommended default:** After Milestone 8.
 
 ---
 

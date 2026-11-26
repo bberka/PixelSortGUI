@@ -6,6 +6,7 @@ Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Ge
 Updated with project files (F25), full backup and restore (F17), and multi-image source reference counting (F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and side A fields by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with database version 2 storage rules for geometry transforms by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with cloud backup and sync (section 11) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift persistence spec
 
@@ -13,7 +14,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 
 ## 1. Scope and storage architecture
 
-All user data stays inside browser storage on the device. The app makes no network calls for persistence, accounts, or sync.
+All user data stays inside browser storage on the device. The app makes no network calls for persistence, accounts, or sync, with one optional exception: cloud backup and sync that the user connects (section 11).
 
 Three storage mechanisms are used, each with one responsibility:
 
@@ -674,3 +675,277 @@ tests/storage/
 (`project-file.ts`, `backup.ts`, and their tests are added in Milestone 8 for `F25` and `F17`.)
 
 Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev dependency). Real-browser persistence, quota exhaustion, private browsing, and offline PWA restore are verified in Spike S3 and the Playwright E2E suite ([roadmap.md](roadmap.md)).
+
+## 11. Cloud backup and sync (F28)
+
+Status: proposed, 2026-11-26; takes effect when the owner merges it. What the user sees is in [product.md F28](product.md#f28-optional-cloud-backup-and-sync-dropbox-google-drive); reasons are in [decisions.md D39 to D41](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). Nothing here is implemented. Facts about the providers were read on 2026-11-26 (sources in section 11.12); the items in section 11.13 are not confirmed and are settled by a spike before code.
+
+### 11.1 Rules
+
+- The browser talks to the provider directly. Drift has no server, token broker or proxy.
+- No provider SDK: `fetch` from the app's own code, plus Google's sign-in script, which Google requires to be loaded from its server. No new runtime dependency.
+- Every provider request goes through one module (`src/cloud/fetch.ts`). It refuses any origin other than the connected (or connecting) provider's, and sends `cache: 'no-store'` and `credentials: 'omit'`. Requests are made by the page, not by a worker or the service worker (section 11.9).
+- Cloud features are off while storage is unavailable (section 5.1).
+- One tab at a time connects, renews tokens, backs up or syncs, under the Web Lock `drift:cloud` (`navigator.locks`).
+- F17 comes first. Its codec validates and commits entries through a reader (`read(path)`), so a ZIP file and a cloud folder share one parser, validator, migration pipeline and four-phase commit.
+
+### 11.2 Build configuration and secrets
+
+| Variable | Value | When absent |
+|---|---|---|
+| `VITE_DROPBOX_APP_KEY` | Dropbox app key (the OAuth client ID) | Dropbox is not offered |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID of type "Web application" | Google Drive is not offered |
+
+- **A client secret must never ship in a static web app.** Everything in `dist/` is public. Drift needs client IDs only. No secret goes into the repository, a build variable, the bundle or a chat message.
+- The values are public identifiers: GitHub repository **variables** passed to the build in `pages.yml`, and a git-ignored `.env.local` for local work.
+- The build fails if any `VITE_` variable has `SECRET` in its name.
+- With both variables absent the cloud UI is not rendered, no Google script tag can be created and the policy of section 11.9 names no provider.
+
+### 11.3 Sign-in
+
+**Dropbox: authorization code flow with PKCE, public client, no secret.** Redirect in the same tab.
+
+1. Create a `code_verifier` (64 bytes from `crypto.getRandomValues`, base64url) and a `state` (32 random bytes). Keep both, with the current hash route and a 10 minute expiry, in `sessionStorage` key `drift:oauth`.
+2. Go to `https://www.dropbox.com/oauth2/authorize` with `client_id`, `response_type=code`, `redirect_uri` (the app's origin plus `/`), `state`, `code_challenge`, `code_challenge_method=S256`, `token_access_type=offline` and `scope=account_info.read files.metadata.read files.content.read files.content.write`.
+3. On start, before restore step 4 (section 9): if the query holds `code` or `error`, remove the query with `history.replaceState` and restore the saved hash. Only when `state` equals the stored value, `POST https://api.dropboxapi.com/oauth2/token` with `grant_type=authorization_code`, `code`, `redirect_uri`, `code_verifier`, `client_id` and `refresh_token_expiration_seconds` (a Unix time 90 days ahead). Delete `drift:oauth` in every case.
+4. Renewal: the same endpoint with `grant_type=refresh_token`, `refresh_token` and `client_id`. The documented response has no new refresh token. The access token's `expires_in` says when to renew (14,400 s in Dropbox's examples).
+
+Dropbox's OAuth guide recommends short-lived tokens **without** refresh tokens for browser apps. Drift asks for a refresh token so that sync does not leave the page every few hours, and bounds it to 90 days. This is owner decision Q22.
+
+**Google Drive: Google Identity Services (GIS) token model.** It is an OAuth 2.0 implicit grant, not PKCE. Google documents it as the flow for browser-only apps; its authorization code model requires a backend, and no PKCE setting is documented for it. Redirecting to Google's endpoint by hand (which would avoid the script) is documented by Google as strongly discouraged.
+
+1. After "Connect Google Drive", add `<script src="https://accounts.google.com/gsi/client">`. It cannot be self-hosted or bundled.
+2. `google.accounts.oauth2.initTokenClient({client_id, scope: 'https://www.googleapis.com/auth/drive.appdata', callback, error_callback})`, then `requestAccessToken()` from a click. Check the granted scope with `hasGrantedAllScopes`.
+3. The response holds an access token and its lifetime (about an hour). There is **no refresh token**. A new token needs another click ("Reconnect to sync"), with `prompt: ''` so a granted app is not asked to consent again.
+4. While connected to Google, the script is loaded only when the Cloud backup section opens or automatic sync is on.
+
+**Scope: `drive.appdata`, not `drive.file`.** Both are non-sensitive. `drive.appdata` reaches only a hidden folder that belongs to Drift, so the user cannot rename or break the layout by accident, no file picker is needed and the consent text is narrower. The cost: the user cannot see or download the files in Drive, and removing Drift from Drive deletes them.
+
+**Dropbox access type: App folder.** The app reaches only its own folder under the user's `Apps` folder, never the rest of the account. The user can see those files.
+
+### 11.4 Tokens on the device
+
+New stores in the next free database version (`dbVersion` 4 if F26 has landed): `cloudAuth` (one record) and `cloudSync` (key `[kind, id]`).
+
+```ts
+type CloudProvider = 'dropbox' | 'google';
+
+type CloudAuthRecord = {
+	key: 'auth';
+	provider: CloudProvider;
+	accessToken: string | null; // null: reconnect needed
+	accessExpiresAt: number; // Unix epoch ms
+	refreshToken: string | null; // always null for Google
+	refreshExpiresAt: number | null;
+	accountId: string; // a different account at reconnect clears `cloudSync`
+	accountName: string; // shown in Settings
+	deviceId: string; // UUID v4, created at connect
+	deviceName: string; // editable, 1..40 characters, default 'Device <4 hex>'
+	connectedAt: number;
+	autoSync: boolean; // false until the user turns it on
+	lastBackupAt: number | null;
+	lastSyncAt: number | null;
+};
+```
+
+- Tokens are stored only in `cloudAuth`: not in `localStorage`, URLs, logs, error messages, backups, project files or cloud files. F17 export and "Replace all local data" never read or write the cloud stores.
+- They are not encrypted at rest. A key the page can use is also usable by injected script, so the protection is the content security policy, no third-party script besides Google's, and app-folder scopes.
+- Renew when less than 5 minutes remain, or once after a `401`, one renewal at a time.
+- A refused renewal (`invalid_grant`), or an expired Google token, deletes the tokens, keeps the sync records and shows "Reconnect needed".
+- **Disconnect:** stop transfers, revoke (Dropbox: `POST https://api.dropboxapi.com/2/auth/token/revoke`, renewing first if needed, which also disables the refresh token; Google: `google.accounts.oauth2.revoke` with a valid access token), then clear both cloud stores and `drift:oauth`. Clear them even when revocation fails or an expired Google token rules it out (a new one needs a sign-in window), and say so (product.md F28). Google revocation removes the user's grant for the whole app, so every device must connect again.
+
+### 11.5 Provider calls
+
+| Need | Dropbox (`api.dropboxapi.com`, `content.dropboxapi.com`) | Google Drive v3 (`www.googleapis.com`) |
+|---|---|---|
+| List | `files/list_folder` and `/continue` | `GET /drive/v3/files?spaces=appDataFolder` |
+| Small upload | `files/upload`, up to 8 MiB (the endpoint allows 150 MiB) | multipart upload, up to 5 MB |
+| Large upload | `upload_session/start`, `append_v2`, `finish`; 8 MiB chunks; session usable 7 days | `uploadType=resumable`; 8 MiB chunks (a multiple of 256 KiB); session URI expires after a week |
+| Download | `files/download` | `GET /drive/v3/files/{id}?alt=media` |
+| Delete | `files/delete_v2` | `DELETE /drive/v3/files/{id}` (the app folder has no trash) |
+| Space | `users/get_space_usage` | `GET /drive/v3/about?fields=storageQuota` (`limit` is absent when unlimited) |
+| Account name | `users/get_current_account` | `GET /drive/v3/about?fields=user` |
+
+Both adapters implement one interface (`list`, `read`, `create`, `replace`, `remove`, `space`) over relative paths. In Drive the whole relative path is the file's `name`, with `parents: ['appDataFolder']`. Drive names need not be unique, so the adapter accepts duplicates, uses any copy whose `sha256Checksum` is right and removes the others during cleanup.
+
+### 11.6 Cloud layout
+
+Sync builds on the backup format of section 8.4: the same payloads and validator, stored as separate files so that a changed slider never uploads a photo again. Granularity is **per project**.
+
+```
+v1/sources/<sha256>.<ext>                      original bytes, shared by all projects
+v1/projects/<projectId>/<revision>/project.json    ProjectFilePayload (8.3.2)
+v1/projects/<projectId>/<revision>/history.json    optional
+v1/projects/<projectId>/<revision>/thumbnail.webp  optional, or .jpg
+v1/presets/<revision>.json                     presets.json (8.4.1)
+v1/settings/<revision>.json                    settings.json (8.4.1)
+v1/backups/<YYYYMMDD-HHmmss>-<deviceId>.json   one complete backup (phase 1)
+v1/devices/<deviceId>.json                     one device's sync heads (phase 2)
+```
+
+- A `revision` is the SHA-256 of the file's bytes (for a project, `project.json` followed by `history.json`).
+- Everything is written once and never changed, except a device's own `devices/<deviceId>.json`. No two devices write the same file with different content, so neither provider needs a compare-and-swap.
+- Upload order: sources, then revisions, then the backup or device file last. A reader sees only complete states.
+- After writing that last file, list again and upload any referenced file that is missing.
+
+```ts
+export const CLOUD_FORMAT_VERSION = 1;
+
+type CloudBackup = {
+	cloudVersion: 1;
+	deviceId: string;
+	deviceName: string;
+	manifest: BackupManifest; // section 8.4.1; project paths include the revision folder
+	presetsPath: string | null;
+	settingsPath: string | null;
+};
+```
+
+A `cloudVersion` above the supported one is refused with "This cloud data was written by a newer version of Drift. Update the app and try again." and nothing is written or deleted in the cloud.
+
+### 11.7 Back up and restore (phase 1)
+
+**Back up.** Serialise the chosen projects with the F17 writer, hash the files, list the cloud, and compare the bytes of the missing files with the free space. Upload what is missing in the order above, then verify. Cancel stops between chunks; nothing is listed.
+
+**Restore.** List `v1/backups/`. Download the chosen backup and its JSON files, validate them as in section 8.4.3 phase 2 (no database write), show the F17 preview, then download the missing sources of the checked projects one at a time, check `byteLength` and SHA-256, and run the four-phase commit of section 8.4.4. Errors reuse the section 8.4.4 texts with "Can't restore backup:" in place of "Can't import backup:".
+
+**Retention and cleanup.** Keep the 5 newest backups of each device. After a successful publish, delete files under `sources/`, `projects/`, `presets/` and `settings/` that no backup or device file references **and** that were last modified more than 7 days ago by the provider's clock. Skip cleanup if any backup or device file cannot be read.
+
+### 11.8 Automatic sync and conflicts (phase 2)
+
+```ts
+type VersionVector = Record<string, number>; // deviceId -> change counter
+
+type CloudHead = {
+	kind: 'project' | 'preset';
+	id: string;
+	revision: string | null; // null: deleted
+	syncHash: string | null;
+	changedBy: string; // name of the device that made the change
+	vector: VersionVector;
+	updatedAt: number;
+	sources: string[]; // SHA-256 of every source the revision and its history use
+};
+
+type CloudDeviceFile = {
+	cloudVersion: 1;
+	deviceId: string;
+	deviceName: string;
+	writtenAt: number;
+	heads: CloudHead[];
+};
+```
+
+`cloudSync` holds, per project and preset, `{vector, syncHash, deleted, revision}` as last synced, and unfinished upload sessions.
+
+A preset head points at a `presets/<revision>.json` holding that one preset; its `syncHash` covers its name and stack.
+
+**Change detection.** A project's `syncHash` is the SHA-256 of the canonical JSON of its `name`, `sourceHash`, `transform`, `stack`, `stackA`, `exportSettings`, `historyHeadSeq` and history entries without selection fields. `viewState`, selection, `openedAt`, timestamps and thumbnails are left out, so they stay per device and cause no upload.
+
+**One pass.**
+
+1. Read every device file.
+2. For each local item whose `syncHash` differs from the stored one, add 1 to this device's counter.
+3. For each ID, compare the version vector of each newest remote head with the local one, one head at a time in `syncHash` order. Vectors decide what is newer; clocks do not.
+
+| Case | Result |
+|---|---|
+| Equal, or local newer | Keep local; publish it |
+| Remote newer, or ID unknown here | Apply remote (download, or delete) |
+| Concurrent, same `syncHash` | Merge the vectors |
+| Concurrent, one history extends the other: same name and export settings, one side is at its newest entry, that entry is in the other side's history, and every entry both retain is equal | Take the longer one |
+| Concurrent, one side deleted | Keep the edit |
+| Concurrent otherwise (conflict) | The later `updatedAt` keeps the ID (tie: the greater `syncHash`). The other becomes a new project named "<name> (conflict from <device>)" after its `changedBy`, at most 120 characters, with its own history intact |
+
+A resolved item's vector is the per-device maximum of both, plus 1 for this device. The copy's ID is a UUID derived from the SHA-256 of the original ID and the losing `syncHash`, so two devices resolving the same conflict create the same copy. Histories are never interleaved. Presets follow the same vectors; on a conflict the later `updatedAt` wins and no copy is made, because a preset change is only a rename.
+
+- A deletion is published only when the user deleted the item (the delete action writes it to `cloudSync` in the same transaction). Absence is never read as deletion, so a first sync, a reconnect or a Replace restore deletes nothing elsewhere.
+- Apply one project in one transaction, after all its files are downloaded and verified. Keep local `viewState` and `openedAt`.
+- Do not apply to the project open in the editor until "Reload project" or return to the Library.
+- An item with a newer `EffectInstance.version` or unknown type is stored verbatim (AC-F4.6).
+- Triggers are listed in product.md F28. A failed pass retries with exponential backoff, up to 5 times, then waits for the next trigger.
+- Settings can list the other devices and remove one (deletes its device file, after a warning that changes only it holds are lost).
+
+### 11.9 Content security policy and service worker
+
+The app has no content security policy today. GitHub Pages cannot set response headers, so the build adds `<meta http-equiv="Content-Security-Policy">` before any script, in production builds only. Starting policy; the implementing task proves it with the end-to-end suite and a check for violation events:
+
+```
+default-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+script-src 'self' 'wasm-unsafe-eval' '<hash of the theme boot script>' {google-script};
+style-src 'self' 'unsafe-inline' {google-style};
+img-src 'self' blob: data:; worker-src 'self' blob:;
+connect-src 'self' blob: data: {dropbox} {google};
+frame-src {google-frame, else 'none'}
+```
+
+| Placeholder | Added only when the provider's variable is set |
+|---|---|
+| `{dropbox}` | `https://api.dropboxapi.com https://content.dropboxapi.com` |
+| `{google}` | `https://www.googleapis.com https://accounts.google.com/gsi/`, plus `https://oauth2.googleapis.com` only if the spike shows revocation needs it |
+| `{google-script}` | `https://accounts.google.com/gsi/client` |
+| `{google-style}` | `https://accounts.google.com/gsi/style` |
+| `{google-frame}` | `https://accounts.google.com/gsi/` |
+
+- "Only when enabled" means enabled **in the build**. A static page cannot widen its policy when the user connects, so the user's choice is enforced by the fetch module of section 11.1 and tested (AC-F28.2).
+- A `<meta>` policy does not apply to workers loaded from a URL, and cannot set `frame-ancestors`.
+- Google's script runs with the same access as the app's own code, including stored photos and tokens. It is loaded only for users who chose Google.
+- Service worker: no runtime caching and no handling of other origins. Precache and navigation fallback stay as they are; the fallback serves the Dropbox return URL. A test fails if the built worker names a provider origin, and an end-to-end test checks that Cache Storage holds same-origin entries only.
+
+### 11.10 Limits and errors
+
+- The per-file limits of section 8.4.2 apply (200 MB per source, 16 MB per JSON file). The 4 GB whole-archive limit does not.
+- Transfers run one file at a time. A large upload reads `Blob.slice` chunks and records `{sha256, session, offset, startedAt}` in `cloudSync` so it resumes after a reload; records older than 6 days are discarded. A Drive session URI grants upload access by itself and is treated like a token.
+- Check free space before uploading, and local quota before downloading (section 7.4). Dropbox `insufficient_space` and Drive `403 storageQuotaExceeded` show "Cloud storage is full" and pause sync.
+- On `429` wait as `Retry-After` says; on Drive `userRateLimitExceeded` and on `5xx` back off exponentially.
+
+**What leaves the device,** only after connecting: original source files unchanged (including EXIF and GPS data), project names, effect stacks, histories, export settings, thumbnails, user presets, theme and compare mode, and the device name. Nothing else, and nothing to Drift's developer. Files are not end-to-end encrypted.
+
+### 11.11 What the owner registers
+
+The app must be served over HTTPS at `https://drift.bbay.dev` first (README.md says the certificate is missing today). Local development uses `http://localhost:5173` (`vp run dev`) and `http://localhost:4173` (`vp run gui`).
+
+**Dropbox App Console** (`https://www.dropbox.com/developers/console/apps`):
+
+1. Create an app: scoped access, **App folder**. Check the name before applying for production; it cannot be changed afterwards.
+2. Settings, redirect URIs: `https://drift.bbay.dev/`, `http://localhost:5173/`, `http://localhost:4173/`. Dropbox matches them exactly and requires HTTPS except for localhost.
+3. Allow public clients (the toggle covers PKCE).
+4. Permissions: `account_info.read`, `files.metadata.read`, `files.content.read`, `files.content.write`.
+5. Copy the **App key**. The app secret is not used.
+6. Status: a new app is in development and links only the owner's account until additional users are enabled (up to 500). After 50 linked users there are two weeks to get production approval, or new links are frozen. Production review needs an app icon and asks for clear branding and a privacy policy.
+
+**Google Cloud Console:**
+
+1. Create a project (a separate one for development is Google's advice) and enable the Google Drive API.
+2. Google Auth Platform, branding: app name, support email, home page, privacy policy link, authorised domain `bbay.dev`.
+3. Audience: **External**, then publish. In "Testing", at most 100 listed users can connect and their authorisation expires after 7 days. "Personal" needs no verification but allows only the creator's account and cannot be changed later (Q26).
+4. Data access: add `https://www.googleapis.com/auth/drive.appdata`.
+5. Clients: type **Web application**. Authorised JavaScript origins: `https://drift.bbay.dev`, `http://localhost`, `http://localhost:5173`, `http://localhost:4173`. The token model uses no redirect URI. Copy the **client ID** only.
+
+Buttons that start a Google action must follow Google's branding guidelines, and the app must show its privacy notice where the user can find it.
+
+**Verification.** `drive.appdata` is listed as **non-sensitive**, so it needs only basic verification, not the sensitive or restricted scope review or a security assessment. Showing the app name and logo on the consent screen needs brand verification: a verified domain, a home page on it that describes the app and links the privacy policy, and a privacy policy that says how Google user data is used. Drift has no landing page (D32), so the implementing task adds static `about.html` and `privacy.html`.
+
+### 11.12 Testing and sources
+
+- Unit tests run the layout, publish order, cleanup and merge table against an in-memory provider; sync tests run two or three simulated devices, including interrupted passes.
+- Playwright answers provider origins with mocks and replaces Google's script with a stub. CI uses placeholder client IDs and never reaches a real provider.
+- Before each release the owner runs a checklist with real accounts on both providers.
+
+Sources, read 2026-11-26:
+
+- Dropbox: [OAuth guide](https://docs.dropboxapi.com/dropbox-api/docs/oauth), [authorization endpoints](https://docs.dropboxapi.com/dropbox-api/docs/get-started/authorization), [token revoke](https://docs.dropboxapi.com/dropbox-api/api-reference/user-endpoints/auth/token-revoke), [upload](https://docs.dropboxapi.com/dropbox-api/api-reference/user-endpoints/files/upload), [upload session start](https://docs.dropboxapi.com/dropbox-api/api-reference/user-endpoints/files/upload-session-start), [space usage](https://docs.dropboxapi.com/dropbox-api/api-reference/user-endpoints/users/get-space-usage), [developer guide](https://docs.dropboxapi.com/dropbox-api/docs/developer-resources/developer-guide)
+- Google sign-in: [choose a flow](https://developers.google.com/identity/oauth2/web/guides/choose-authorization-model), [token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model), [code model](https://developers.google.com/identity/oauth2/web/guides/use-code-model), [JavaScript reference](https://developers.google.com/identity/oauth2/web/reference/js-reference), [loading the library](https://developers.google.com/identity/oauth2/web/guides/load-3p-authorization-library), [setup and CSP](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid), [client-side web apps](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow), [web server apps](https://developers.google.com/identity/protocols/oauth2/web-server)
+- Google Drive: [scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [app data folder](https://developers.google.com/workspace/drive/api/guides/appdata), [uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads), [files resource](https://developers.google.com/workspace/drive/api/reference/rest/v3/files), [about](https://developers.google.com/workspace/drive/api/reference/rest/v3/about), [errors](https://developers.google.com/workspace/drive/api/guides/handle-errors)
+- Google review: [audience and publishing status](https://support.google.com/cloud/answer/15549945), [verification requirements](https://support.google.com/cloud/answer/13464321), [when verification is not needed](https://support.google.com/cloud/answer/13464323), [brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification)
+
+A preflight request with a placeholder origin on 2026-11-26 returned CORS headers for the Dropbox token, revoke and upload endpoints and for the Drive file and upload endpoints. No signed-in request was made.
+
+### 11.13 Not confirmed (spike T9.1)
+
+1. Whether a Google "Web application" client can exchange an authorization code with PKCE and no secret. Google's web server page marks `client_secret` "Optional" but describes the flow as for apps that keep secrets, its chooser says the code flow needs a backend, and developers report rejections. The design does not rely on it.
+2. Whether Google's `revoke` (disconnect) leaves the app data folder intact, and which origins `revoke` and the token window need in the policy.
+3. Whether a page on another origin can read `Location` and `Range` from Drive's resumable upload answers. Google's browser sample reads `Location`.
+4. That the Dropbox token exchange and renewal succeed from a browser with PKCE and no secret, and that `refresh_token_expiration_seconds` works with them.
+5. Whether the Dropbox redirect and Google's window work from the installed app (PWA) in Chrome and Edge, and Google's window in Firefox with default tracking protection.
+6. That Drive app data counts against the user's storage quota (assumed).

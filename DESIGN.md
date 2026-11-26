@@ -2,6 +2,7 @@ Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and image blend (F26) UI specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and per-side stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with the cloud sync network exception (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift design system
 
@@ -14,7 +15,7 @@ Drift is a darkroom-style still-photo utility. The user's image is the visual fo
 Rules every screen follows:
 
 - **No decoration or marketing copy.** No gradients, background grids, onboarding tours, separate landing pages, or explanatory subtitles that restate labels. The one exception is the empty Library (section 7.3), which introduces the app with a hero, one line of pitch and four effect previews. Its colour comes only from the sample picture; its chrome uses the same tokens as every other screen. Help lives on the Guide screen (section 7.3).
-- **No remote assets.** System fonts only, bundled `lucide-react` icons only. Zero network requests at runtime.
+- **No remote assets.** System fonts only, bundled `lucide-react` icons only. Zero network requests at runtime, except the cloud backup and sync the user connects (product.md F28), which brings no remote font, icon or style of ours; Google's sign-in script and its style are the provider's.
 - **Semantic tokens only.** Never write raw hex, `rgb()`, or Tailwind palette color utilities (`bg-zinc-900`, `text-blue-500`) in `.tsx` components. Use semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) mapped in `src/styles/app.css`.
 - **Same features on every screen size.** Phone, tablet, and desktop layouts expose the exact same first-release capabilities; only chrome placement and target sizing adapt. First-release acceptance is desktop only; phone and tablet widths are checked in a desktop browser for layout only.
 

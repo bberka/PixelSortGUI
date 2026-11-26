@@ -393,7 +393,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`sliceShift`, `channelSwap`, `blockShuffle`, `posterize`, `bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold` and `thresholdInvert` (all version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`sliceShift`, `channelSwap`, `blockShuffle`, `posterize`, `bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert` and `jpegCrush` (all version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -676,6 +676,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/block-shuffle.ts
   effects/scanline-wave.ts
   effects/rgb-noise.ts
+  effects/jpeg-crush.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
@@ -689,7 +690,7 @@ scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-upda
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented (as have `bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold` and `thresholdInvert`, ranks 6, 7, 8, 9 and 10), as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. Projects and history store the transform ([persistence.md section 8.1](persistence.md#81-database-version-2-sourcetransform-f20)); no UI control changes one yet.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented (as have `bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert` and `jpegCrush`, ranks 6, 7, 8, 9, 10 and 11), as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. Projects and history store the transform ([persistence.md section 8.1](persistence.md#81-database-version-2-sourcetransform-f20)); no UI control changes one yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -709,7 +710,7 @@ This catalogue specifies 11 deterministic effects beyond `pixelSort` and `channe
 | 8 | `pixelSmear` | `glitch` | Per line (angled) | Medium (20 to 60 ms) | Yes | Post-v0.2.0 |
 | 9 | `mirrorFold` | `glitch` | Whole image | Low (< 15 ms) | No | Post-v0.2.0 |
 | 10 | `thresholdInvert` | `color` | Per pixel | Low (< 15 ms) | Yes | Post-v0.2.0 |
-| 11 | `jpegCrush` | `glitch` | Whole image (8×8 blocks) | Medium (30 to 90 ms) | No | Post-v0.2.0 |
+| 11 | `jpegCrush` | `glitch` | Whole image (8×8 blocks) | High (about 150 to 250 ms, measured in Node under load) | No | Post-v0.2.0 |
 
 #### 1. `sliceShift` (version 1, `glitch`, top 5): "Shift random bands of the image sideways."
 
@@ -902,14 +903,21 @@ Runs a deterministic integer 8×8 block transform and aggressive quantisation di
 | `corruptShift` | Corruption strength | number (ratio) | 0.50 | 0..1, step 0.01 | Data bend | `corruptRate` ≠ 0 |
 | `seed` | Seed | seed | random | uint32 | Seed | `corruptRate` ≠ 0 |
 
-- **Behavior:** Operates on source-aligned blocks of size `B = ctx.pxLength(blockSize)` (default 8 source px):
-  1. Convert RGB to integer YCbCr (`Y = floorDiv(299*R + 587*G + 114*B + 500, 1000)`, `Cb = clamp(128 + floorDiv(-169*R - 331*G + 500*B + 500, 1000), 0, 255)`, `Cr = clamp(128 + floorDiv(500*R - 419*G - 81*B + 500, 1000), 0, 255)`).
-  2. If `chromaSubsample` is true, average `Cb` and `Cr` over each `max(2, floorDiv(B, 2))` sub-block.
-  3. Apply a fixed-point integer 2D 8×8 Haar or integer-DCT-approximation transform on each block (resampled to 8×8 grid when `B !== 8`, or applied on 8×8 sub-tiles), quantise coefficients with a checked-in ITU-T T.81 baseline luminance/chrominance quantisation table scaled by `quality` (using integer arithmetic only, no `Math.cos`), then invert.
-  4. If `corruptRate > 0`: for each source block `(bx, by)`, when `unit(seed, 1, bx, by) < corruptRate`, perturb the block's DC `Cb`/`Cr` offsets by `intIn(-s, s, seed, 2|3, bx, by)` where `s = Math.round(corruptShift * 127)` and optionally swap or zero 1 to 3 AC coefficients keyed to `(seed, 4, bx, by)`, creating unmistakable magenta/green data-bend macroblocks.
-  5. Convert YCbCr back to RGB with integer arithmetic and copy alpha unchanged.
-- **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: Medium. Debug views: none.
-- **Provenance:** Standard ITU-T T.81 JPEG baseline quantisation tables (public standard) and data-bending aesthetics. Clean-room own implementation. (Note: true raw-bitstream JPEG corruption remains deferred because browser JPEG decoders vary across engines; pixel-space `jpegCrush` gives identical output across Chromium, Firefox, and Node.)
+- **Behavior:** All arithmetic is integer arithmetic. `roundDiv(sum, n)` means `floorDiv(sum + floorDiv(n, 2), n)`. Blocks are fixed in source space: render column `x` belongs to source block column `bx = floorDiv(floor((x + 0.5) / scale), blockSize)`, and rows likewise (`by`), with `scale` the render context's scale. A block is the run of render pixels with the same `(bx, by)`, `w × h` pixels. At scale 1 it is `blockSize` square, except where the right or bottom edge cuts it; when `scale * blockSize` is a whole number it is `ctx.pxLength(blockSize)` square. A source block that holds no render pixel is skipped. Each block is processed alone:
+  1. Convert each pixel to integer YCbCr: `Y = floorDiv(299*R + 587*G + 114*B + 500, 1000)`, `Cb = clamp(128 + floorDiv(-169*R - 331*G + 500*B + 500, 1000), 0, 255)`, `Cr = clamp(128 + floorDiv(500*R - 419*G - 81*B + 500, 1000), 0, 255)`. Alpha takes no part, so transparent pixels are processed like opaque ones.
+  2. If `chromaSubsample` is true, let `S = max(2, floorDiv(blockSize, 2))` source px. A render column belongs to sub-block column `floorDiv(floor((x + 0.5) / scale) - bx * blockSize, S)`, and rows likewise. Replace `Cb` and `Cr` of every pixel by `roundDiv` of their sum over the pixels of its sub-block.
+  3. Resample each of the three planes to an 8×8 grid. Along an axis of `n` pixels, grid cell `i` (0..7) covers pixels `a .. max(floorDiv((i + 1) * n, 8), a + 1) - 1` with `a = floorDiv(i * n, 8)`. A cell is `roundDiv` of the pixels in the product of its column and row coverage. With `n = 8` this is a copy.
+  4. Transform with the 8×8 DCT whose basis is the checked-in integer table `C[u][i]`, the value `8192 * a(u) * cos((2i + 1) * u * pi / 16)` rounded to the nearest integer, with `a(0) = sqrt(1/8)` and `a(u) = 1/2` otherwise. No cosine is computed at run time. With `f[i][j] = cell - 128` (row `i`, column `j`): `t[i][v] = floorDiv(sum_j C[v][j] * f[i][j] + 1024, 2048)`, then `s[u][v] = sum_i C[u][i] * t[i][v]`, which is the coefficient scaled by `2^15`.
+  5. Quantise with the ITU-T T.81 Annex K tables (luminance for `Y`, chrominance for `Cb` and `Cr`). `k = floorDiv(5000, quality)` when `quality < 50`, else `200 - 2 * quality`; `Q[u][v] = clamp(floorDiv(base[u][v] * k + 50, 100), 1, 255)`. The dequantised coefficient is `F[u][v] = sign(s) * floorDiv(abs(s) + Q * 16384, Q * 32768) * Q`.
+  6. Corrupt. Let `s = Math.round(corruptShift * 127)`. The block is corrupted when `corruptRate > 0`, `s > 0` and `unit(seed, 1, bx, by) < corruptRate`. Then add `8 * intIn(-s, s, seed, 2, bx, by)` to the `Cb` DC coefficient `F[0][0]` and `8 * intIn(-s, s, seed, 3, bx, by)` to the `Cr` DC coefficient (each shifts that channel by the drawn number of levels). Then edit the `Y` coefficients, numbered `8u + v`: for `e` from 0 to `intIn(1, 3, seed, 4, bx, by) - 1`, let `p = intIn(1, 63, seed, 4, bx, by, e, 0)`; if `unit(seed, 4, bx, by, e, 1) < 0.5`, set coefficient `p` to 0, else swap coefficient `p` with coefficient `intIn(1, 63, seed, 4, bx, by, e, 2)`. The DC coefficient of `Y` never changes.
+  7. Invert: `t[i][v] = floorDiv(sum_u C[u][i] * F[u][v] + 1024, 2048)`, then `cell[i][j] = clamp(floorDiv(sum_v C[v][j] * t[i][v] + 16384, 32768) + 128, 0, 255)`.
+  8. Map the grid back to the block: each pixel is `roundDiv` of the cells whose coverage (step 3) includes it, on both axes.
+  9. Convert to RGB with `cb = Cb - 128`, `cr = Cr - 128`: `R = clamp(Y + floorDiv(1402*cr + 500, 1000), 0, 255)`, `G = clamp(Y + floorDiv(-344*cb - 714*cr + 500, 1000), 0, 255)`, `B = clamp(Y + floorDiv(1772*cb + 500, 1000), 0, 255)`. Copy alpha unchanged.
+
+  An implementation may reorder or skip operations only where the integer result is the same, for example by using the table's symmetry. `quality` 100 is not the identity, because colour conversion and the transform round.
+- **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: High; the integer transform runs about 150 to 250 ms on 4 MP. Debug views: none.
+- **Provenance:** Standard ITU-T T.81 JPEG baseline quantisation tables (public standard) and data-bending aesthetics; the quality-to-scale formula is the widely published libjpeg convention. Clean-room own implementation. (Note: true raw-bitstream JPEG corruption remains deferred because browser JPEG decoders vary across engines; pixel-space `jpegCrush` gives identical output across Chromium, Firefox, and Node.)
+- **Tests:** a hand-computed flat block and a hand-computed colour block; the table matches its formula; the output matches a direct floating-point-free reference of steps 1 to 9; `corruptRate` 0 and `corruptShift` 0 give the same bytes; blocks and corruption follow source blocks on a half-scale render; alpha is unchanged; 1 × 1, 1 × N and N × 1 images and both ends of every range; the generic checks of section 14.3; stack JSON round trip; golden cases for defaults, two non-default settings and scale 0.5.
 
 ### 16.2 iOS canvas-limit decode and export path
 

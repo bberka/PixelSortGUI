@@ -8,6 +8,7 @@ export const CHANGELOG_TEXT = `# Changelog
 - New effect: RGB noise, which adds colour or monochrome noise and dead or hot pixels.
 - New effect: Threshold invert, which inverts channels inside a key range and can show the selection.
 - New effect: Pixel smear, which drags selected pixels along an angle in fading trails.
+- New effect: JPEG crush, which crushes blocks like a badly saved JPEG and can corrupt some of them into colour glitches.
 
 ## v0.2.0
 

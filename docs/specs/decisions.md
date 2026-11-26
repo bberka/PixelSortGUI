@@ -247,6 +247,13 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** Coalescing, cooperative cancellation, crash recovery and full-resolution renders work per side with no change to the worker protocol, and an empty or hidden side A costs nothing. The price is a second decoded proxy and worker while both sides are visible.
 - **Revisit if:** Memory use on large images with both sides active causes failures; then share one worker and its decoded source.
 
+### D36. Crop mode shows the uncropped photo without effects (2026-11-26)
+
+- **Options considered:** (a) Draw the crop box over the edited result; (b) render the effect stack on the uncropped image while cropping; (c) show the rotated and flipped photo without effects.
+- **Choice:** Option (c). Split view and Compare are suspended while cropping and return afterwards (`DESIGN.md` section 7.2). A second render coordinator loads the photo with the orientation only (`engine.md` section 8.3). Applying a crop of a different size removes the resize.
+- **Reason:** The edited result covers only the current crop, so it cannot show what lies outside it. Effects depend on the crop's edges, so effects drawn on the uncropped image would not match the result, and with no effects there is nothing for Compare or a second side to show. Changing the main coordinator's transform instead would also change what an export during crop mode writes. A kept resize would stretch a crop of another shape.
+- **Revisit if:** Users need to judge effects while cropping.
+
 ---
 
 ## Open questions for the owner

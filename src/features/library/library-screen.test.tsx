@@ -5,6 +5,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore, makeTestBlob} from '../../../tests/state/fixtures.ts';
 import {App} from '@/app/app.tsx';
 import {IDENTITY_TRANSFORM} from '@/engine/transform.ts';
+import {LANDING} from '@/features/guide/content.ts';
 import {MemoryStorageAdapter} from '@/storage/memory-adapter.ts';
 import type {RestoreResult} from '@/storage/restore.ts';
 import type {AppStore} from '@/state/app-store.ts';
@@ -234,25 +235,65 @@ describe('empty library', () => {
 		const harness = await renderLibrary([]);
 
 		expect(harness.container.querySelector('h2')?.textContent).toBe(
-			'No projects yet',
+			LANDING.pitch,
 		);
+		expect(harness.container.textContent).toContain('Drop photos here');
 		expect(harness.container.textContent).toContain(
 			'Images stay on this device.',
 		);
-		const openButton = [
+		const openButtons = [
 			...harness.container.querySelectorAll<HTMLButtonElement>('button'),
-		].find((button) => button.textContent === 'Open images');
-		expect(openButton).toBeDefined();
-		expect(openButton?.disabled).toBe(false);
+		].filter((button) => button.textContent === 'Open images');
+		expect(openButtons).toHaveLength(1);
+		expect(openButtons[0].disabled).toBe(false);
 		expect(cardElements(harness.container)).toHaveLength(0);
+	});
+
+	it('shows the effect introduction until it is dismissed, then keeps the actions (AC-F27.7)', async () => {
+		const harness = await renderLibrary([]);
+		const names = () =>
+			[
+				...harness.container.querySelectorAll(
+					':scope main button, :scope main a',
+				),
+			].map(
+				(element) =>
+					element.getAttribute('aria-label') ?? element.textContent ?? '',
+			);
+		expect(names()).toEqual(
+			expect.arrayContaining(['Dismiss introduction', 'Try a sample']),
+		);
+		expect(harness.container.textContent).toContain('See what Drift does');
+
+		await act(async () => {
+			harness.container
+				.querySelector<HTMLButtonElement>(
+					'button[aria-label="Dismiss introduction"]',
+				)!
+				.click();
+		});
+
+		expect(harness.container.textContent).not.toContain('See what Drift does');
+		expect(globalThis.document.activeElement?.textContent).toBe(LANDING.pitch);
+		expect(names()).toEqual(['Open images', 'Try a sample', 'Read the guide']);
+		expect((await harness.repository.getAppState()).welcomeDismissed).toBe(
+			true,
+		);
+	});
+
+	it('keeps Import images, Guide and Settings in the app bar (AC-F2.9)', async () => {
+		const harness = await renderLibrary([]);
+
+		const labels = [
+			...harness.container.querySelectorAll(':scope header button'),
+		].map((button) => button.getAttribute('aria-label') ?? button.textContent);
+		expect(labels).toEqual(
+			expect.arrayContaining(['Import images', 'Guide', 'Settings']),
+		);
 	});
 
 	it('triggers the hidden file picker when Open images is activated', async () => {
 		const harness = await renderLibrary([]);
-		// The first-launch welcome card has a picker of its own (AC-F27).
-		await act(async () => {
-			await harness.store.getState().dismissWelcome();
-		});
 		const openButton = [
 			...harness.container.querySelectorAll<HTMLButtonElement>('button'),
 		].find((button) => button.textContent === 'Open images');
@@ -613,10 +654,8 @@ describe('card menu', () => {
 		await flush(12);
 		await settleTimer();
 
-		expect(harness.container.textContent).toContain('No projects yet');
+		expect(harness.container.textContent).toContain(LANDING.pitch);
 		expect(globalThis.document.activeElement?.tagName).toBe('H2');
-		expect(globalThis.document.activeElement?.textContent).toBe(
-			'No projects yet',
-		);
+		expect(globalThis.document.activeElement?.textContent).toBe(LANDING.pitch);
 	});
 });

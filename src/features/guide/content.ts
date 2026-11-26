@@ -1,6 +1,6 @@
 /**
- All text of the in-app guide and the welcome card (product.md F27). Edit the
- words here; `guide-screen.tsx` only lays them out. The effects reference and
+ All text of the in-app guide and the empty Library (product.md F2, F27). Edit
+ the words here; the screens only lay them out. The effects reference and
  the built-in preset list are generated from the registry and the preset
  module, so they are not written here.
 
@@ -45,14 +45,33 @@ export const GUIDE_BUTTON_LABEL = 'Guide';
 export const GUIDE_BUTTON_TOOLTIP = 'Guide (?)';
 export const GUIDE_CONTENTS_LABEL = 'Contents';
 export const GUIDE_SETTINGS_LINK = 'Read the guide';
-export const GUIDE_EMPTY_LIBRARY_LINK = 'New here? Read the guide';
 
-export const WELCOME = {
-	title: 'Welcome to Drift',
-	text: 'Pixel sorting and glitch effects for your photos. Everything stays on this device.',
-	importLabel: 'Import a photo',
+export const LANDING = {
+	pitch: 'Glitch art and pixel sorting for your photos',
+	dropRegionLabel: 'Add photos',
+	dropTitle: 'Drop photos here',
+	openLabel: 'Open images',
+	sampleLabel: 'Try a sample',
+	sampleBusyLabel: 'Creating sample…',
+	sampleProjectName: 'Sample',
+	sampleCreated: 'Created the sample project',
+	sampleFailed: "Couldn't create the sample project.",
 	guideLabel: 'Read the guide',
-	dismissLabel: 'Dismiss welcome',
+	privacy: 'Images stay on this device.',
+	offline: 'Drift works offline and needs no account.',
+	formats: 'Opens JPEG, PNG, WebP, GIF, BMP, AVIF, TIFF and SVG.',
+	shortcutsLabel: 'Shortcuts:',
+	// Each key must also be in `SHORTCUTS`; `content.test.ts` checks it.
+	shortcuts: [
+		{key: '?', action: 'Guide'},
+		{key: '\\', action: 'Compare'},
+		{key: 'S', action: 'Split view'},
+		{key: '0', action: 'Fit'},
+	],
+	introTitle: 'See what Drift does',
+	introText:
+		'Pick one to try it on a sample picture. Left is the original, right is the result.',
+	introDismissLabel: 'Dismiss introduction',
 } as const;
 
 export const SHORTCUTS: readonly Shortcut[] = [
@@ -187,7 +206,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			{
 				kind: 'steps',
 				items: [
-					'Import: choose “Import images” or drag files onto the window. Each photo becomes a project in the Library.',
+					'Import: choose “Import images” or drag files onto the window. Each photo becomes a project in the Library. With no projects yet, “Try a sample” makes one from a built-in picture.',
 					'Add effects: choose “Add effect” in the editor, or apply a preset from the toolbar.',
 					'Tweak: select an effect and move its controls. The preview updates as you drag and sharpens when you stop.',
 					'Compare: use Compare to see the original, or split view to put two looks beside each other.',

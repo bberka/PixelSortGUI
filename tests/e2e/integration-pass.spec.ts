@@ -7,7 +7,9 @@ test.describe('integration pass: database reload banner and Settings/About links
 	}) => {
 		await page.goto('/');
 		await expect(
-			page.getByRole('heading', {name: 'No projects yet'}),
+			page.getByRole('heading', {
+				name: 'Glitch art and pixel sorting for your photos',
+			}),
 		).toBeVisible();
 
 		// Trigger a real browser `versionchange` event on the open `drift` database.

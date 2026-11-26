@@ -309,6 +309,11 @@ export type AppState = {
 	retryRender(): void;
 
 	// Presets
+	/**
+	 Replaces the edited side's stack with a copy of `stack`, as one history
+	 entry named `label`.
+	 */
+	applyStack(stack: EffectStack, label: string): Promise<void>;
 	applyPreset(presetId: string): Promise<void>;
 	addPresetToStack(presetId: string): Promise<void>;
 	saveStackAsPreset(name: string): Promise<UserPresetRecord>;
@@ -2168,10 +2173,22 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			sideRenderer.retry();
 		},
 
-		async applyPreset(presetId) {
+		async applyStack(stack, label) {
 			await flushPendingCommitImpl();
 			const active = requireActiveProject();
 			const side = selectEditingSide(get());
+			const nextStack = cloneStackWithNewIds(
+				stack,
+				new Set(
+					sideStack(active, otherSide(side)).instances.map((item) => item.id),
+				),
+				getRandomValues,
+			);
+			const selectedId = nextStack.instances[0]?.id ?? null;
+			await commitNextStack(side, nextStack, selectedId, label);
+		},
+
+		async applyPreset(presetId) {
 			const preset =
 				getBuiltinPreset(presetId) ??
 				get().presets.find((item) => item.id === presetId);
@@ -2179,20 +2196,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				throw new StorageValidationError(`Preset "${presetId}" not found`);
 			}
 
-			const nextStack = cloneStackWithNewIds(
-				preset.stack,
-				new Set(
-					sideStack(active, otherSide(side)).instances.map((item) => item.id),
-				),
-				getRandomValues,
-			);
-			const selectedId = nextStack.instances[0]?.id ?? null;
-			await commitNextStack(
-				side,
-				nextStack,
-				selectedId,
-				`Apply preset ${preset.name}`,
-			);
+			await get().applyStack(preset.stack, `Apply preset ${preset.name}`);
 		},
 
 		async addPresetToStack(presetId) {

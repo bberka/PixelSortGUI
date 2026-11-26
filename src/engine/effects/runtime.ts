@@ -6,6 +6,7 @@ import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
 import {jpegCrushEffect} from './jpeg-crush.ts';
 import {mirrorFoldEffect} from './mirror-fold.ts';
+import {pixelSmearEffect} from './pixel-smear.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 import {sliceShiftEffect} from './slice-shift.ts';
 import {posterizeEffect} from './posterize.ts';
@@ -29,6 +30,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	bayerDitherEffect,
 	rgbNoiseEffect,
 	thresholdInvertEffect,
+	pixelSmearEffect,
 	jpegCrushEffect,
 ];
 

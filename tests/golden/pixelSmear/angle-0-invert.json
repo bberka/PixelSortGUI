@@ -1,0 +1,25 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sm000001",
+				"type": "pixelSmear",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 0,
+					"selectKey": "luma",
+					"threshold": [0.5, 1],
+					"invert": true,
+					"decay": 0.92,
+					"maxLength": 4096
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

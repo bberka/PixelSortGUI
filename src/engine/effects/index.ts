@@ -10,6 +10,7 @@ import {
 	type ChannelShiftParams,
 } from './channel-shift-spec.ts';
 import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
+import {pixelSmearSpec, type PixelSmearParams} from './pixel-smear-spec.ts';
 import {jpegCrushSpec, type JpegCrushParams} from './jpeg-crush-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
@@ -113,6 +114,14 @@ const lazyThresholdInvertEffect: EffectDefinition<ThresholdInvertParams> = {
 	},
 };
 
+const lazyPixelSmearEffect: EffectDefinition<PixelSmearParams> = {
+	...pixelSmearSpec,
+	async render(input, output, params, ctx) {
+		const {pixelSmearEffect} = await import('./pixel-smear.ts');
+		return pixelSmearEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyJpegCrushEffect: EffectDefinition<JpegCrushParams> = {
 	...jpegCrushSpec,
 	async render(input, output, params, ctx) {
@@ -139,6 +148,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyBayerDitherEffect,
 	lazyRgbNoiseEffect,
 	lazyThresholdInvertEffect,
+	lazyPixelSmearEffect,
 	lazyJpegCrushEffect,
 ];
 

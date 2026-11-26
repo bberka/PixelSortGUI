@@ -1,0 +1,25 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sm000001",
+				"type": "pixelSmear",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 30,
+					"selectKey": "luma",
+					"threshold": [0.75, 1],
+					"invert": false,
+					"decay": 0.8,
+					"maxLength": 8
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

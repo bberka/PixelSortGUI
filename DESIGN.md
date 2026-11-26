@@ -260,7 +260,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-------------------------------+  + safe-area-bottom
 ```
 
-- **App bar and toolbar:** The app bar has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width. Undo, Redo, Presets, and Compare/Split live in the editor toolbar directly above the canvas.
+- **App bar and toolbar:** The app bar starts with the Drift icon (`/icons/icon.svg`, `24 px`, decorative with `alt=""`) immediately left of the `"Drift"` heading on every screen, after the back button where there is one. The app bar has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width. Undo, Redo, Presets, and Compare/Split live in the editor toolbar directly above the canvas.
 - **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled switch/`"Off"` text, and tap-to-select; tapping the chip's `⋮` menu opens Move left, Move right, Duplicate, Remove. A pinned `+` chip opens Add effect.
 - **Phone bottom sheet:** Starts at **Half** detent (capped so the canvas keeps at least `40%` of viewport height while a parameter is being adjusted), and cycles or drags between **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half**, and **Expanded** (`80%` viewport height, dropping temporarily or remaining clear of the canvas when collapsed/half).
 - **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet and stack strip into a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.

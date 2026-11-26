@@ -8,6 +8,7 @@ Updated with post-v0.1.0 specs (F20 geometry, F21 formats, F22 effect catalogue)
 Updated with multi-image blending (`imageBlend`, F26) spec by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with exact geometry rounding and resampling rules (section 16.3) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with split side rendering by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated `imageBlend` extra sources, sampling arithmetic and unlisted effects by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 
 # Drift engine spec
 
@@ -91,6 +92,7 @@ type RenderContext = {
 	checkpoint(): void | Promise<void>; // see section 8.4; throws Cancelled when stale
 	progress(fraction: number): void; // 0..1 within this instance
 	scratch(slot: number, byteLength: number): Uint8Array; // reusable buffer, contents undefined
+	getSource(sha256: string): ExtraSource | undefined; // read only, section 16.5
 	readonly debugView: 'none' | 'selection';
 };
 ```
@@ -113,6 +115,7 @@ type ParamSpec = ParamSpecBase &
 		| {kind: 'range'; min: number; max: number; step: number; default: readonly [number, number]}
 		| {kind: 'angle'; default: number; snaps: readonly number[]} // degrees, stored in [0, 360), step 0.1
 		| {kind: 'seed'} // uint32; engine default is 0; whoever creates an instance supplies a random seed (e.g. from crypto.getRandomValues)
+		| {kind: 'image'; default: ''} // SHA-256 of an extra source as 64 lowercase hex digits, or '' for none (section 16.5)
 	);
 ```
 
@@ -120,7 +123,7 @@ Rules:
 
 - `unit: 'px'` means the value is in source-image pixels and the effect must convert it with `ctx.px` or `ctx.pxLength`.
 - Numbers are stored rounded to their `step` (angles to 0.1). Integers are stored as integers.
-- `validateParams(spec, params)` returns a complete, valid parameter object: missing keys get the default, values of the wrong type get the default (`NaN` counts as a wrong type; `±Infinity` clamps to `[min, max]` for `number` and `integer` and gets the default for `angle`, as does a finite angle large enough to overflow when multiplied by 10; a `range` that is not a two-number array gets the default; a `seed` of the wrong type becomes `0`), numbers are clamped to `[min, max]` and rounded to `step` (steps counted from `0`, not `min`: clamp, round half away from zero — dividing by `k` when `step` is `1/k` so decimals store cleanly — clamp again, and normalise `-0` to `0`), enums not in `options` get the default, ranges are clamped and swapped if `lo > hi`, angles are normalised with `wrap(roundHalfAway(a * 10), 3600) / 10`, seeds are converted with `>>> 0`. Unknown keys are dropped. `defaultParams` returns `0` for `seed`; whoever creates an effect instance supplies a random seed. The pipeline always validates before calling `render`.
+- `validateParams(spec, params)` returns a complete, valid parameter object: missing keys get the default, values of the wrong type get the default (`NaN` counts as a wrong type; `±Infinity` clamps to `[min, max]` for `number` and `integer` and gets the default for `angle`, as does a finite angle large enough to overflow when multiplied by 10; a `range` that is not a two-number array gets the default; a `seed` of the wrong type becomes `0`), numbers are clamped to `[min, max]` and rounded to `step` (steps counted from `0`, not `min`: clamp, round half away from zero — dividing by `k` when `step` is `1/k` so decimals store cleanly — clamp again, and normalise `-0` to `0`), enums not in `options` get the default, ranges are clamped and swapped if `lo > hi`, angles are normalised with `wrap(roundHalfAway(a * 10), 3600) / 10`, seeds are converted with `>>> 0`, an `image` that is not 64 lowercase hex digits becomes `''`. Unknown keys are dropped. `defaultParams` returns `0` for `seed`; whoever creates an effect instance supplies a random seed. The pipeline always validates before calling `render`.
 - `visibleWhen` only hides controls; hidden parameters keep their values and still reach `render`.
 - `group` names a section in the parameter panel. Groups appear in first-use order.
 
@@ -140,6 +143,7 @@ type EffectDefinition<P extends Record<string, ParamValue> = Record<string, Para
 	readonly params: {readonly [K in keyof P]: ParamSpec};
 	readonly migrations?: Readonly<Record<number, (old: Record<string, ParamValue>) => Record<string, ParamValue>>>;
 	readonly debugViews?: readonly 'selection'[];
+	readonly unlisted?: boolean; // left out of the add-effect list and the guide; stored instances still render
 	render(input: RgbaImage, output: RgbaImage, params: P, ctx: RenderContext): void | Promise<void>;
 };
 ```
@@ -156,7 +160,7 @@ Contract for `render`:
 ```ts
 type EffectRegistry = {
 	get(type: string): EffectDefinition | undefined;
-	list(): readonly EffectDefinition[]; // registration order, used for the add-effect list
+	list(): readonly EffectDefinition[]; // registration order; the add-effect list shows those without `unlisted`
 };
 function createRegistry(definitions: readonly EffectDefinition[]): EffectRegistry; // throws on duplicate type
 ```
@@ -177,12 +181,13 @@ type PipelineOptions = {
 	sourceKey?: string; // identifies the source image in stage cache keys; defaults to ''
 	checkpoint: () => void | Promise<void>;
 	onProgress?: (fraction: number) => void;
+	extraSources?: ReadonlyMap<string, ExtraSource>; // keyed by SHA-256, section 16.5
 };
 
 type PipelineResult = {
 	image: RgbaImage;
 	perInstanceMs: number[];
-	warnings: {instanceId: string; code: 'unknown-type' | 'newer-version' | 'params-fixed'}[];
+	warnings: {instanceId: string; code: 'unknown-type' | 'newer-version' | 'params-fixed' | 'missing-source'}[];
 };
 ```
 
@@ -193,11 +198,12 @@ Algorithm:
    1. Skip it if `enabled` is false.
    2. Look up its definition. If the type is unknown, or the instance `version` is greater than the definition's, skip it and add a warning.
    3. Migrate parameters if the instance `version` is lower (section 4.4), then `validateParams`. Emit a `params-fixed` warning when validation changed, added (including filling missing keys from defaults), or dropped a value after migration; migration alone does not emit it.
-   4. Build the context (`scale = renderWidth / sourceWidth`, `seed = params.seed ?? 0`, `debugView` from `options.debug` when it names this instance and the effect lists that view in `debugViews`, else `'none'`).
-   5. `output` = whichever of `a`, `b` is not `current`. Call `render(current, output, params, ctx)`. The pipeline does not copy `current` defensively before calling `render`.
-   6. If `debugView` is `'none'` and (`mix < 1` or `blend !== 'normal'`), composite in place: `output = composite(current, output, mix, blend)` (section 4.5).
-   7. `current = output`.
-   8. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection. If the debug instance's effect does not list `'selection'` in `debugViews`, it renders normally with mix and blend and the pipeline still stops there; if the debug instance is disabled or unknown, the whole stack renders normally.
+   4. If a parameter of kind `image` is not `''` and `options.extraSources` has no entry for it, add one `missing-source` warning for the instance. The effect still runs and decides what to do. This instance and every later one are not read from or written to the stage cache.
+   5. Build the context (`scale = renderWidth / sourceWidth`, `seed = params.seed ?? 0`, `debugView` from `options.debug` when it names this instance and the effect lists that view in `debugViews`, else `'none'`).
+   6. `output` = whichever of `a`, `b` is not `current`. Call `render(current, output, params, ctx)`. The pipeline does not copy `current` defensively before calling `render`.
+   7. If `debugView` is `'none'` and (`mix < 1` or `blend !== 'normal'`), composite in place: `output = composite(current, output, mix, blend)` (section 4.5).
+   8. `current = output`.
+   9. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection. If the debug instance's effect does not list `'selection'` in `debugViews`, it renders normally with mix and blend and the pipeline still stops there; if the debug instance is disabled or unknown, the whole stack renders normally.
 3. Return a fresh copy of `current` (never aliasing `source`, a stage cache entry, or a working buffer).
 
 `perInstanceMs` has one entry per stack instance at the same index, with `0` for instances that did not run. Progress is reported as `(completedInstances + instanceFraction) / enabledInstanceCount` (counting skipped unknown or newer-version instances as completed); fractions lower than the last reported are dropped, and a render that ends early (cache hit or debug stop) reports `1` at the end.
@@ -630,7 +636,7 @@ Run with `vp test run` in Node. Required per module:
 ### 14.2 Golden images
 
 - Inputs are synthetic images generated in code by `tests/fixtures/synthetic.ts` from `hash32`, so no photos are needed in the repository: `gradient-64x48` (diagonal colour gradient), `noise-97x61` (hashed RGB noise, odd size), `bands-80x80` (horizontal bands of 8 grey levels with 1 px black separators), `alpha-32x32` (gradient with a transparent quarter).
-- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` (plus an optional `transform`, section 16.3, applied to the input first; geometry cases live in `tests/golden/transform/`) and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (a dev dependency that task `T2.7` adds) in Node tests.
+- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` (plus an optional `transform`, section 16.3, applied to the input first; geometry cases live in `tests/golden/transform/`; and an optional `extraSources`, section 16.5, mapping a SHA-256 key to `{fixture, scale?}`: the named synthetic image, box-downscaled to `floor(side * scale)`, with `scale` defaulting to the case's) and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (a dev dependency that task `T2.7` adds) in Node tests.
 - The test renders the case at `scale` and compares bytes exactly. On mismatch it writes `<case>.actual.png` and a diff image to `tests/golden/.out/` (git-ignored) and reports the count of differing pixels.
 - `vp run golden:update` rewrites expected images and is never run by CI.
 - Minimum cases for `pixelSort`: every interval mode; every sort key at angle 0; every order; every fill; angles 0, 30, 45, 90, 180, 270, 333.3; `invert`; `maxLength` with and without jitter; `skipChance` 0.5; `discretize` 4; selection debug view; the `alpha-32x32` input; scale 0.5. For `channelShift`: defaults, two non-default settings, scale 0.5.
@@ -677,6 +683,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/scanline-wave.ts
   effects/rgb-noise.ts
   effects/jpeg-crush.ts
+  effects/image-blend.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
@@ -1122,7 +1129,11 @@ Extend `ParamSpec` (`src/engine/types.ts`) with an 8th kind:
 | `scale` | Scale | `number` (`percent`) | `1` | `0.1..4`, step `0.01` | Placement | always |
 | `offsetX` | Offset X | `number` (`percent`) | `0` | `-1..1`, step `0.01` | Placement | always |
 | `offsetY` | Offset Y | `number` (`percent`) | `0` | `-1..1`, step `0.01` | Placement | always |
-| `rotation` | Rotation | `angle` | `0` | `[0, 360)`, step `0.1`; snaps `0, 45, 90, 135, 180, 225, 270, 315` | Placement | always |
+| `rotation` | Rotation | `angle` | `0` | `[0, 360)`, step `0.1`; snaps `0, 45, 90, 135, 180, 225, 270, 315`; degrees clockwise on screen | Placement | always |
+
+Until `ImageControl` exists (roadmap task `T8.10`) nothing in the app can set `image`, so the definition has `unlisted: true`: the add-effect list and the guide's effects reference leave it out. `T8.10` removes the flag. An instance that is already stored renders, and the parameter panel shows no control for `image`.
+
+With `image` empty, or naming a source `ctx.getSource` cannot resolve, `render` copies `input` to `output` byte for byte, whatever the other parameters are. It calls `ctx.checkpoint()` at least once per 16,384 pixels on that path too. It has no selection debug view and no seed.
 
 Note: The universal instance `Blend & Mix` controls (`EffectInstance.blend` and `mix`, AC-F4.7) remain unchanged on every instance; `imageBlend` uses its own `blendMode` and `opacity` parameters so all 10 photographic/glitch blend modes are available without changing AC-F4.7.
 
@@ -1149,14 +1160,14 @@ Let the base pixel be `(iR, iG, iB, iA)` and the sampled overlay pixel be `(sR, 
 
 1. If `effA === 0`, copy `(iR, iG, iB, iA)` unchanged.
 2. Otherwise compute `outA_num = effA * 255 + iA * (255 - effA)` (`0..65025`) and `outA = floorDiv(2 * outA_num + 255, 510)` (`0..255`).
-3. If `outA === 0`, output `(0, 0, 0, 0)`.
-4. Otherwise, for each channel `C` in `R, G, B`, let `bC = blendChannel(iC, sC, blendMode)` and `premul = effA * ((255 - iA) * sC + iA * bC) + iA * (255 - effA) * iC`. Output `outC = clamp(floorDiv(2 * premul + outA_num, 2 * outA_num), 0, 255)`.
+3. `outA` is at least 1 here, because `effA >= 1`.
+4. For each channel `C` in `R, G, B`, let `bC = blendChannel(iC, sC, blendMode)` and `premul = effA * ((255 - iA) * sC + iA * bC) + iA * (255 - effA) * iC`. Output `outC = clamp(floorDiv(2 * premul + outA_num, 2 * outA_num), 0, 255)`.
 
 All intermediate values stay below `2^32`, well within IEEE-754 exact integers (`2^53 - 1`), and match W3C Compositing Level 1 `source-over` with separable blend modes without dark fringing on transparent bases.
 
 #### Placement, rotation, and sampling (deterministic)
 
-Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceHeight = Hs`, `ctx.scale = W / Ws`) and overlay render image `(Ow, Oh)` (with overlay source dimensions `(Ows, Ohs)`):
+Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceHeight = Hs`, `ctx.scale = W / Ws`) and the overlay `ctx.getSource(image)`, with render image size `(Ow, Oh)` and source dimensions `(Ows, Ohs) = (sourceWidth, sourceHeight)`. All values are IEEE-754 doubles, evaluated in the order written:
 
 1. Compute base-to-overlay fit scale `(fx, fy)` in render pixels:
    - `cover`: `s = max(W / Ow, H / Oh)`, `fx = s`, `fy = s`.
@@ -1165,22 +1176,27 @@ Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceH
    - `tile` or `none`: `fx = (ctx.scale * Ows) / Ow`, `fy = (ctx.scale * Ohs) / Oh` (1:1 source-pixel scale regardless of proxy level).
 2. Apply user `scale`: `sx = fx * scale`, `sy = fy * scale`.
 3. Overlay centre in render pixels: `cx = W / 2 + offsetX * W`, `cy = H / 2 + offsetY * H`.
-4. Rotation angle `a = wrap(Math.round(rotation * 10), 3600)` reads `(DX, DY) = DIRECTION_TABLE[a]` (`src/engine/direction-table.ts`; `cos = DX / 4096`, `sin = -DY / 4096`, zero `Math.sin`/`Math.cos` calls).
+4. Rotation angle `a = wrap(Math.round(rotation * 10), 3600)` reads `(DX, DY) = DIRECTION_TABLE[a]` (`src/engine/direction-table.ts`; `cos = DX / 4096`, `sin = -DY / 4096`, zero `Math.sin`/`Math.cos` calls). With `y` growing downward, step 5 turns the overlay clockwise on screen as `rotation` grows. The table's rounding to `1/4096` is part of the result.
 5. For each output pixel `(x, y)`:
    - Relative offset `dx = (x + 0.5) - cx`, `dy = (y + 0.5) - cy`.
    - Inverse rotate: `rx = dx * cos + dy * sin`, `ry = -dx * sin + dy * cos`.
    - Overlay sample coordinate: `ux = rx / sx + Ow / 2 - 0.5`, `uy = ry / sy + Oh / 2 - 0.5`.
    - If `fit === 'tile'`: wrap `ux` into `[0, Ow)` and `uy` into `[0, Oh)` with `wrap`.
    - Else if `ux < -0.5 || ux > Ow - 0.5 || uy < -0.5 || uy > Oh - 0.5`: sampled pixel is `(0, 0, 0, 0)` (transparent, leaves base unchanged).
-   - Otherwise sample `(ux, uy)` with premultiplied-alpha bilinear interpolation (clamping edge taps to `[0, Ow - 1] × [0, Oh - 1]`, or wrapping taps when `fit === 'tile'`).
+   - Otherwise sample `(ux, uy)` with premultiplied-alpha bilinear interpolation in 1/256 pixel steps:
+     - `qx = Math.floor(ux * 256 + 0.5)`, `x0 = floorDiv(qx, 256)`, `tx = qx - 256 * x0`, `x1 = x0 + 1`; the same for `y`.
+     - Each tap index is clamped to `[0, Ow - 1]` (`[0, Oh - 1]`), or wrapped with `wrap` when `fit === 'tile'`.
+     - Tap weights are `w = wx * wy`, with `wx` equal to `256 - tx` for `x0` and `tx` for `x1`, so the four sum to `65536`.
+     - With `sumA = sum(w * A)`: `sA = floorDiv(2 * sumA + 65536, 131072)`; each colour channel is `floorDiv(2 * sum(w * A * C) + sumA, 2 * sumA)`, or `0` when `sumA === 0`.
 
 #### Pipeline, worker protocol, proxies, and stage cache
 
 - **Context and pipeline (`src/engine/types.ts`, `src/engine/pipeline.ts`):**
-  - `PipelineOptions` adds `extraSources?: ReadonlyMap<string, RgbaImage>` (keyed by `sha256`).
-  - `RenderContext` adds `getSource(sha256: string): RgbaImage | undefined`.
-  - `PipelineWarning['code']` adds `'missing-source'`. When `imageBlend` has a non-empty `params.image` that `ctx.getSource` cannot resolve, it copies `input` to `output` unchanged and the pipeline records `{instanceId, code: 'missing-source'}`.
-- **Stage cache (`src/engine/pipeline.ts`):** `stageCacheKey` already hashes `canonicalStackJson(enabledPrefix)`, which contains `params.image` (an immutable content-addressed SHA-256). When `preview.worker.ts` finishes loading an extra source, it calls `cache.clear()` so any earlier render that saw `'missing-source'` is invalidated.
+  - An **extra source** is an image other than the project's source that an `image` parameter names: `type ExtraSource = RgbaImage & {readonly sourceWidth: number; readonly sourceHeight: number}`. `width` and `height` are the size of the pixels handed to the engine (a proxy or the export decode); `sourceWidth` and `sourceHeight` are the size of the stored image, which `tile` and `none` need because a proxy is not scaled by `ctx.scale`. The engine only reads it.
+  - `PipelineOptions` adds `extraSources?: ReadonlyMap<string, ExtraSource>` (keyed by `sha256`).
+  - `RenderContext` adds `getSource(sha256: string): ExtraSource | undefined`, which reads that map.
+  - `PipelineWarning['code']` adds `'missing-source'`. When `imageBlend` has a non-empty `params.image` that `ctx.getSource` cannot resolve, it copies `input` to `output` unchanged and the pipeline records `{instanceId, code: 'missing-source'}` (section 4.3).
+- **Stage cache (`src/engine/pipeline.ts`):** `stageCacheKey` already hashes `canonicalStackJson(enabledPrefix)`, which contains `params.image` (an immutable content-addressed SHA-256). A stage at or after a missing source is neither read nor stored, so a render made before an extra source arrived is never reused, and the worker does not need to clear the cache when it loads one.
 - **Preview worker (`src/worker/protocol.ts`, `src/worker/preview.worker.ts`):**
   - `PreviewRequest` adds `{type: 'loadExtraSource'; requestId: number; sha256: string; blob: Blob; width: number; height: number}` and `{type: 'unloadExtraSource'; sha256: string}`.
   - `PreviewResponse` adds `{type: 'extraSourceLoaded'; requestId: number; sha256: string}`.

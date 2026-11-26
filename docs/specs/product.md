@@ -419,7 +419,7 @@ Adds a catalogue of 11 deterministic still-photo glitch effects beyond `pixelSor
 
 Acceptance criteria:
 
-- AC-F22.1: Each implemented effect is registered in `src/engine/effects/index.ts`, appears in the "Add effect" picker with its label and one-line description, and generates all controls from `ParamSpec` without custom UI code.
+- AC-F22.1: Each implemented effect is registered in `src/engine/effects/index.ts`, appears in the "Add effect" picker with its label and one-line description, and generates all controls from `ParamSpec` without custom UI code. An effect marked `unlisted` ([engine.md section 4.1](engine.md#41-effect-definition)) is not offered.
 - AC-F22.2: Each implemented effect passes the generic contract suite in `tests/engine/effect-contract.test.ts` (output size, input immutability, determinism, `mix = 0` identity) and has committed golden-image cases under `tests/golden/<type>/`.
 - AC-F22.3: Built-in presets `builtin:vhs-split` and `builtin:tile-scramble` are enabled once `sliceShift`, `blockShuffle`, and `channelSwap` land.
 
@@ -498,6 +498,8 @@ Merge or composite a second (third, ...) image into a project using an **`imageB
 - **Controls:** Image picker, Blend mode (`Normal`, `Multiply`, `Screen`, `Overlay`, `Lighten`, `Darken`, `Difference`, `Exclusion`, `Add`, `Subtract`), Opacity (`0%` to `100%`), Fit (`Cover`, `Contain`, `Stretch`, `Tile`, `None`), Scale (`10%` to `400%`), Offset X / Y (`-100%` to `+100%`), and Rotation (`0°` to `360°`).
 - **Limits and storage:** Up to **8** distinct extra images per project (each subject to F1's 16,384 px / 50 MP / 200 MB limits). Extra images live in the existing `sources` store, deduplicated by SHA-256, reference-counted across projects and undo history, and included automatically in `.glproj` project files (`F25`) and backups (`F17`). Saving a stack as a user preset clears `image` parameters to empty so presets never pin images.
 
+`imageBlend` is not offered in "Add effect" or the guide until the image picker exists ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)).
+
 Acceptance criteria:
 
 - AC-F26.1: Adding `imageBlend` to a project, picking a second image from device or library, and setting Blend mode to `Difference` and Opacity to `100%` updates the preview within the visible-update budget and produces bit-identical output on repeated PNG exports.
@@ -514,7 +516,7 @@ A Guide screen inside the app at `#/guide`, so the user can learn Drift without 
 
 - **Opening it:** an icon button `"Guide"` (question-mark circle, tooltip `"Guide (?)"`, or `"Guide"` without a keyboard, AC-F18.7) in the app bar of the Library and the Editor; a `"Read the guide"` link in Settings -> About; and the `?` key anywhere in the app, unless focus is in a text field or a dialog is open. On the Guide, the app bar has a back button (`"Back to editor"` when a project is open, otherwise `"Back to library"`) and Settings. Opening the Guide does not close the open project or change its stack, history or view.
 - **Content, in this order:** what Drift is (offline, photos stay on the device, saved automatically in the browser); quick start (import, add effects, tweak, compare or split, export); the effect stack; effects reference; pixel sort concepts (angle, line, selection, run, interval, sort key, mask) in plain words from [CONTEXT.md](../../CONTEXT.md) and [engine.md section 5](engine.md#5-pixel-sort-effect-pixelsort); presets; undo and history; compare and split view; export, including the file-size limit; keyboard shortcuts (left out on touch devices, AC-F18.7); storage and privacy (quota, private browsing, no backup yet); install and offline use. The text describes only what the app does today.
-- **Generated parts:** the effects reference lists every effect in the registry with its label, description and each parameter's label, range, default, help and visibility condition, read from the parameter schema (engine.md section 3). The built-in preset names come from the preset list. A new effect or preset appears with no change to the guide.
+- **Generated parts:** the effects reference lists every effect in the registry that is not `unlisted` with its label, description and each parameter's label, range, default, help and visibility condition, read from the parameter schema (engine.md section 3). The built-in preset names come from the preset list. A new effect or preset appears with no change to the guide.
 - **Text in one place:** all other guide text and the empty Library's text are in `src/features/guide/content.ts`.
 - **Table of contents:** at 1024 px width and wider a sticky list beside the text; narrower, a collapsible `"Contents"` button above it. Choosing an entry scrolls to the section, moves focus to its heading and (when collapsible) closes the list. The URL stays `#/guide`.
 - **Empty Library:** always offers `"Read the guide"` among its actions (F2).
@@ -525,7 +527,7 @@ Acceptance criteria:
 - AC-F27.1: The `"Guide"` button in the Library and Editor app bar opens `#/guide`; the back button returns to the previous screen, and an open project renders as before.
 - AC-F27.2: Pressing `?` in the Library or Editor opens the Guide; pressing it while typing in a text field or with a dialog open does nothing.
 - AC-F27.3: Settings -> About -> `"Read the guide"` closes Settings and opens the Guide.
-- AC-F27.4: Every effect type in the registry, with every parameter label, appears in the effects reference (unit test).
+- AC-F27.4: Every effect type in the registry, with every parameter label, appears in the effects reference (unit test), except effects marked `unlisted` ([engine.md section 4.1](engine.md#41-effect-definition)).
 - AC-F27.5: At 1440 x 900 the contents list stays visible while the text scrolls; at 390 x 844 and 820 x 1180 it is collapsed behind `"Contents"`. Choosing an entry scrolls to that section and focuses its heading.
 - AC-F27.6: After one online visit, loading `#/guide` offline shows the Guide, with no request to another origin.
 - AC-F27.7: On a fresh profile the effect introduction is shown. After dismissing it and reloading, it does not return, and the empty Library still shows "Open images", "Try a sample" and "Read the guide". Dismissing moves focus to the pitch heading. A first import dismisses it too: after deleting every project the empty Library shows no introduction.

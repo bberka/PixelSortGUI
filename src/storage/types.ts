@@ -188,6 +188,11 @@ export type StorageRepository = {
 	): Promise<ProjectRecord>;
 	undo(projectId: string): Promise<HistoryStepResult | null>;
 	redo(projectId: string): Promise<HistoryStepResult | null>;
+	// Moves the history head without deleting later entries.
+	jumpToHistory(
+		projectId: string,
+		seq: number,
+	): Promise<HistoryStepResult | null>;
 	getHistory(projectId: string): Promise<HistoryEntryRecord[]>;
 	getHistoryEntry(
 		projectId: string,

@@ -129,7 +129,7 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 		await redXInput.fill('16');
 		await redXInput.press('Enter');
 		await expect(
-			page.getByRole('button', {name: 'Undo Change Red X'}),
+			page.getByRole('button', {name: 'Undo Red X 16 px'}),
 		).toBeEnabled();
 
 		await waitForSettleRender(page);
@@ -337,7 +337,7 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 		).toBeVisible();
 		await page.getByRole('button', {name: /^ASDF classic/}).click();
 		await expect(
-			page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+			page.getByRole('button', {name: 'Undo Apply preset ASDF classic'}),
 		).toBeEnabled();
 		await waitForSettleRender(page);
 

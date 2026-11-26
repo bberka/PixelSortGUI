@@ -118,25 +118,25 @@ test('AC-F9.1 AC-F9.2: undo and redo buttons, shortcuts, tooltips, and exact par
 	await angleInput.fill('37.5');
 	await angleInput.press('Enter');
 
-	await expect(undoButton).toHaveAccessibleName('Undo Change Angle');
+	await expect(undoButton).toHaveAccessibleName('Undo Angle 37.5°');
 	await undoButton.hover();
-	await expect(page.getByRole('tooltip')).toContainText('Undo Change Angle');
+	await expect(page.getByRole('tooltip')).toContainText('Undo Angle 37.5°');
 	await expect(page.getByRole('tooltip')).toContainText(/Ctrl\+Z|⌘Z/);
 
 	// Click Undo button
 	await undoButton.click();
 	await expect(angleInput).toHaveValue('0.0');
 	await expect(redoButton).toBeEnabled();
-	await expect(redoButton).toHaveAccessibleName('Redo Change Angle');
+	await expect(redoButton).toHaveAccessibleName('Redo Angle 37.5°');
 	await expect(page.getByRole('status', {name: 'Status messages'})).toHaveText(
-		'Undid Change Angle',
+		'Undid Angle 37.5°',
 	);
 
 	// Click Redo button
 	await redoButton.click();
 	await expect(angleInput).toHaveValue('37.5');
 	await expect(page.getByRole('status', {name: 'Status messages'})).toHaveText(
-		'Redid Change Angle',
+		'Redid Angle 37.5°',
 	);
 
 	// Keyboard shortcuts: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y
@@ -166,7 +166,7 @@ test('AC-F9.1: shortcut pressed inside a number field or modal dialog does not u
 	await angleInput.fill('90');
 	await angleInput.press('Enter');
 	await expect(
-		page.getByRole('button', {name: 'Undo Change Angle'}),
+		page.getByRole('button', {name: 'Undo Angle 90°'}),
 	).toBeEnabled();
 
 	// Focus number field and press Ctrl+Z -> stack must NOT undo
@@ -255,10 +255,10 @@ test('AC-F9.4 AC-F9.5: undo preserves zoom, pan, and theme, and history survives
 
 	await page.reload();
 	await expect(
-		page.getByRole('button', {name: 'Undo Change Angle'}),
+		page.getByRole('button', {name: 'Undo Angle 135°'}),
 	).toBeEnabled();
 
-	await page.getByRole('button', {name: 'Undo Change Angle'}).click();
+	await page.getByRole('button', {name: 'Undo Angle 135°'}).click();
 	await expect(angleInput).toHaveValue('0.0');
 
 	const after = await readEditorState(page);
@@ -280,7 +280,7 @@ test('AC-F10.1: applying ASDF classic yields 2 pixelSort instances as one histor
 	await page.getByRole('button', {name: /^ASDF classic/}).click();
 
 	await expect(
-		page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+		page.getByRole('button', {name: 'Undo Apply preset ASDF classic'}),
 	).toBeEnabled();
 	const afterApply = await readEditorState(page);
 	expect(afterApply.instances).toHaveLength(2);
@@ -291,17 +291,21 @@ test('AC-F10.1: applying ASDF classic yields 2 pixelSort instances as one histor
 	expect(afterApply.historyHeadSeq).toBe(before.historyHeadSeq + 1);
 
 	// One undo restores the previous empty stack
-	await page.getByRole('button', {name: 'Undo Apply ASDF classic'}).click();
+	await page
+		.getByRole('button', {name: 'Undo Apply preset ASDF classic'})
+		.click();
 	await expect(
-		page.getByRole('button', {name: 'Redo Apply ASDF classic'}),
+		page.getByRole('button', {name: 'Redo Apply preset ASDF classic'}),
 	).toBeEnabled();
 	const afterUndo = await readEditorState(page);
 	expect(afterUndo.instances).toHaveLength(0);
 
 	// Add to stack appends to existing effect
-	await page.getByRole('button', {name: 'Redo Apply ASDF classic'}).click();
+	await page
+		.getByRole('button', {name: 'Redo Apply preset ASDF classic'})
+		.click();
 	await expect(
-		page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+		page.getByRole('button', {name: 'Undo Apply preset ASDF classic'}),
 	).toBeEnabled();
 	await openPresets(page);
 	await page.getByRole('button', {name: 'Add Bright streaks to stack'}).click();
@@ -357,15 +361,17 @@ test('AC-F10.5: applying a preset over one effect asks first; Cancel changes not
 	await expect(dialog).toHaveCount(0);
 	await expect(page.getByRole('button', {name: 'Presets'})).toBeFocused();
 	await expect(
-		page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+		page.getByRole('button', {name: 'Undo Apply preset ASDF classic'}),
 	).toBeEnabled();
 	const afterReplace = await readEditorState(page);
 	expect(afterReplace.instances).toHaveLength(2);
 	expect(afterReplace.historyHeadSeq).toBe(before.historyHeadSeq + 1);
 
-	await page.getByRole('button', {name: 'Undo Apply ASDF classic'}).click();
+	await page
+		.getByRole('button', {name: 'Undo Apply preset ASDF classic'})
+		.click();
 	await expect(
-		page.getByRole('button', {name: 'Redo Apply ASDF classic'}),
+		page.getByRole('button', {name: 'Redo Apply preset ASDF classic'}),
 	).toBeEnabled();
 	const afterUndo = await readEditorState(page);
 	expect(afterUndo.instances).toEqual(before.instances);
@@ -380,7 +386,7 @@ test('AC-F10.5: no confirmation for an empty stack or for Add to stack', async (
 	await page.getByRole('button', {name: /^ASDF classic/}).click();
 	await expect(page.getByRole('alertdialog')).toHaveCount(0);
 	await expect(
-		page.getByRole('button', {name: 'Undo Apply ASDF classic'}),
+		page.getByRole('button', {name: 'Undo Apply preset ASDF classic'}),
 	).toBeEnabled();
 	expect((await readEditorState(page)).instances).toHaveLength(2);
 
@@ -498,7 +504,7 @@ test('AC-F10.2 AC-F10.3 AC-F10.4: save, reload, apply to another project, rename
 	await openPresets(page);
 	await page.getByRole('button', {name: /^Mine\s+1 effect$/}).click();
 	await expect(
-		page.getByRole('button', {name: 'Undo Apply Mine'}),
+		page.getByRole('button', {name: 'Undo Apply preset Mine'}),
 	).toBeEnabled();
 	const secondState = await readEditorState(page);
 	expect(secondState.instances).toHaveLength(1);

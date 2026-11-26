@@ -49,7 +49,13 @@ import {
 	type ThumbnailRecord,
 	type UserPresetRecord,
 	type ViewState,
+	type HistoryStepResult,
 } from '../storage/types.ts';
+import {
+	formatBlendCommitLabel,
+	formatMixCommitLabel,
+	formatParamCommitLabel,
+} from './commit-labels.ts';
 import {
 	assertStackCapacity,
 	cloneEffectStack,
@@ -236,6 +242,7 @@ export type AppState = {
 	// Undo / redo
 	undo(): Promise<boolean>;
 	redo(): Promise<boolean>;
+	jumpToHistory(projectId: string, seq: number): Promise<boolean>;
 
 	// Presets
 	applyPreset(presetId: string): Promise<void>;
@@ -672,6 +679,49 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			handleQuotaError(error);
 			throw error;
 		}
+	};
+
+	const applyHistoryStep = (
+		active: ProjectRecord,
+		result: HistoryStepResult | null,
+	): boolean => {
+		if (!result) {
+			return false;
+		}
+
+		const resolved = resolveStoredStack(result.project.stack, registry);
+		const nextProject: ProjectRecord = {
+			...active,
+			stack: resolved.stack,
+			selectedInstanceId: result.project.selectedInstanceId,
+			historyHeadSeq: result.project.historyHeadSeq,
+			historyMinSeq: result.project.historyMinSeq,
+			historyMaxSeq: result.project.historyMaxSeq,
+			updatedAt: result.project.updatedAt,
+		};
+
+		const currentDebug = store.getState().debugView;
+		const nextDebugView =
+			currentDebug &&
+			nextProject.stack.instances.some(
+				(item) => item.id === currentDebug.instanceId,
+			)
+				? currentDebug
+				: null;
+
+		transientStore.setState({activeDrag: null});
+		store.setState((state) => ({
+			activeProject: nextProject,
+			projects: upsertProject(state.projects, nextProject),
+			stackNeedsWriteBack: resolved.needsWriteBack,
+			stackEnvelopeStatus: resolved.envelopeStatus,
+			unsupportedInstances: resolved.unsupportedInstances,
+			debugView: nextDebugView,
+		}));
+
+		dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
+
+		return true;
 	};
 
 	const flushViewStateImpl = async (): Promise<void> => {
@@ -1448,11 +1498,14 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				return;
 			}
 
-			const paramLabel = definition.params[paramKey].label;
 			await commitNextStack(
 				nextStack,
 				active.selectedInstanceId,
-				label ?? `Change ${paramLabel}`,
+				label ??
+					formatParamCommitLabel(
+						definition.params[paramKey],
+						validated[paramKey],
+					),
 			);
 		},
 
@@ -1546,7 +1599,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					item.id === instanceId ? {...item, mix: normalized} : item,
 				),
 			};
-			await commitNextStack(nextStack, active.selectedInstanceId, 'Change Mix');
+			await commitNextStack(
+				nextStack,
+				active.selectedInstanceId,
+				formatMixCommitLabel(normalized),
+			);
 		},
 
 		nudgeMix(instanceId, mix) {
@@ -1603,7 +1660,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			await commitNextStack(
 				nextStack,
 				active.selectedInstanceId,
-				'Change Blend',
+				formatBlendCommitLabel(normalized),
 			);
 		},
 
@@ -1707,93 +1764,30 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		async undo() {
 			await flushPendingCommitImpl();
 			const active = get().activeProject;
-			if (!active) {
-				return false;
-			}
-
-			const result = await repository.undo(active.id);
-			if (!result) {
-				return false;
-			}
-
-			const resolved = resolveStoredStack(result.project.stack, registry);
-			const nextProject: ProjectRecord = {
-				...active,
-				stack: resolved.stack,
-				selectedInstanceId: result.project.selectedInstanceId,
-				historyHeadSeq: result.project.historyHeadSeq,
-				historyMinSeq: result.project.historyMinSeq,
-				historyMaxSeq: result.project.historyMaxSeq,
-				updatedAt: result.project.updatedAt,
-			};
-
-			const currentDebug = get().debugView;
-			const nextDebugView =
-				currentDebug &&
-				nextProject.stack.instances.some(
-					(item) => item.id === currentDebug.instanceId,
-				)
-					? currentDebug
-					: null;
-
-			transientStore.setState({activeDrag: null});
-			set((state) => ({
-				activeProject: nextProject,
-				projects: upsertProject(state.projects, nextProject),
-				stackNeedsWriteBack: resolved.needsWriteBack,
-				stackEnvelopeStatus: resolved.envelopeStatus,
-				unsupportedInstances: resolved.unsupportedInstances,
-				debugView: nextDebugView,
-			}));
-
-			dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
-			return true;
+			return active
+				? applyHistoryStep(active, await repository.undo(active.id))
+				: false;
 		},
 
 		async redo() {
 			await flushPendingCommitImpl();
 			const active = get().activeProject;
-			if (!active) {
+			return active
+				? applyHistoryStep(active, await repository.redo(active.id))
+				: false;
+		},
+
+		async jumpToHistory(projectId, seq) {
+			await flushPendingCommitImpl();
+			const active = get().activeProject;
+			if (active?.id !== projectId) {
 				return false;
 			}
 
-			const result = await repository.redo(active.id);
-			if (!result) {
-				return false;
-			}
-
-			const resolved = resolveStoredStack(result.project.stack, registry);
-			const nextProject: ProjectRecord = {
-				...active,
-				stack: resolved.stack,
-				selectedInstanceId: result.project.selectedInstanceId,
-				historyHeadSeq: result.project.historyHeadSeq,
-				historyMinSeq: result.project.historyMinSeq,
-				historyMaxSeq: result.project.historyMaxSeq,
-				updatedAt: result.project.updatedAt,
-			};
-
-			const currentDebug = get().debugView;
-			const nextDebugView =
-				currentDebug &&
-				nextProject.stack.instances.some(
-					(item) => item.id === currentDebug.instanceId,
-				)
-					? currentDebug
-					: null;
-
-			transientStore.setState({activeDrag: null});
-			set((state) => ({
-				activeProject: nextProject,
-				projects: upsertProject(state.projects, nextProject),
-				stackNeedsWriteBack: resolved.needsWriteBack,
-				stackEnvelopeStatus: resolved.envelopeStatus,
-				unsupportedInstances: resolved.unsupportedInstances,
-				debugView: nextDebugView,
-			}));
-
-			dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
-			return true;
+			return applyHistoryStep(
+				active,
+				await repository.jumpToHistory(projectId, seq),
+			);
 		},
 
 		async applyPreset(presetId) {
@@ -1812,7 +1806,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				getRandomValues,
 			);
 			const selectedId = nextStack.instances[0]?.id ?? null;
-			await commitNextStack(nextStack, selectedId, `Apply ${preset.name}`);
+			await commitNextStack(
+				nextStack,
+				selectedId,
+				`Apply preset ${preset.name}`,
+			);
 		},
 
 		async addPresetToStack(presetId) {

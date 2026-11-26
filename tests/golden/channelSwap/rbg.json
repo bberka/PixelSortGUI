@@ -1,0 +1,20 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "cw000001",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "rbg"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

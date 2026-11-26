@@ -31,6 +31,27 @@ export const ALLOWED_LICENSES: readonly string[] = [
 
 const templatesDirectory = path.join(import.meta.dirname, 'license-templates');
 
+/**
+ Licence texts of code compiled into a package's binaries, which the package
+ does not ship itself. Files live in `<package name>/` below this directory.
+ */
+const embeddedDirectory = path.join(import.meta.dirname, 'embedded-licenses');
+
+function readEmbeddedLicenses(packageName: string): NoticeFile[] {
+	const directory = path.join(embeddedDirectory, packageName);
+	if (!fs.existsSync(directory)) {
+		return [];
+	}
+
+	return fs
+		.readdirSync(directory)
+		.toSorted()
+		.map((file) => ({
+			file: `(compiled in) ${file}`,
+			text: normalizeText(fs.readFileSync(path.join(directory, file), 'utf8')),
+		}));
+}
+
 type PackageJson = {
 	name?: string;
 	version?: string;
@@ -238,6 +259,7 @@ export function collectPackageNotice(packageDir: string): PackageNotice {
 	};
 
 	if (licenseFiles.length > 0) {
+		licenseFiles.push(...readEmbeddedLicenses(pkg.name));
 		const copyrightLines: string[] = [];
 		for (const file of [...licenseFiles, ...noticeFiles]) {
 			for (const line of extractCopyrightLines(file.text)) {

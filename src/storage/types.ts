@@ -20,6 +20,7 @@ export const MAX_PRESET_NAME_LENGTH = 80;
 export const MIN_EXPORT_QUALITY = 50;
 export const MAX_EXPORT_QUALITY = 100;
 export const DEFAULT_EXPORT_QUALITY = 92;
+export const DEFAULT_AVIF_QUALITY = 80;
 export const MIN_EXPORT_MAX_FILE_SIZE_KB = 10;
 export const MAX_EXPORT_MAX_FILE_SIZE_KB = 102_400;
 export const MIN_ZOOM = 0.01;
@@ -46,12 +47,15 @@ export type ViewState = {
 	splitPosition: number;
 };
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff';
 export type ExportSizeMode = 'full' | 'half' | 'quarter' | 'custom';
 
 export type ExportSettings = {
 	format: ExportFormat;
 	quality: number;
+	// AVIF's quality scale differs, so it keeps its own value. Absent in records
+	// saved before AVIF export.
+	avifQuality?: number;
 	sizeMode: ExportSizeMode;
 	customLongestSide: number | null;
 	maxFileSizeKb?: number | null;

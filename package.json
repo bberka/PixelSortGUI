@@ -46,6 +46,7 @@
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
 	},
 	"dependencies": {
+		"@jsquash/avif": "^2.1.1",
 		"@radix-ui/react-slot": "^1.5.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",

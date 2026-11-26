@@ -17,7 +17,8 @@
 		"forceConsistentCasingInFileNames": true,
 		"paths": {
 			"@/*": ["../src/*"],
-			"utif2": ["../src/codec/utif2.d.ts"]
+			"utif2": ["../src/codec/utif2.d.ts"],
+			"@jsquash/avif/codec/enc/avif_enc.js": ["../src/codec/avif-enc.d.ts"]
 		}
 	}
 }

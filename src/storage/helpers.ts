@@ -4,6 +4,7 @@ import {
 	type EffectStack,
 } from '../engine/types.ts';
 import {
+	DEFAULT_AVIF_QUALITY,
 	DEFAULT_EXPORT_QUALITY,
 	DEFAULT_SPLIT_POSITION,
 	MAX_EXPORT_MAX_FILE_SIZE_KB,
@@ -136,13 +137,11 @@ export function normalizeViewState(viewState: ViewState): ViewState {
 export function normalizeExportSettings(
 	exportSettings: ExportSettings,
 ): ExportSettings {
-	const quality = Number.isFinite(exportSettings.quality)
-		? clamp(
-				Math.round(exportSettings.quality),
-				MIN_EXPORT_QUALITY,
-				MAX_EXPORT_QUALITY,
-			)
-		: DEFAULT_EXPORT_QUALITY;
+	const clampQuality = (value: number | undefined, fallback: number) =>
+		typeof value === 'number' && Number.isFinite(value)
+			? clamp(Math.round(value), MIN_EXPORT_QUALITY, MAX_EXPORT_QUALITY)
+			: fallback;
+	const quality = clampQuality(exportSettings.quality, DEFAULT_EXPORT_QUALITY);
 	const rawMaxSize = exportSettings.maxFileSizeKb;
 	const maxFileSizeKb =
 		typeof rawMaxSize === 'number' && Number.isFinite(rawMaxSize)
@@ -155,6 +154,12 @@ export function normalizeExportSettings(
 	return {
 		...exportSettings,
 		quality,
+		...(exportSettings.avifQuality !== undefined && {
+			avifQuality: clampQuality(
+				exportSettings.avifQuality,
+				DEFAULT_AVIF_QUALITY,
+			),
+		}),
 		maxFileSizeKb,
 	};
 }

@@ -79,4 +79,27 @@ describe('resize fields', () => {
 			convertSize({width: '', height: ''}, 'px', 'percent', cropped, resize),
 		).toEqual({width: '25', height: '25'});
 	});
+
+	it('keeps an unedited saved resize exact through percent mode', () => {
+		const large = {width: 16_000, height: 12_000};
+		const saved = {width: 8001, height: 6000, filter: 'lanczos3'} as const;
+		const percent = sizeFields(large, saved, 'percent');
+		expect(resizeTarget(percent, 'percent', large, saved).output).toEqual({
+			width: 8001,
+			height: 6000,
+		});
+		expect(convertSize(percent, 'percent', 'px', large, saved)).toEqual({
+			width: '8001',
+			height: '6000',
+		});
+
+		// Beyond the typed percentage range, but saved: still usable.
+		const tiny = {width: 200, height: 100};
+		const upscaled = {width: 16_000, height: 8000, filter: 'nearest'} as const;
+		const shown = sizeFields(tiny, upscaled, 'percent');
+		expect(resizeTarget(shown, 'percent', tiny, upscaled).output).toEqual({
+			width: 16_000,
+			height: 8000,
+		});
+	});
 });

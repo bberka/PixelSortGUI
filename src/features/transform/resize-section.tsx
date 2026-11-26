@@ -83,7 +83,7 @@ export function ResizeSection() {
 					fields: sizeFields(cropped, transform.resize, unit),
 					filter: transform.resize?.filter ?? ('lanczos3' as const),
 				};
-	const target = resizeTarget(fields, unit, cropped);
+	const target = resizeTarget(fields, unit, cropped, transform.resize);
 	const errorId = `${id}-error`;
 	const noteId = `${id}-note`;
 	const unitLabel = unit === 'px' ? 'px' : '%';

@@ -113,12 +113,24 @@ export type ResizeTarget =
 			readonly invalid: readonly ResizeAxis[];
 	  };
 
-// The output size the fields ask for, or why it cannot be used.
+/**
+ The output size the fields ask for, or why it cannot be used. Fields that
+ still show the saved resize unedited give it back exactly: a percentage is
+ rounded for display and would otherwise move the size or fall out of range.
+ */
 export function resizeTarget(
 	fields: SizeFields,
 	unit: ResizeUnit,
 	cropped: Size,
+	saved: ResizeSpec | null = null,
 ): ResizeTarget {
+	if (saved) {
+		const shown = sizeFields(cropped, saved, unit);
+		if (shown.width === fields.width && shown.height === fields.height) {
+			return {output: {width: saved.width, height: saved.height}};
+		}
+	}
+
 	const parse = unit === 'px' ? parsePixels : parsePercent;
 	const width = parse(fields.width);
 	const height = parse(fields.height);
@@ -158,7 +170,7 @@ export function convertSize(
 	cropped: Size,
 	resize: ResizeSpec | null,
 ): SizeFields {
-	const {output} = resizeTarget(fields, from, cropped);
+	const {output} = resizeTarget(fields, from, cropped, resize);
 	const kept: ResizeSpec | null = output
 		? {...output, filter: 'lanczos3'}
 		: resize;

@@ -686,7 +686,7 @@ scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-upda
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. No storage or UI code writes a transform yet.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. Projects and history store the transform ([persistence.md section 8.1](persistence.md#81-database-version-2-sourcetransform-f20)); no UI control changes one yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 

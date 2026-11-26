@@ -150,8 +150,8 @@ test.describe('geometry pipeline in the production build', () => {
 	});
 });
 
-// No control writes a transform yet, so the test stores one the way a saved
-// project will carry it and reopens the app.
+// No control writes a transform yet, so the test commits one through the store
+// and reopens the app.
 async function openWithTransform(
 	page: Page,
 	transform: SourceTransform,
@@ -171,33 +171,34 @@ async function openWithTransform(
 		gradient.addColorStop(1, '#d08040');
 		context.fillStyle = gradient;
 		context.fillRect(0, 0, 4000, 3000);
-		const created = await booted.bundle.store.getState().importImage({
+		const {store} = booted.bundle;
+		const created = await store.getState().importImage({
 			name: 'geometry.png',
 			blob: await canvas.convertToBlob({type: 'image/png'}),
 			width: 4000,
 			height: 3000,
 		});
-
-		const request = async <T>(pending: IDBRequest<T>) =>
-			new Promise<T>((resolve, reject) => {
-				pending.addEventListener('success', () => {
-					resolve(pending.result);
-				});
-				pending.addEventListener('error', () => {
-					reject(new Error(String(pending.error)));
-				});
-			});
-		const database = await request(globalThis.indexedDB.open('drift'));
-		const projects = () =>
-			database.transaction('projects', 'readwrite').objectStore('projects');
-		const stored = (await request(
-			projects().get(created.project.id),
-		)) as object;
-		await request(projects().put({...stored, transform: value}));
-		database.close();
+		await store.getState().setTransform(created.project.id, value);
 	}, transform);
 	await page.reload();
 	await expect(page.getByRole('button', {name: 'Export'})).toBeEnabled();
+}
+
+// The stored thumbnail's size, once one has been generated for the project.
+async function thumbnailSize(page: Page) {
+	return page.evaluate(async () => {
+		const booted = await (globalThis as unknown as RuntimeGlobal).__psgRuntime!
+			.ready;
+		if (booted.status !== 'ready') {
+			throw new Error('Not ready');
+		}
+
+		const {store, repository} = booted.bundle;
+		const thumbnail = await repository.getThumbnail(
+			store.getState().projects[0].id,
+		);
+		return thumbnail && [thumbnail.width, thumbnail.height];
+	});
 }
 
 async function sourceDigest(page: Page): Promise<string> {
@@ -244,6 +245,15 @@ test.describe('a project with a stored transform', () => {
 		);
 		expect(await downloadSize(page, 'Full')).toEqual([3000, 4000]);
 		expect(await sourceDigest(page)).toBe('unchanged');
+		await page.keyboard.press('Escape');
+		await expect.poll(async () => thumbnailSize(page)).toEqual([384, 512]);
+
+		await page.getByRole('button', {name: /^Undo Rotate 90° CW/}).click();
+		await expect.poll(async () => thumbnailSize(page)).toEqual([512, 384]);
+		await page.getByRole('button', {name: /^Redo Rotate 90° CW/}).click();
+		await expect.poll(async () => thumbnailSize(page)).toEqual([384, 512]);
+		await page.goto('/#/');
+		await expect(page.getByText('3000 × 4000 px')).toBeVisible();
 	});
 
 	test('AC-F20.5: a 1200 x 800 crop exports at 1200 x 800 and 600 x 400', async ({

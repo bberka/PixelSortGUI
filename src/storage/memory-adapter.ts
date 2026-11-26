@@ -1,4 +1,6 @@
+import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	cloneRecord,
 	createDefaultAppState,
@@ -87,9 +89,15 @@ export class MemoryStorageAdapter implements StorageRepository {
 			return null;
 		}
 
+		const {repaired, ...geometry} = resolveStoredGeometry(
+			existing.sourceWidth,
+			existing.sourceHeight,
+			entry.transform,
+		);
 		const updated = withSideA<ProjectRecord>(
 			{
 				...existing,
+				...geometry,
 				stack: cloneRecord(entry.stack),
 				selectedInstanceId: entry.selectedInstanceId,
 				historyHeadSeq: entry.seq,
@@ -146,6 +154,9 @@ export class MemoryStorageAdapter implements StorageRepository {
 			sourceHash: sha256,
 			sourceWidth: input.width,
 			sourceHeight: input.height,
+			transform: IDENTITY_TRANSFORM,
+			effectiveWidth: input.width,
+			effectiveHeight: input.height,
 			stack: initialStack,
 			selectedInstanceId: null,
 			historyHeadSeq: 0,
@@ -164,6 +175,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 			label: 'Initial',
 			stack: cloneRecord(initialStack),
 			selectedInstanceId: null,
+			transform: IDENTITY_TRANSFORM,
 			createdAt: now,
 		};
 
@@ -254,13 +266,18 @@ export class MemoryStorageAdapter implements StorageRepository {
 
 		const now = this.#now();
 		const newId = generateId();
+		const size = resolveStoredGeometry(
+			existing.sourceWidth,
+			existing.sourceHeight,
+			existing.transform,
+		);
 		const copy: ProjectRecord = {
 			...cloneRecord(existing),
 			id: newId,
 			name: createDuplicateProjectName(existing.name),
 			viewState: createDefaultViewState(
-				existing.sourceWidth,
-				existing.sourceHeight,
+				size.effectiveWidth,
+				size.effectiveHeight,
 			),
 			createdAt: now,
 			updatedAt: now,
@@ -337,6 +354,8 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${input.projectId}" not found`);
 		}
 
+		// Validated first, so a rejected transform leaves history alone.
+		const geometry = commitGeometry(existing, input.transform);
 		const now = this.#now();
 		let projectHistory = this.#history.get(input.projectId);
 		if (!projectHistory) {
@@ -363,6 +382,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 				label: input.label,
 				stack: cloneRecord(input.stack),
 				selectedInstanceId: input.selectedInstanceId,
+				transform: geometry.transform,
 				createdAt: now,
 			},
 			stackA,
@@ -384,6 +404,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 		const updated = withSideA<ProjectRecord>(
 			{
 				...existing,
+				...geometry,
 				stack: cloneRecord(input.stack),
 				selectedInstanceId: input.selectedInstanceId,
 				historyHeadSeq: nextSeq,

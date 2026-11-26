@@ -1,8 +1,12 @@
+import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
+import {resolveStoredGeometry} from './geometry.ts';
 import {
 	DB_NAME,
 	DB_VERSION,
 	STORE_NAMES,
 	StorageVersionError,
+	type HistoryEntryRecord,
+	type ProjectRecord,
 	type SchemaInfoRecord,
 } from './types.ts';
 
@@ -10,6 +14,24 @@ export type DbMigration = (
 	database: IDBDatabase,
 	transaction: IDBTransaction,
 ) => void;
+
+// Rewrites every record of a store inside the upgrade transaction.
+function updateEach<T>(
+	transaction: IDBTransaction,
+	storeName: string,
+	update: (record: T) => T,
+): void {
+	const request = transaction.objectStore(storeName).openCursor();
+	request.addEventListener('success', () => {
+		const cursor = request.result;
+		if (!cursor) {
+			return;
+		}
+
+		cursor.update(update(cursor.value as T));
+		cursor.continue();
+	});
+}
 
 export const dbMigrations: Readonly<Record<number, DbMigration>> = {
 	0(database) {
@@ -53,6 +75,30 @@ export const dbMigrations: Readonly<Record<number, DbMigration>> = {
 				keyPath: 'key',
 			});
 		}
+	},
+	// Geometry transforms (persistence.md section 8.1).
+	1(_database, transaction) {
+		updateEach<ProjectRecord>(transaction, STORE_NAMES.projects, (project) => {
+			const {effectiveWidth, effectiveHeight, transform} =
+				resolveStoredGeometry(
+					project.sourceWidth,
+					project.sourceHeight,
+					project.transform,
+				);
+			return {
+				...project,
+				// A stored value is kept, so an invalid one is reported when read.
+				transform:
+					project.transform === undefined ? transform : project.transform,
+				effectiveWidth,
+				effectiveHeight,
+			};
+		});
+		updateEach<HistoryEntryRecord>(transaction, STORE_NAMES.history, (entry) =>
+			entry.transform === undefined
+				? {...entry, transform: IDENTITY_TRANSFORM}
+				: entry,
+		);
 	},
 };
 

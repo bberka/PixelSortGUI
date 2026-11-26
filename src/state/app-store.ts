@@ -1,6 +1,7 @@
 import {createStore, type StoreApi} from 'zustand/vanilla';
 import {effectRegistry} from '../engine/effects/index.ts';
 import {validateParams} from '../engine/params.ts';
+import {transformKey, type SourceTransform} from '../engine/transform.ts';
 import {
 	canonicalStackJson,
 	type BlendMode,
@@ -24,6 +25,11 @@ import type {
 	SourceInfo,
 } from '../render/coordinator.ts';
 import {renderSourceFor} from '../render/render-source.ts';
+import {
+	geometryForWrite,
+	repairProjectGeometry,
+	resolveStoredGeometry,
+} from '../storage/geometry.ts';
 import {normalizeViewState, withSideA} from '../storage/helpers.ts';
 import {
 	resolveProjectStacks,
@@ -58,6 +64,7 @@ import {
 	formatBlendCommitLabel,
 	formatMixCommitLabel,
 	formatParamCommitLabel,
+	formatTransformCommitLabel,
 } from './commit-labels.ts';
 import {
 	assertStackCapacity,
@@ -94,6 +101,7 @@ import {
 import {useThemeStore} from './theme.ts';
 import {
 	createCanvasThumbnailGenerator,
+	thumbnailSignature,
 	type ThumbnailGenerator,
 } from './thumbnail.ts';
 import {
@@ -105,6 +113,20 @@ import {
 export const VIEW_STATE_DEBOUNCE_MS = 200;
 export const KEYBOARD_COMMIT_DEBOUNCE_MS = 500;
 export const MISSING_PROJECT_NOTICE = 'That project no longer exists.';
+
+export function invalidGeometryNotice(projectName: string): string {
+	return `The saved crop, rotation and size of ${projectName} were invalid and have been reset.`;
+}
+
+// The notice for a stored transform that this project's source cannot take.
+function geometryNotice(
+	{name, sourceWidth, sourceHeight}: ProjectRecord,
+	stored: unknown,
+): string | null {
+	return resolveStoredGeometry(sourceWidth, sourceHeight, stored).repaired
+		? invalidGeometryNotice(name)
+		: null;
+}
 
 export type BootStatus =
 	'booting' | 'ready' | 'insecure-context' | 'version-error';
@@ -265,6 +287,14 @@ export type AppState = {
 	undo(): Promise<boolean>;
 	redo(): Promise<boolean>;
 	jumpToHistory(projectId: string, seq: number): Promise<boolean>;
+
+	// Geometry. One history entry; `false` when nothing changed or the project
+	// is not the active one.
+	setTransform(
+		projectId: string,
+		transform: SourceTransform,
+		label?: string,
+	): Promise<boolean>;
 
 	// Split sides
 	setEditSide(side: SplitSide): Promise<void>;
@@ -435,8 +465,11 @@ export function createBrowserTimerEnv(): AppStoreTimerEnv {
 	};
 }
 
+// Every project enters the list here, so all of them hold a valid geometry.
 function sortProjectsByOpenedAt(projects: ProjectRecord[]): ProjectRecord[] {
-	return projects.toSorted((a, b) => b.openedAt - a.openedAt);
+	return projects
+		.map((project) => repairProjectGeometry(project))
+		.toSorted((a, b) => b.openedAt - a.openedAt);
 }
 
 function sortPresetsByName(presets: UserPresetRecord[]): UserPresetRecord[] {
@@ -667,7 +700,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			return;
 		}
 
-		const stackSignature = canonicalStackJson(activeProject.stack);
+		const stackSignature = thumbnailSignature(activeProject);
 		const thumbKey = `${activeProject.id}:${stackSignature}`;
 		if (thumbKey === lastThumbnailKey) {
 			return;
@@ -726,7 +759,16 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		return activeProject;
 	};
 
-	// Writes both sides as one history entry.
+	// Hands the active project's geometry to the preview. The coordinator ignores
+	// an unchanged one; side A follows the state by itself.
+	const renderGeometry = () => {
+		const {activeProject, activeSource} = store.getState();
+		if (activeProject && activeSource?.sha256 === activeProject.sourceHash) {
+			coordinator.setSource(renderSourceFor(activeProject, activeSource));
+		}
+	};
+
+	// Writes both sides and the geometry as one history entry.
 	const commitSides = async (
 		next: Pick<
 			ProjectRecord,
@@ -734,6 +776,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		>,
 		label: string,
 		changesMain: boolean,
+		transform?: SourceTransform,
 	): Promise<ProjectRecord> => {
 		const active = requireActiveProject();
 
@@ -744,6 +787,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				selectedInstanceId: next.selectedInstanceId,
 				stackA: next.stackA ?? EMPTY_STACK,
 				selectedInstanceIdA: next.selectedInstanceIdA ?? null,
+				transform,
 				label,
 			});
 
@@ -777,6 +821,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				};
 			});
 			transientStore.setState({activeDrag: null});
+			if (transform) {
+				renderGeometry();
+			}
 
 			if (
 				changesMain ||
@@ -856,12 +903,16 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		// The view state may have changed while the step was being written.
 		const latest = store.getState().activeProject;
+		const base = latest?.id === active.id ? latest : active;
 		const resolved = resolveProjectStacks(result.project, registry);
 		const nextProject = withSideA<ProjectRecord>(
 			{
-				...(latest?.id === active.id ? latest : active),
+				...base,
 				stack: resolved.project.stack,
 				selectedInstanceId: result.project.selectedInstanceId,
+				transform: result.project.transform,
+				effectiveWidth: result.project.effectiveWidth,
+				effectiveHeight: result.project.effectiveHeight,
 				historyHeadSeq: result.project.historyHeadSeq,
 				historyMinSeq: result.project.historyMinSeq,
 				historyMaxSeq: result.project.historyMaxSeq,
@@ -873,6 +924,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		const currentDebug = store.getState().debugView;
 		const nextDebugView = keepDebugView(currentDebug, nextProject);
+		const notice = geometryNotice(active, result.entry.transform);
 
 		transientStore.setState({activeDrag: null});
 		store.setState((state) => ({
@@ -882,7 +934,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			stackEnvelopeStatus: resolved.envelopeStatus,
 			unsupportedInstances: resolved.unsupportedInstances,
 			debugView: nextDebugView,
+			...(notice && {notice}),
 		}));
+		if (transformKey(base.transform) !== transformKey(nextProject.transform)) {
+			renderGeometry();
+		}
 
 		if (
 			nextDebugView !== currentDebug ||
@@ -1054,8 +1110,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		renderA: createDefaultRenderStatus(),
 
 		hydrateFromRestore(payload) {
-			const resolved = payload.activeProject
-				? resolveProjectStacks(payload.activeProject, registry)
+			const stored = payload.activeProject;
+			const resolved = stored
+				? resolveProjectStacks(repairProjectGeometry(stored), registry)
 				: null;
 			const activeProject = resolved?.project ?? null;
 
@@ -1067,7 +1124,14 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				compareMode: payload.compareMode,
 				welcomeDismissed: payload.welcomeDismissed ?? false,
 				route: payload.route,
-				notice: payload.notice,
+				// Keep both: a restore notice must not hide a geometry reset.
+				notice:
+					[
+						payload.notice,
+						stored ? geometryNotice(stored, stored.transform) : null,
+					]
+						.filter(Boolean)
+						.join(' ') || null,
 				activeProjectId: activeProject?.id ?? null,
 				activeProject,
 				stackNeedsWriteBack: resolved?.needsWriteBack ?? false,
@@ -1163,6 +1227,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						label: 'Initial',
 						stack: result.project.stack,
 						selectedInstanceId: null,
+						transform: result.project.transform,
 						createdAt: result.project.createdAt,
 					};
 					transientStore.setState({
@@ -1242,7 +1307,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				return null;
 			}
 
-			const opened = await repository.openProject(id);
+			const stored = await repository.openProject(id);
+			const opened = repairProjectGeometry(stored);
 			const nextRoute: AppRoute = {screen: 'editor', projectId: opened.id};
 			transientStore.setState({
 				activeDrag: null,
@@ -1260,7 +1326,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeThumbnail: null,
 				debugView: null,
 				route: nextRoute,
-				notice: null,
+				notice: geometryNotice(stored, stored.transform),
 			}));
 
 			if (options.updateHash !== false) {
@@ -1969,6 +2035,31 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				active,
 				await repository.jumpToHistory(projectId, seq),
 			);
+		},
+
+		async setTransform(projectId, transform, label) {
+			await flushPendingCommitImpl();
+			const active = get().activeProject;
+			if (active?.id !== projectId) {
+				return false;
+			}
+
+			const {transform: next} = geometryForWrite(
+				active.sourceWidth,
+				active.sourceHeight,
+				transform,
+			);
+			if (transformKey(next) === transformKey(active.transform)) {
+				return false;
+			}
+
+			await commitSides(
+				active,
+				label ?? formatTransformCommitLabel(active.transform, next),
+				false,
+				next,
+			);
+			return true;
 		},
 
 		async setEditSide(side) {

@@ -6,6 +6,7 @@ import {
 	PROJECT_NAME_ERROR,
 	validateProjectNameInput,
 } from './library-format.ts';
+import {IDENTITY_TRANSFORM} from '@/engine/transform.ts';
 import type {ProjectRecord} from '@/storage/types.ts';
 
 function project(
@@ -19,6 +20,9 @@ function project(
 		sourceHash: `hash-${id}`,
 		sourceWidth: 320,
 		sourceHeight: 240,
+		transform: IDENTITY_TRANSFORM,
+		effectiveWidth: 320,
+		effectiveHeight: 240,
 		stack: {schemaVersion: 1, instances: []},
 		selectedInstanceId: null,
 		historyHeadSeq: 0,

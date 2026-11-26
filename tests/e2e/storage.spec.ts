@@ -1,6 +1,6 @@
 import {expect, test} from '@playwright/test';
 
-test('persists a multi-megabyte project blob across page reload in real IndexedDB', async ({
+test('keeps a multi-megabyte version 1 project through the upgrade on reload in real IndexedDB', async ({
 	page,
 }) => {
 	const consoleErrors: string[] = [];
@@ -143,7 +143,7 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 	const verified = await page.evaluate(async (expectedProjectId) => {
 		const idb = globalThis.indexedDB;
 		const db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = idb.open('drift', 1);
+			const request = idb.open('drift');
 			request.addEventListener('success', () => resolve(request.result));
 			request.addEventListener('error', () =>
 				reject(request.error ?? new Error('Open failed')),
@@ -151,7 +151,15 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 		});
 
 		const record = await new Promise<{
-			project: {id: string; name: string; sourceHash: string} | undefined;
+			project:
+				| {
+						id: string;
+						name: string;
+						sourceHash: string;
+						effectiveWidth: number;
+						effectiveHeight: number;
+				  }
+				| undefined;
 			source: {sha256: string; blob: Blob; byteLength: number} | undefined;
 			historyCount: number;
 		}>((resolve, reject) => {
@@ -159,7 +167,14 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 			const projectReq = tx
 				.objectStore('projects')
 				.get(expectedProjectId) as IDBRequest<
-				{id: string; name: string; sourceHash: string} | undefined
+				| {
+						id: string;
+						name: string;
+						sourceHash: string;
+						effectiveWidth: number;
+						effectiveHeight: number;
+				  }
+				| undefined
 			>;
 			const historyReq = tx
 				.objectStore('history')
@@ -195,6 +210,7 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 			);
 		});
 
+		const {version} = db;
 		db.close();
 
 		if (!record.source) {
@@ -217,6 +233,11 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 
 		return {
 			found: true,
+			version,
+			effectiveSize: [
+				record.project?.effectiveWidth,
+				record.project?.effectiveHeight,
+			],
 			projectName: record.project?.name,
 			byteLength: record.source.blob.size,
 			storedHash: record.source.sha256,
@@ -227,6 +248,8 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 
 	expect(verified).toEqual({
 		found: true,
+		version: 2,
+		effectiveSize: [2048, 1536],
 		projectName: 'Large E2E Blob',
 		byteLength: written.byteLength,
 		storedHash: written.sha256,

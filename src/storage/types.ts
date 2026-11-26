@@ -2,7 +2,7 @@ import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
 
 export const DB_NAME = 'drift';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const STORE_NAMES = {
 	sources: 'sources',
@@ -77,9 +77,11 @@ export type ProjectRecord = {
 	sourceHash: string;
 	sourceWidth: number;
 	sourceHeight: number;
-	// Crop, rotation, flip and resize. Missing means the identity; saved from
-	// database version 2 on (persistence.md section 8.1).
-	transform?: SourceTransform;
+	// Crop, rotation, flip and resize (persistence.md section 8.1).
+	transform: SourceTransform;
+	// The size after `transform`, cached for the library cards.
+	effectiveWidth: number;
+	effectiveHeight: number;
 	stack: EffectStack;
 	selectedInstanceId: string | null;
 	// Split side A. Absent when it has no instances.
@@ -112,6 +114,7 @@ export type HistoryEntryRecord = {
 	selectedInstanceId: string | null;
 	stackA?: EffectStack;
 	selectedInstanceIdA?: string | null;
+	transform: SourceTransform;
 	createdAt: number;
 };
 
@@ -167,6 +170,8 @@ export type CommitStackInput = {
 	// Omitted keeps the stored side A; an empty stack removes it.
 	stackA?: EffectStack;
 	selectedInstanceIdA?: string | null;
+	// Omitted keeps the stored transform.
+	transform?: SourceTransform;
 	label: string;
 };
 

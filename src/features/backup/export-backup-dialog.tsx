@@ -101,7 +101,7 @@ function ExportBackupForm({
 			? 'calculating'
 			: sizes === 'unknown'
 				? 'unknown'
-				: formatByteSize(estimateBackupBytes(chosen, sizes));
+				: formatByteSize(estimateBackupBytes(chosen, sizes, includeHistory));
 
 	// A refusal no longer applies once the choice changes.
 	const change = <Value,>(set: (value: Value) => void, value: Value) => {

@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {
 	ChevronDownIcon,
 	ChevronRightIcon,
+	DownloadIcon,
 	ExternalLinkIcon,
 	FileTextIcon,
 	MonitorIcon,
@@ -20,6 +21,7 @@ import {Button} from '@/components/ui/button';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {Separator} from '@/components/ui/separator';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
+import {usePwaStore} from '@/state/pwa.ts';
 import {isThemePreference, type ThemePreference} from '@/state/theme.ts';
 import {
 	formatStorageUsage,
@@ -67,6 +69,9 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 	const setTheme = useAppStore((state) => state.setTheme);
 	const storage = useAppStore((state) => state.storage);
 	const setStorageMetrics = useAppStore((state) => state.setStorageMetrics);
+	const installPrompt = usePwaStore((state) => state.installPrompt);
+	const installing = usePwaStore((state) => state.installing);
+	const promptInstall = usePwaStore((state) => state.promptInstall);
 
 	const [requestingPersistence, setRequestingPersistence] = useState(false);
 	const [noticesOpen, setNoticesOpen] = useState(false);
@@ -231,6 +236,38 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 					Private Browsing windows clear all stored data when closed.
 				</p>
 			</section>
+
+			{installPrompt ? (
+				<>
+					<Separator />
+					<section
+						aria-labelledby="settings-app-heading"
+						className="flex flex-col gap-2.5"
+					>
+						<h2
+							id="settings-app-heading"
+							className="text-[11px] leading-4 font-semibold tracking-wider text-muted-foreground uppercase"
+						>
+							App
+						</h2>
+						<div>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={installing}
+								aria-busy={installing}
+								onClick={() => {
+									void promptInstall();
+								}}
+							>
+								<DownloadIcon className="size-4" aria-hidden="true" />
+								<span>{installing ? 'Installing...' : 'Install app'}</span>
+							</Button>
+						</div>
+					</section>
+				</>
+			) : null}
 
 			<Separator />
 

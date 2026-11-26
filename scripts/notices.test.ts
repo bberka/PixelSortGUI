@@ -4,6 +4,7 @@ import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vite-plus/test';
 import {
 	ALLOWED_LICENSES,
+	WORKBOX_SW_RUNTIME_PACKAGES,
 	classifyFile,
 	collectNotices,
 	collectPackageNotice,
@@ -13,6 +14,7 @@ import {
 	renderMarkdown,
 	renderText,
 	renderTypeScript,
+	resolveWorkboxRuntimePackageDirs,
 } from './notices.ts';
 
 const MIT_TEXT = `MIT License
@@ -288,6 +290,25 @@ describe('packageDirOfModule and findBundledPackageDirs', () => {
 		expect(() => findBundledPackageDirs([stylesheet], root)).toThrow(
 			'imports "ghost", which is not installed',
 		);
+	});
+
+	it('includes Workbox SW runtime packages when vite-plugin-pwa is installed without pulling workbox-build itself', () => {
+		addPackage({name: 'vite-plugin-pwa', files: {LICENSE: MIT_TEXT}});
+		addPackage({name: 'workbox-build', files: {LICENSE: MIT_TEXT}});
+		for (const pkg of WORKBOX_SW_RUNTIME_PACKAGES) {
+			addPackage({name: pkg, files: {LICENSE: MIT_TEXT}});
+		}
+
+		const dirs = resolveWorkboxRuntimePackageDirs(root);
+		const names = dirs.map((dir) => path.basename(dir)).toSorted();
+		expect(names).toEqual([...WORKBOX_SW_RUNTIME_PACKAGES].toSorted());
+		expect(names).not.toContain('workbox-build');
+		expect(names).not.toContain('vite-plugin-pwa');
+
+		const bundled = findBundledPackageDirs([], root)
+			.map((dir) => path.basename(dir))
+			.toSorted();
+		expect(bundled).toEqual([...WORKBOX_SW_RUNTIME_PACKAGES].toSorted());
 	});
 });
 

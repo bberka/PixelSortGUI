@@ -12,6 +12,7 @@ import {
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import type {AppRuntime} from '@/state/index.ts';
+import {usePwaStore, type BeforeInstallPromptEvent} from '@/state/pwa.ts';
 import type {StorageManagerLike} from '@/storage/quota.ts';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -72,6 +73,7 @@ function openSettingsDialog(): void {
 }
 
 afterEach(() => {
+	usePwaStore.getState().reset();
 	if (root) {
 		act(() => {
 			root!.unmount();
@@ -295,5 +297,48 @@ describe('Settings view', () => {
 		expect(link!.getAttribute('target')).toBe('_blank');
 		expect(link!.getAttribute('rel')).toBe('noopener noreferrer');
 		expect(dialog.textContent).not.toContain('Permission is hereby granted');
+	});
+
+	it('shows Install app when beforeinstallprompt is captured and hides it after prompting', async () => {
+		const context = createTestStore();
+		mountSettings(context, {
+			estimate: async () => ({usage: 0, quota: 100_000_000}),
+			persisted: async () => true,
+		});
+		openSettingsDialog();
+		await flush();
+
+		const dialog = document.querySelector('[role="dialog"]')!;
+		expect(dialog.textContent).not.toContain('Install app');
+
+		const promptSpy = vi.fn(async () => {});
+		const installEvent = new Event('beforeinstallprompt', {
+			cancelable: true,
+		}) as BeforeInstallPromptEvent;
+		Object.defineProperties(installEvent, {
+			prompt: {value: promptSpy, configurable: true},
+			userChoice: {
+				value: Promise.resolve({outcome: 'accepted' as const}),
+				configurable: true,
+			},
+		});
+
+		act(() => {
+			usePwaStore.getState().setInstallPrompt(installEvent);
+		});
+		await flush();
+
+		const installButton = [...dialog.querySelectorAll('button')].find(
+			(button) => button.textContent?.includes('Install app'),
+		);
+		expect(installButton).toBeDefined();
+
+		act(() => {
+			installButton!.click();
+		});
+		await flush();
+
+		expect(promptSpy).toHaveBeenCalledTimes(1);
+		expect(dialog.textContent).not.toContain('Install app');
 	});
 });

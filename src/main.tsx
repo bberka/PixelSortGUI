@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import './styles/app.css';
 import {App} from '@/app/app.tsx';
 import {announce} from '@/app/announcer';
+import {initPwa} from '@/app/pwa-register.ts';
 import {bootAppRuntime, type AppRuntime} from '@/state/index';
 
 declare global {
@@ -10,6 +11,7 @@ declare global {
 	var __psgAnnounce: ((message: string) => void) | undefined;
 }
 
+initPwa();
 const runtime = bootAppRuntime();
 
 // Test hooks for the end-to-end suite. Nothing in the app reads either global:

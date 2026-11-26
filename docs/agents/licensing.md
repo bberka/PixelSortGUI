@@ -55,7 +55,7 @@ A new npm dependency needs a licence that allows use in a closed or open distrib
 
 ## Notices for bundled packages
 
-MIT, ISC, BSD and Apache-2.0 require the copyright line and licence text to travel with copies. `pnpm run gen:notices` builds the app in memory, takes every package behind a bundled module (and any package a project stylesheet imports), and reads each one's licence files, copyright lines and NOTICE file from `node_modules`. It writes `THIRD-PARTY-NOTICES.md` and the compact in-app list `src/features/settings/third-party-notices.generated.ts`. Every build puts the full text in `dist/THIRD-PARTY-NOTICES.txt`.
+MIT, ISC, BSD and Apache-2.0 require copyright lines and licence text to travel with copies. `pnpm run gen:notices` builds in memory, collects every bundled package (JS, CSS imports, and Workbox SW runtime), and reads licence and NOTICE files from `node_modules`. It writes `THIRD-PARTY-NOTICES.md` and `src/features/settings/third-party-notices.generated.ts`; builds emit `dist/THIRD-PARTY-NOTICES.txt`.
 
 - Run it after any change to dependencies, and commit the result. `pnpm run check:notices` and the build fail when the committed files are stale.
 - Allowed licences: MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD. Any other licence in the bundle fails the generator. A package with no licence file gets the standard text from `scripts/license-templates/` and is flagged in the generator output: list it in the pull request.

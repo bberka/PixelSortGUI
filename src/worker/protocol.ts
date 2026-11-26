@@ -3,10 +3,17 @@ import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
 import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import type {ProjectFileErrorCode} from '../storage/project-file-error.ts';
+import type {
+	ArchiveProgress,
+	ProjectFileContents,
+	ProjectFileInput,
+	ProjectFileOutput,
+} from '../storage/project-file.ts';
 
-// Message types shared by the main thread and both workers (engine.md section 11).
-// Import types only from here on the main thread: a value import of the engine
-// or the codec would pull them into the main bundle.
+// Message types shared by the main thread and the workers (engine.md section 11).
+// Import types only from here on the main thread: a value import of the engine,
+// the codec or the archive code would pull them into the main bundle.
 
 export const SETTLE_PIXEL_CAP = 4_194_304;
 export const DRAG_PIXEL_CAP_MAX = 1_048_576;
@@ -140,3 +147,20 @@ export type ExportResponse =
 			tiles: FullTile[];
 	  }
 	| {type: 'error'; jobId: number; code: EngineErrorCode; message: string};
+
+// The archive worker runs one job and is then terminated, which is also how a
+// job is cancelled (persistence.md section 8.3.4).
+export type ArchiveRequest =
+	| {type: 'writeProject'; input: ProjectFileInput}
+	| {type: 'readProject'; file: Blob; fileName: string};
+
+export type ArchiveResponse =
+	| ({type: 'progress'} & ArchiveProgress)
+	| ({type: 'projectWritten'} & ProjectFileOutput)
+	| {type: 'projectRead'; contents: ProjectFileContents}
+	| {
+			type: 'error';
+			// Missing when the failure is not about the file or project itself.
+			code?: ProjectFileErrorCode;
+			message: string;
+	  };

@@ -113,7 +113,9 @@ export async function directRenderHash(
 }
 
 // The URL of a chunk of the production build, found by its name in `dist/assets`.
-export function builtAsset(name: 'coordinator' | 'preview.worker'): string {
+export function builtAsset(
+	name: 'coordinator' | 'preview.worker' | 'archive-client',
+): string {
 	const directory = path.resolve(import.meta.dirname, '../../dist/assets');
 	const candidates = fs
 		.readdirSync(directory)

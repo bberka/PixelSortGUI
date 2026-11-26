@@ -296,6 +296,12 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 		license: 'MIT',
 	},
 	{
+		name: 'fflate',
+		version: '0.8.3',
+		license: 'MIT',
+		url: 'https://101arrowz.github.io/fflate',
+	},
+	{
 		name: 'get-nonce',
 		version: '1.0.1',
 		license: 'MIT',

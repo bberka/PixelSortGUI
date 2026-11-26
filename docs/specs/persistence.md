@@ -481,7 +481,7 @@ Single-project import runs in two phases: **strict validation first** (zero Inde
 
 The checks run in this order: file size, ZIP structure and entry caps, `manifest.json` (`kind`, then `formatVersion`, then migration), the other metadata, the sources, the thumbnail. A thumbnail that `thumbnailPath` names but the archive lacks is ignored. Effect instances are checked for their envelope fields only (`id`, `type`, `version`, `enabled`, `params`, `mix`, `blend`), so unknown effects pass through unchanged. The last two rows are checked by the import step (they need the database and an image decoder); the codec checks the rows above them.
 
-**Save errors.** The writer checks what it writes against the same rules, so it never produces a file that cannot be opened:
+**Save errors.** The writer checks the metadata and sizes it writes against the same rules. It does not re-hash the stored source bytes:
 
 | Condition | Exact user-facing error message |
 |---|---|
@@ -685,7 +685,8 @@ src/storage/
   repository.ts        IndexedDB implementation (atomic transactions, ref-counted delete, history pruning)
   memory-adapter.ts    In-memory fallback when IndexedDB is unavailable
   quota.ts             estimate(), persist(), pre-flight quota check
-  project-file.ts      .glproj writer, reader, validation and format migrations (section 8.3)
+  project-file.ts      .glproj writer and reader (section 8.3)
+  project-format.ts    .glproj types, limits, validation and format migrations
   project-file-error.ts  Error codes and exact messages, free of fflate
   zip-reader.ts        Central directory ZIP reader with byte caps
   archive-client.ts    Starts the archive worker, forwards progress, cancels by terminating it

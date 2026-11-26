@@ -710,7 +710,7 @@ This catalogue specifies 11 deterministic effects beyond `pixelSort` and `channe
 | 8 | `pixelSmear` | `glitch` | Per line (angled) | Medium (20 to 60 ms) | Yes | Post-v0.2.0 |
 | 9 | `mirrorFold` | `glitch` | Whole image | Low (< 15 ms) | No | Post-v0.2.0 |
 | 10 | `thresholdInvert` | `color` | Per pixel | Low (< 15 ms) | Yes | Post-v0.2.0 |
-| 11 | `jpegCrush` | `glitch` | Whole image (8×8 blocks) | Medium (30 to 90 ms) | No | Post-v0.2.0 |
+| 11 | `jpegCrush` | `glitch` | Whole image (8×8 blocks) | High (about 150 to 250 ms, measured in Node under load) | No | Post-v0.2.0 |
 
 #### 1. `sliceShift` (version 1, `glitch`, top 5): "Shift random bands of the image sideways."
 
@@ -915,7 +915,7 @@ Runs a deterministic integer 8×8 block transform and aggressive quantisation di
   9. Convert to RGB with `cb = Cb - 128`, `cr = Cr - 128`: `R = clamp(Y + floorDiv(1402*cr + 500, 1000), 0, 255)`, `G = clamp(Y + floorDiv(-344*cb - 714*cr + 500, 1000), 0, 255)`, `B = clamp(Y + floorDiv(1772*cb + 500, 1000), 0, 255)`. Copy alpha unchanged.
 
   An implementation may reorder or skip operations only where the integer result is the same, for example by using the table's symmetry. `quality` 100 is not the identity, because colour conversion and the transform round.
-- **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: Medium. Debug views: none.
+- **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: High; the integer transform runs about 150 to 250 ms on 4 MP. Debug views: none.
 - **Provenance:** Standard ITU-T T.81 JPEG baseline quantisation tables (public standard) and data-bending aesthetics; the quality-to-scale formula is the widely published libjpeg convention. Clean-room own implementation. (Note: true raw-bitstream JPEG corruption remains deferred because browser JPEG decoders vary across engines; pixel-space `jpegCrush` gives identical output across Chromium, Firefox, and Node.)
 - **Tests:** a hand-computed flat block and a hand-computed colour block; the table matches its formula; the output matches a direct floating-point-free reference of steps 1 to 9; `corruptRate` 0 and `corruptShift` 0 give the same bytes; blocks and corruption follow source blocks on a half-scale render; alpha is unchanged; 1 × 1, 1 × N and N × 1 images and both ends of every range; the generic checks of section 14.3; stack JSON round trip; golden cases for defaults, two non-default settings and scale 0.5.
 

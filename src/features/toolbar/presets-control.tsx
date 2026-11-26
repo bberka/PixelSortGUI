@@ -31,6 +31,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {Separator} from '@/components/ui/separator';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {MAX_STACK_INSTANCES} from '@/engine/types.ts';
@@ -174,52 +175,54 @@ function PresetListBody({
 					Save as preset
 				</Button>
 			</div>
-			<div className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-0.5">
-				<ul aria-label="Built-in presets" className="flex flex-col gap-0.5">
-					{builtinPresets.map((preset) => (
-						<PresetRow
-							key={preset.id}
-							preset={preset}
-							isUserPreset={false}
-							canAddToStack={
-								stackLength + preset.stack.instances.length <=
-								MAX_STACK_INSTANCES
-							}
-							onApply={onApply}
-							onAddToStack={onAddToStack}
-						/>
-					))}
-				</ul>
-				<Separator />
-				<div className="flex flex-col gap-1">
-					<span className="px-1 text-[11px] leading-4 font-semibold tracking-[0.05em] text-muted-foreground uppercase">
-						Saved
-					</span>
-					{userPresets.length === 0 ? (
-						<p className="px-2 py-1.5 text-xs text-muted-foreground">
-							No saved presets yet
-						</p>
-					) : (
-						<ul aria-label="Saved presets" className="flex flex-col gap-0.5">
-							{userPresets.map((preset) => (
-								<PresetRow
-									key={preset.id}
-									isUserPreset
-									preset={preset}
-									canAddToStack={
-										stackLength + preset.stack.instances.length <=
-										MAX_STACK_INSTANCES
-									}
-									onApply={onApply}
-									onAddToStack={onAddToStack}
-									onRequestRename={onRequestRename}
-									onRequestDelete={onRequestDelete}
-								/>
-							))}
-						</ul>
-					)}
+			<ScrollArea tabStop={false} className="max-h-80">
+				<div className="flex flex-col gap-2 pr-0.5">
+					<ul aria-label="Built-in presets" className="flex flex-col gap-0.5">
+						{builtinPresets.map((preset) => (
+							<PresetRow
+								key={preset.id}
+								preset={preset}
+								isUserPreset={false}
+								canAddToStack={
+									stackLength + preset.stack.instances.length <=
+									MAX_STACK_INSTANCES
+								}
+								onApply={onApply}
+								onAddToStack={onAddToStack}
+							/>
+						))}
+					</ul>
+					<Separator />
+					<div className="flex flex-col gap-1">
+						<span className="px-1 text-[11px] leading-4 font-semibold tracking-[0.05em] text-muted-foreground uppercase">
+							Saved
+						</span>
+						{userPresets.length === 0 ? (
+							<p className="px-2 py-1.5 text-xs text-muted-foreground">
+								No saved presets yet
+							</p>
+						) : (
+							<ul aria-label="Saved presets" className="flex flex-col gap-0.5">
+								{userPresets.map((preset) => (
+									<PresetRow
+										key={preset.id}
+										isUserPreset
+										preset={preset}
+										canAddToStack={
+											stackLength + preset.stack.instances.length <=
+											MAX_STACK_INSTANCES
+										}
+										onApply={onApply}
+										onAddToStack={onAddToStack}
+										onRequestRename={onRequestRename}
+										onRequestDelete={onRequestDelete}
+									/>
+								))}
+							</ul>
+						)}
+					</div>
 				</div>
-			</div>
+			</ScrollArea>
 		</div>
 	);
 }

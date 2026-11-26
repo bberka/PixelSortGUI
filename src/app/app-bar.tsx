@@ -6,7 +6,7 @@ import {Button} from '@/components/ui/button';
 
 export function AppBarFrame({children}: {readonly children: ReactNode}) {
 	return (
-		<header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border bg-background px-3 lg:h-12 lg:px-6">
+		<header className="flex min-h-[52px] shrink-0 items-center gap-2 border-b border-border bg-background px-3 pt-[env(safe-area-inset-top)] lg:min-h-12 lg:px-6">
 			{children}
 		</header>
 	);

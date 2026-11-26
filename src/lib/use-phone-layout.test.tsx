@@ -2,7 +2,14 @@
 import {act} from 'react';
 import {createRoot} from 'react-dom/client';
 import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
-import {PHONE_MEDIA_QUERY, usePhoneLayout} from './use-phone-layout.ts';
+import {
+	PHONE_LANDSCAPE_MEDIA_QUERY,
+	PHONE_MEDIA_QUERY,
+	TABLET_MEDIA_QUERY,
+	useEditorViewportClass,
+	usePhoneLayout,
+	useTabletLayout,
+} from './use-phone-layout.ts';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
@@ -11,7 +18,15 @@ let root: ReturnType<typeof createRoot> | undefined;
 
 function Probe() {
 	const isPhone = usePhoneLayout();
-	return <span data-phone={String(isPhone)} />;
+	const isTablet = useTabletLayout();
+	const viewportClass = useEditorViewportClass();
+	return (
+		<span
+			data-phone={String(isPhone)}
+			data-tablet={String(isTablet)}
+			data-class={viewportClass}
+		/>
+	);
 }
 
 afterEach(() => {
@@ -27,15 +42,23 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe('usePhoneLayout', () => {
-	it('tracks the phone media query and updates when it changes', () => {
-		let matches = false;
+describe('viewport layout hooks', () => {
+	it('tracks phone, tablet, landscape, and desktop viewport classes and cleans up listeners', () => {
+		let state = {phone: false, landscape: false, tablet: false};
 		const listeners = new Set<() => void>();
 		vi.spyOn(globalThis, 'matchMedia').mockImplementation(
 			(query: string) =>
 				({
 					get matches() {
-						return query === PHONE_MEDIA_QUERY ? matches : false;
+						if (query === PHONE_LANDSCAPE_MEDIA_QUERY) {
+							return state.landscape;
+						}
+
+						if (query === PHONE_MEDIA_QUERY) {
+							return state.phone || state.landscape;
+						}
+
+						return query === TABLET_MEDIA_QUERY ? state.tablet : false;
 					},
 					media: query,
 					addEventListener(_type: string, listener: () => void) {
@@ -47,6 +70,14 @@ describe('usePhoneLayout', () => {
 				}) as unknown as MediaQueryList,
 		);
 
+		const notify = () => {
+			act(() => {
+				for (const listener of listeners) {
+					listener();
+				}
+			});
+		};
+
 		container = document.createElement('div');
 		document.body.append(container);
 		root = createRoot(container);
@@ -56,14 +87,26 @@ describe('usePhoneLayout', () => {
 
 		const span = () => container!.querySelector('span')!;
 		expect(span().dataset.phone).toBe('false');
+		expect(span().dataset.tablet).toBe('false');
+		expect(span().dataset.class).toBe('desktop');
 
-		matches = true;
-		act(() => {
-			for (const listener of listeners) {
-				listener();
-			}
-		});
+		state = {phone: false, landscape: false, tablet: true};
+		notify();
+		expect(span().dataset.phone).toBe('false');
+		expect(span().dataset.tablet).toBe('true');
+		expect(span().dataset.class).toBe('tablet');
+
+		state = {phone: true, landscape: false, tablet: false};
+		notify();
 		expect(span().dataset.phone).toBe('true');
+		expect(span().dataset.tablet).toBe('false');
+		expect(span().dataset.class).toBe('phone-portrait');
+
+		state = {phone: false, landscape: true, tablet: false};
+		notify();
+		expect(span().dataset.phone).toBe('true');
+		expect(span().dataset.tablet).toBe('false');
+		expect(span().dataset.class).toBe('phone-landscape');
 
 		act(() => {
 			root!.unmount();

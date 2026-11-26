@@ -6,6 +6,8 @@ import {
 	getStorageEstimate,
 	isStoragePersisted,
 	requestPersistentStorage,
+	type PersistenceOutcome,
+	type StorageManagerLike,
 } from '../../src/storage/quota.ts';
 
 describe('quota helpers', () => {
@@ -89,5 +91,63 @@ describe('quota helpers', () => {
 			requestPersistentStorage(grantedStorage, resolve);
 		});
 		expect(settled).toBe(true);
+	});
+
+	const outcomeOf = async (storage: StorageManagerLike) =>
+		new Promise<[boolean, PersistenceOutcome]>((resolve) => {
+			requestPersistentStorage(storage, (persisted, outcome) => {
+				resolve([persisted, outcome]);
+			});
+		});
+
+	it.each<[string, StorageManagerLike, [boolean, PersistenceOutcome]]>([
+		[
+			'granted',
+			{persist: async () => true, persisted: async () => true},
+			[true, 'granted'],
+		],
+		[
+			'denied',
+			{persist: async () => false, persisted: async () => false},
+			[false, 'denied'],
+		],
+		[
+			'trusting persisted() over persist()',
+			{persist: async () => true, persisted: async () => false},
+			[false, 'denied'],
+		],
+		['unsupported', {}, [false, 'unsupported']],
+		[
+			'rejected',
+			{
+				async persist() {
+					throw new Error('no');
+				},
+				persisted: async () => false,
+			},
+			[false, 'failed'],
+		],
+		[
+			'throwing synchronously',
+			{
+				persist() {
+					throw new TypeError('no');
+				},
+				persisted: async () => false,
+			},
+			[false, 'failed'],
+		],
+		[
+			'rejected but already persisted',
+			{
+				async persist() {
+					throw new Error('no');
+				},
+				persisted: async () => true,
+			},
+			[true, 'granted'],
+		],
+	])('reports a request that is %s', async (_name, storage, expected) => {
+		expect(await outcomeOf(storage)).toEqual(expected);
 	});
 });

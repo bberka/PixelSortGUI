@@ -51,6 +51,8 @@ describe('src/engine stays self-contained (engine.md section 1)', () => {
 		expect(staticImports).not.toContain('./block-shuffle.ts');
 		expect(staticImports).not.toContain('./posterize.ts');
 		expect(staticImports).not.toContain('./scanline-wave.ts');
+		expect(staticImports).not.toContain('./mirror-fold.ts');
+		expect(staticImports).not.toContain('./bayer-dither.ts');
 		expect(staticImports).not.toContain('./rgb-noise.ts');
 	});
 });

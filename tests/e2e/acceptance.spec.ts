@@ -573,9 +573,17 @@ test.describe('v0.2.0 E2E acceptance suite (T7.17)', () => {
 				panel.getByRole('heading', {level: 2, name: definition.label}),
 			).toBeVisible();
 			const defaults = defaultParams(definition.params);
-			const labels = Object.values<ParamSpec>(definition.params)
-				.filter((spec) => isParamVisible(spec, defaults))
-				.map((spec) => spec.label);
+			// The panel lists groups in order of first appearance, then each
+			// group's params in declaration order (params-panel.tsx groupSpecs).
+			const visible = Object.values<ParamSpec>(definition.params).filter(
+				(spec) => isParamVisible(spec, defaults),
+			);
+			const groupOrder = [...new Set(visible.map((spec) => spec.group))];
+			const labels = groupOrder.flatMap((group) =>
+				visible
+					.filter((spec) => spec.group === group)
+					.map((spec) => spec.label),
+			);
 			// Only each row's own label, then Mix and Blend, which every instance has.
 			await expect(
 				panel.locator(

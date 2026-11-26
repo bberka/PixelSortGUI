@@ -14,6 +14,8 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Slice shift effect: shift random bands of rows or columns sideways, with a band size range, a probability, a maximum offset, wrap or stretch at the edges, and a seed.
 - Block shuffle effect: swap a random share of square tiles with other tiles, with a tile size, an amount and a seed.
 - Posterize effect: reduce colour depth to a set number of levels per channel or by dropping low bits, with an optional monochrome output.
+- Mirror fold effect: mirror the image left to right, top to bottom, four ways or as an eight-way kaleidoscope, around a movable centre, from either side.
+- Bayer dither effect: ordered dithering with a 2×2, 4×4 or 8×8 pattern, 2 to 16 levels per channel, a spread amount, a pattern scale and an optional monochrome output.
 - Scanline wave effect: displace rows or columns along a sine, triangle, square or sawtooth wave, with amplitude, wavelength, phase, per-line jitter with a seed, and wrap or stretch at the edges.
 - RGB noise effect: add colour or monochrome noise with an amount, a grain size, a chance of dead or hot pixels, and a seed.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. Each step is named after the change, for example "Angle 90°". History holds 200 steps and survives a reload.
@@ -25,7 +27,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - A separate effect stack for each side of the split view, with copy to the other side, swap sides, presets and undo for both, and export of either side.
 - Responsive editor layouts: a fixed right sidebar on desktop, a resizable and collapsible docked bottom panel on tablet, a horizontal stack strip with a three-detent bottom sheet on portrait phone, and a collapsible right drawer on landscape phone.
 - Export as PNG, JPEG, WebP (WebP only where the browser can encode it), AVIF, BMP or uncompressed TIFF. JPEG, WebP and AVIF have a quality setting. A large photo can take several seconds or more to export as AVIF. Size is full, half, quarter or a custom longest side, with an optional output file-size limit (lowering JPEG, WebP or AVIF quality and scaling dimensions as needed). You can set the file name.
-- Settings: theme (System, Light or True Black), storage usage and storage protection status, an "Install app" button when the browser offers installation, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, a link to their full licence texts, and a changelog that works offline.
+- Settings: theme (System, Light or True Black), storage usage, storage protection status and a "Request protection" button that says whether the browser granted it and what to try if not, an "Install app" button when the browser offers installation, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, a link to their full licence texts, and a changelog that works offline.
 - A built-in guide (the question-mark button, Settings, or the `?` key) with a quick start, a reference of every effect and its settings, keyboard shortcuts, and storage and privacy notes. It works offline. A welcome card on the first launch points to import and the guide.
 - Offline use and installable PWA: after the first visit, the app loads, edits and exports offline via a precached service worker. When a new version is ready, a "Reload to update" toast appears without interrupting active edits.
 

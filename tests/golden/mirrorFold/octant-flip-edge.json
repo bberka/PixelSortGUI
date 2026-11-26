@@ -1,0 +1,23 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "mf000001",
+				"type": "mirrorFold",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"mode": "octant",
+					"flipSource": true,
+					"centerX": 0.85,
+					"centerY": 0.2
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

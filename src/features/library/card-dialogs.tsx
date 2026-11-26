@@ -23,6 +23,7 @@ import {validateProjectNameInput} from '@/features/library/library-format.ts';
 import type {ProjectRecord} from '@/storage/types.ts';
 
 export type RenameProjectDialogProps = {
+	readonly onCloseAutoFocus: (event: Event) => void;
 	readonly project: ProjectRecord | null;
 	readonly onClose: () => void;
 	readonly onRename: (project: ProjectRecord, name: string) => void;
@@ -32,6 +33,7 @@ export function RenameProjectDialog({
 	project,
 	onClose,
 	onRename,
+	onCloseAutoFocus,
 }: RenameProjectDialogProps) {
 	const inputId = useId();
 	const errorId = useId();
@@ -60,7 +62,7 @@ export function RenameProjectDialog({
 				}
 			}}
 		>
-			<DialogContent>
+			<DialogContent onCloseAutoFocus={onCloseAutoFocus}>
 				<DialogHeader>
 					<DialogTitle>Rename project</DialogTitle>
 				</DialogHeader>
@@ -107,6 +109,7 @@ export function RenameProjectDialog({
 }
 
 export type DeleteProjectDialogProps = {
+	readonly onCloseAutoFocus: (event: Event) => void;
 	readonly project: ProjectRecord | null;
 	readonly onClose: () => void;
 	readonly onConfirm: (project: ProjectRecord) => void;
@@ -116,6 +119,7 @@ export function DeleteProjectDialog({
 	project,
 	onClose,
 	onConfirm,
+	onCloseAutoFocus,
 }: DeleteProjectDialogProps) {
 	return (
 		<AlertDialog
@@ -126,7 +130,7 @@ export function DeleteProjectDialog({
 				}
 			}}
 		>
-			<AlertDialogContent>
+			<AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>Delete project</AlertDialogTitle>
 					<AlertDialogDescription>

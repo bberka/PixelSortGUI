@@ -62,6 +62,7 @@ export function EffectStackPanel({
 	const pickerTriggerRef = useRef<HTMLButtonElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
 	const pendingFocusIndexRef = useRef<number | null>(null);
+	const pendingPickerFocusRef = useRef(false);
 	const [drag, setDrag] = useState<DragState | null>(null);
 
 	const unsupportedById = useMemo(() => {
@@ -77,6 +78,14 @@ export function EffectStackPanel({
 	const instanceIdsKey = instances.map((instance) => instance.id).join('\0');
 
 	useEffect(() => {
+		// The first effect swaps the empty state for the list, which mounts a new
+		// Add effect button in place of the one the picker would return to.
+		if (pendingPickerFocusRef.current && instances.length > 0) {
+			pendingPickerFocusRef.current = false;
+			pickerTriggerRef.current?.focus();
+			return;
+		}
+
 		const pendingIndex = pendingFocusIndexRef.current;
 		if (pendingIndex === null) {
 			return;
@@ -114,11 +123,12 @@ export function EffectStackPanel({
 
 	const add = async (type: string) => {
 		const label = registry.get(type)?.label ?? type;
+		pendingPickerFocusRef.current = instances.length === 0;
 		try {
 			await addEffect(type);
 			announce(`Added ${label}`);
 		} catch {
-			// Store surfaces persistence and runtime errors separately.
+			pendingPickerFocusRef.current = false;
 		}
 	};
 
@@ -301,6 +311,12 @@ export function EffectStackPanel({
 								void move(instance, index, to);
 							}}
 							onDuplicate={() => {
+								// Only the selected chip has a menu on a phone, so the one
+								// that was used goes away with the selection.
+								if (compact) {
+									pendingFocusIndexRef.current = index + 1;
+								}
+
 								void duplicateEffect(instance.id);
 							}}
 							onRemove={() => {

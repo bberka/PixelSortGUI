@@ -72,7 +72,7 @@ function PresetRow({
 		<li className="flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-secondary/60">
 			<button
 				type="button"
-				className="flex min-h-8 min-w-0 flex-1 items-center justify-between gap-2 rounded-sm px-1.5 py-1 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+				className="flex min-h-8 min-w-0 flex-1 pointer-coarse:min-h-11 items-center justify-between gap-2 rounded-sm px-1.5 py-1 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 				onClick={() => {
 					onApply(preset);
 				}}
@@ -269,6 +269,27 @@ export function PresetsControl() {
 	} | null>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const focusTriggerOnCloseRef = useRef(false);
+	// Set while the list closes to make way for a dialog, which keeps the focus.
+	const handingOverRef = useRef(false);
+
+	const openDialogFromList = () => {
+		handingOverRef.current = true;
+		setOpen(false);
+	};
+
+	const keepDialogFocus = (event: Event) => {
+		if (!handingOverRef.current) {
+			return;
+		}
+
+		handingOverRef.current = false;
+		event.preventDefault();
+	};
+
+	const returnFocusToTrigger = (event: Event) => {
+		event.preventDefault();
+		triggerRef.current?.focus();
+	};
 
 	const runApply = (preset: PresetItem) => {
 		void applyPreset(preset.id).then(() => {
@@ -349,15 +370,15 @@ export function PresetsControl() {
 			onApply={handleApply}
 			onAddToStack={handleAddToStack}
 			onRequestSave={() => {
-				setOpen(false);
+				openDialogFromList();
 				setSaveOpen(true);
 			}}
 			onRequestRename={(preset) => {
-				setOpen(false);
+				openDialogFromList();
 				setRenamingPreset(preset);
 			}}
 			onRequestDelete={(preset) => {
-				setOpen(false);
+				openDialogFromList();
 				setDeletingPreset(preset);
 			}}
 		/>
@@ -368,7 +389,10 @@ export function PresetsControl() {
 			{compact ? (
 				<Dialog open={open} onOpenChange={setOpen}>
 					<DialogTrigger asChild>{trigger}</DialogTrigger>
-					<DialogContent aria-describedby={undefined}>
+					<DialogContent
+						aria-describedby={undefined}
+						onCloseAutoFocus={keepDialogFocus}
+					>
 						<DialogHeader>
 							<DialogTitle>Presets</DialogTitle>
 						</DialogHeader>
@@ -382,6 +406,7 @@ export function PresetsControl() {
 						align="start"
 						aria-labelledby={titleId}
 						className="w-80 p-2"
+						onCloseAutoFocus={keepDialogFocus}
 					>
 						<p id={titleId} className="sr-only">
 							Presets
@@ -413,11 +438,13 @@ export function PresetsControl() {
 			<SavePresetDialog
 				open={saveOpen}
 				effectCount={stackLength}
+				onCloseAutoFocus={returnFocusToTrigger}
 				onOpenChange={setSaveOpen}
 				onSave={handleSave}
 			/>
 			<RenamePresetDialog
 				preset={renamingPreset}
+				onCloseAutoFocus={returnFocusToTrigger}
 				onOpenChange={(nextOpen) => {
 					if (!nextOpen) {
 						setRenamingPreset(null);
@@ -427,6 +454,7 @@ export function PresetsControl() {
 			/>
 			<DeletePresetDialog
 				preset={deletingPreset}
+				onCloseAutoFocus={returnFocusToTrigger}
 				onOpenChange={(nextOpen) => {
 					if (!nextOpen) {
 						setDeletingPreset(null);

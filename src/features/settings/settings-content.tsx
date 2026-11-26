@@ -389,7 +389,7 @@ export function SettingsContent({
 
 				<a
 					href={GUIDE_HASH}
-					className="inline-flex min-h-6 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					className="inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					onClick={onOpenGuide}
 				>
 					<BookOpenIcon className="size-3.5 shrink-0" aria-hidden="true" />
@@ -404,7 +404,7 @@ export function SettingsContent({
 								target="_blank"
 								rel="noopener noreferrer"
 								aria-label={link.accessibleName}
-								className="inline-flex min-h-6 items-center gap-1.5 text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+								className="inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1.5 text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 							>
 								<span>{link.label}</span>
 								<ExternalLinkIcon
@@ -443,7 +443,7 @@ export function SettingsContent({
 						href={licenceTextsHref}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="inline-flex min-h-6 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						className="inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
 						<FileTextIcon className="size-3.5 shrink-0" aria-hidden="true" />
 						<span>Full licence texts</span>
@@ -467,7 +467,7 @@ export function SettingsContent({
 													href={notice.url}
 													target="_blank"
 													rel="noopener noreferrer"
-													className="inline-flex items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+													className="inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 												>
 													<span className="truncate">{notice.name}</span>
 													<ExternalLinkIcon

@@ -26,6 +26,10 @@ export function GeometryPanel() {
 			className="ml-auto"
 			onClick={() => {
 				geometryController(bundle).close();
+				// This button leaves with the panel; the toggle that opened it stays.
+				globalThis.document
+					.querySelector<HTMLButtonElement>('[data-transform-toggle]')
+					?.focus();
 			}}
 		>
 			<XIcon aria-hidden="true" />

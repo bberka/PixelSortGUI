@@ -72,6 +72,8 @@ export function StackRow({
 			data-unsupported={isUnsupported ? '' : undefined}
 			className={cn(
 				'flex shrink-0 items-center gap-1 rounded-md border bg-card px-1',
+				// 44 px switch and menu leave a tablet row no room for gaps.
+				!compact && 'pointer-coarse:gap-0 pointer-coarse:px-0.5',
 				compact ? 'min-h-11' : 'min-h-9',
 				isSelected ? 'border-accent' : 'border-border',
 				isUnsupported && 'border-dashed border-input',
@@ -97,7 +99,7 @@ export function StackRow({
 					type="button"
 					aria-current={isSelected ? 'true' : undefined}
 					className={cn(
-						'flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+						'flex min-h-9 min-w-0 flex-1 pointer-coarse:min-h-11 items-center gap-1.5 rounded-sm px-1 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
 						compact && 'min-h-10 px-2',
 						!showControls && 'min-w-11 justify-center',
 					)}

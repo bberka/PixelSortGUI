@@ -247,6 +247,31 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 	};
 }
 
+/**
+ Calls `end` when the saved geometry changes, such as by Undo: a drag in progress
+ holds a box measured on the old image. Returns the unsubscribe function.
+ */
+export function onSavedGeometryChange(
+	{store}: AppStoreBundle,
+	end: () => void,
+): () => void {
+	const savedKey = () => {
+		const project = store.getState().activeProject;
+		return project ? cropDraftKey(project.id, projectTransform(project)) : null;
+	};
+
+	let last = savedKey();
+	return store.subscribe(() => {
+		const next = savedKey();
+		if (next === last) {
+			return;
+		}
+
+		last = next;
+		end();
+	});
+}
+
 const controllers = new WeakMap<AppStoreBundle, GeometryController>();
 
 // One per app instance, so every caller shares the save queue.

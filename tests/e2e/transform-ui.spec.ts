@@ -832,6 +832,70 @@ test('a locked ratio holds while dragging, and a new crop size drops the resize'
 	await expectSize(page, 400, 300);
 });
 
+for (const target of ['a crop handle', 'the crop body'] as const) {
+	test(`undoing a rotate while holding ${target} ends the drag and keeps the box on the image`, async ({
+		page,
+	}) => {
+		const errors = collectConsoleErrors(page);
+		await openImage(page, 800, 600);
+		await transformToggle(page).click();
+		await button(page, 'Rotate 90° clockwise').click();
+		await expectSize(page, 600, 800);
+		// An unsaved box that does not fit the 800 x 600 image the undo brings back.
+		await typeCrop(page, [100, 50, 400, 700]);
+		const zoom = (await cropBox(page)).width / 400;
+		const area = (await page.getByLabel('Image canvas').boundingBox())!;
+		const box = await cropBox(page);
+		const handle = (await button(page, 'Top left crop handle').boundingBox())!;
+		const start =
+			target === 'a crop handle'
+				? {x: handle.x + handle.width / 2, y: handle.y + handle.height / 2}
+				: {
+						x: area.x + box.x + box.width / 2,
+						y: area.y + box.y + box.height / 2,
+					};
+		await page.mouse.move(start.x, start.y);
+		await page.mouse.down();
+		await page.mouse.move(start.x - 20 * zoom, start.y - 20 * zoom, {
+			steps: 4,
+		});
+		await expect(page.locator('[data-slot="crop-guide"]')).toHaveCount(4);
+
+		await page.keyboard.press('ControlOrMeta+z');
+		await expectSize(page, 800, 600);
+		await expect(page.locator('[data-slot="crop-guide"]')).toHaveCount(0);
+		await expectCropFields(page, [0, 0, 800, 600]);
+
+		// The pointer is still down: moving it changes neither the box nor the view.
+		const held = await cropBox(page);
+		await page.mouse.move(start.x - 60 * zoom, start.y - 50 * zoom, {
+			steps: 4,
+		});
+		await page.mouse.up();
+		await expectCropFields(page, [0, 0, 800, 600]);
+		expect(await cropBox(page)).toEqual(held);
+
+		await button(page, 'Apply crop').click();
+		await expect(page.locator('[data-slot="crop-box"]')).toBeHidden();
+		await expect(
+			page.getByRole('status', {name: 'Status messages'}),
+		).toHaveText('Crop unchanged');
+		await expectSize(page, 800, 600);
+
+		// The next press drags again.
+		await button(page, 'Edit crop').click();
+		const nextZoom = (await cropBox(page)).width / 800;
+		await dragBy(
+			page,
+			button(page, 'Bottom right crop handle'),
+			-100 * nextZoom,
+			-100 * nextZoom,
+		);
+		await expectCropFields(page, [0, 0, 700, 500]);
+		expect(errors).toEqual([]);
+	});
+}
+
 test('selecting an effect gives the panel back to its parameters', async ({
 	page,
 }) => {

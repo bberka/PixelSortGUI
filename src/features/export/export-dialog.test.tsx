@@ -719,6 +719,37 @@ describe('ExportDialog', () => {
 		expect(findButton('1 MB').getAttribute('aria-checked')).toBe('true');
 	});
 
+	it('AC-F12.8: reports a limit that the minimum size still exceeds', async () => {
+		const context = await setup();
+		const jobs = attachExportController(context);
+		mountDialog(context, {downloadFile: () => () => {}});
+
+		act(() => {
+			findButton('500 KB').click();
+		});
+		await flush();
+		act(() => {
+			findButton('Download').click();
+		});
+		await flush();
+		act(() => {
+			jobs[0].resolve({
+				status: 'done',
+				file: new Blob([new Uint8Array(600 * 1024)], {type: 'image/png'}),
+				width: 85,
+				height: 64,
+				mime: 'image/png',
+				totalMs: 40,
+				targetMet: false,
+			});
+		});
+		await flush();
+
+		expect(
+			document.querySelector('[data-slot="export-summary"]')?.textContent,
+		).toContain('Minimum size still exceeded the 500 KB limit.');
+	});
+
 	it('clamps and formats file-size limit helpers', () => {
 		expect(clampMaxFileSizeKb(5)).toBe(10);
 		expect(clampMaxFileSizeKb(200_000)).toBe(102_400);

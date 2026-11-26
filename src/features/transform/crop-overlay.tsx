@@ -14,7 +14,10 @@ import {
 	resizeCrop,
 	type CropHandle,
 } from './crop-math.ts';
-import {geometryController} from './geometry-controller.ts';
+import {
+	geometryController,
+	onSavedGeometryChange,
+} from './geometry-controller.ts';
 import {announce} from '@/app/announcer.ts';
 import {
 	useAppRuntime,
@@ -160,6 +163,19 @@ export function CropOverlay({readView, placeRef}: CropOverlayProps) {
 			placeRef.current = null;
 		};
 	}, [bundle, draft, placeRef, project, readView]);
+
+	useEffect(
+		() =>
+			onSavedGeometryChange(bundle, () => {
+				if (!dragRef.current) {
+					return;
+				}
+
+				dragRef.current = null;
+				geometryController(bundle).setDragging(false);
+			}),
+		[bundle],
+	);
 
 	// Escape cancels from anywhere that has no use for it; Enter applies from the
 	// canvas. The box's own controls handle Enter themselves.

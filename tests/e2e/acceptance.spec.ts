@@ -1,6 +1,10 @@
 import {readFile} from 'node:fs/promises';
 import {expect, test, type Download, type Page} from '@playwright/test';
 import {decode as decodePng} from 'fast-png';
+import {effectRegistry} from '../../src/engine/effects/index.ts';
+import {defaultParams} from '../../src/engine/params.ts';
+import type {ParamSpec} from '../../src/engine/types.ts';
+import {isParamVisible} from '../../src/features/params/visibility.ts';
 import type {AppRuntime} from '../../src/state/index.ts';
 import {chooseImages, makeImage} from './import.ts';
 import {waitForSettleRender} from './settle.ts';
@@ -38,6 +42,26 @@ function trackErrorsAndNetwork(page: Page): {
 	});
 
 	return {consoleErrors, externalRequests};
+}
+
+// The open project's size after its geometry transform, and its effect types.
+async function readGeometry(page: Page) {
+	return page.evaluate(async () => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime!;
+		const booted = await runtime.ready;
+		if (booted.status !== 'ready') {
+			throw new Error('Not ready');
+		}
+
+		const project = booted.bundle.store.getState().activeProject;
+		return {
+			size: [
+				project?.effectiveWidth ?? project?.sourceWidth,
+				project?.effectiveHeight ?? project?.sourceHeight,
+			],
+			effects: project?.stack.instances.map((item) => item.type),
+		};
+	});
 }
 
 async function readDownloadBytes(download: Download): Promise<Uint8Array> {
@@ -517,6 +541,110 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 				`Horizontal overflow at ${viewport.name} (${viewport.width}x${viewport.height})`,
 			).toBeLessThanOrEqual(overflow.innerWidth);
 		}
+
+		expect(consoleErrors).toEqual([]);
+		expect(externalRequests).toEqual([]);
+	});
+});
+
+test.describe('v0.2.0 E2E acceptance suite (T7.17)', () => {
+	test('AC-F22.1: Add effect offers every registered effect and builds its controls from the schema', async ({
+		page,
+	}) => {
+		const {consoleErrors, externalRequests} = trackErrorsAndNetwork(page);
+		await page.setViewportSize(DESKTOP_VIEWPORT);
+		await page.goto('/');
+		await chooseImages(page, [
+			await makeImage(page, {name: 'effects.png', width: 160, height: 120}),
+		]);
+		await waitForSettleRender(page);
+
+		const panel = page.locator('[data-slot="parameter-panel"]');
+		const chooser = page.getByRole('dialog', {name: 'Add effect'});
+		for (const definition of effectRegistry.list()) {
+			await page.getByRole('button', {name: 'Add effect'}).click();
+			const option = chooser.getByRole('button', {
+				name: `${definition.label} ${definition.description}`,
+			});
+			await expect(option).toBeVisible();
+			await option.click();
+
+			await expect(
+				panel.getByRole('heading', {level: 2, name: definition.label}),
+			).toBeVisible();
+			const defaults = defaultParams(definition.params);
+			const labels = Object.values<ParamSpec>(definition.params)
+				.filter((spec) => isParamVisible(spec, defaults))
+				.map((spec) => spec.label);
+			// Only each row's own label, then Mix and Blend, which every instance has.
+			await expect(
+				panel.locator(
+					'[data-param-row] > label:first-child, [data-param-row] > div:first-child > label',
+				),
+			).toHaveText([...labels, 'Mix', 'Blend']);
+		}
+
+		await waitForSettleRender(page);
+		expect(consoleErrors).toEqual([]);
+		expect(externalRequests).toEqual([]);
+	});
+
+	test('F20, F22, F23: a history jump restores geometry and effects, and survives reload and export', async ({
+		page,
+	}) => {
+		const {consoleErrors, externalRequests} = trackErrorsAndNetwork(page);
+		await page.setViewportSize(DESKTOP_VIEWPORT);
+		await page.goto('/');
+		await chooseImages(page, [
+			await makeImage(page, {name: 'journey.png', width: 240, height: 180}),
+		]);
+		await waitForSettleRender(page);
+
+		await page.getByRole('button', {name: 'Add effect'}).click();
+		await page.getByRole('button', {name: /^Slice shift/}).click();
+		await page.getByRole('button', {name: 'Transform', exact: true}).click();
+		await page
+			.getByRole('button', {name: 'Rotate 90° clockwise', exact: true})
+			.click();
+		await expect
+			.poll(async () => readGeometry(page))
+			.toEqual({size: [180, 240], effects: ['sliceShift']});
+		await page
+			.getByRole('button', {name: 'Close transform panel', exact: true})
+			.click();
+
+		await page.getByRole('tab', {name: 'History'}).click();
+		const history = page.getByRole('list', {name: 'Project history'});
+		const jumpTo = async (label: string) => {
+			await history
+				.getByRole('button')
+				.filter({has: page.getByTitle(label, {exact: true})})
+				.click();
+		};
+
+		await jumpTo('Initial');
+		await expect
+			.poll(async () => readGeometry(page))
+			.toEqual({size: [240, 180], effects: []});
+		await jumpTo('Rotate 90° CW');
+		await expect
+			.poll(async () => readGeometry(page))
+			.toEqual({size: [180, 240], effects: ['sliceShift']});
+
+		await page.reload();
+		await expect
+			.poll(async () => readGeometry(page))
+			.toEqual({size: [180, 240], effects: ['sliceShift']});
+		await waitForSettleRender(page);
+		await page.getByRole('button', {name: 'Export'}).click();
+		const dialog = page.getByRole('dialog', {name: 'Export'});
+		await dialog.getByRole('radio', {name: 'PNG', exact: true}).click();
+		const [download] = await Promise.all([
+			page.waitForEvent('download'),
+			dialog.getByRole('button', {name: 'Download'}).click(),
+		]);
+		const png = decodePng(await readDownloadBytes(download));
+		expect([png.width, png.height]).toEqual([180, 240]);
 
 		expect(consoleErrors).toEqual([]);
 		expect(externalRequests).toEqual([]);

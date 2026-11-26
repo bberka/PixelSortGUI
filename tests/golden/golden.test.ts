@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {describe, expect, it} from 'vite-plus/test';
+import {effectRegistry} from '../../src/engine/effects/index.ts';
 import type {RgbaImage} from '../../src/engine/types.ts';
 import {getSyntheticFixture} from '../fixtures/synthetic.ts';
 import {
 	decodeRgbaPng,
 	encodeRgbaPng,
 	GOLDEN_ROOT,
+	type GoldenCaseEntry,
 	listGoldenCases,
 	renderGoldenCase,
 } from './helpers.ts';
@@ -92,6 +94,16 @@ function compareImages(
 	};
 }
 
+// A case whose stack uses the effect, in the effect's own folder.
+function hasOwnCase(cases: GoldenCaseEntry[], type: string): boolean {
+	return cases.some(
+		(entry) =>
+			entry.id.startsWith(`${type}/`) &&
+			fs.existsSync(entry.pngPath) &&
+			entry.spec.stack.instances.some((instance) => instance.type === type),
+	);
+}
+
 describe('fast-png lossless RGBA round-trip', () => {
 	it('preserves exact RGBA bytes including transparency without premultiplying', () => {
 		const alphaFixture = getSyntheticFixture('alpha-32x32');
@@ -117,6 +129,14 @@ describe('golden images', () => {
 
 	it('has golden cases on disk', () => {
 		expect(cases.length).toBeGreaterThan(0);
+	});
+
+	it('covers every registered effect in tests/golden/<type>/ (AC-F22.2)', () => {
+		const uncovered = effectRegistry
+			.list()
+			.map((effect) => effect.type)
+			.filter((type) => !hasOwnCase(cases, type));
+		expect(uncovered).toEqual([]);
 	});
 
 	for (const entry of cases) {

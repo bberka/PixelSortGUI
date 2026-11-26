@@ -9,6 +9,7 @@ const rootDir = path.resolve(import.meta.dirname, '..');
 describe('bundled changelog (AC-F24.2)', () => {
 	it('matches the root CHANGELOG.md', () => {
 		expect(isChangelogCurrent(rootDir)).toBe(true);
+		expect(CHANGELOG_TEXT).toContain('## v0.2.0');
 		expect(CHANGELOG_TEXT).toContain('## v0.1.0');
 	});
 

@@ -74,7 +74,13 @@ import {
 	MIN_EXPORT_QUALITY,
 	type ExportSettings,
 	type ExportSizeMode,
+	type SplitSide,
 } from '@/storage/types.ts';
+import {
+	selectSplitOrientation,
+	sideOptionLabel,
+	sideStack,
+} from '@/state/split-sides.ts';
 import type {ExportStage} from '@/worker/protocol.ts';
 
 type ExportMode = 'download' | 'share';
@@ -149,7 +155,10 @@ export function ExportDialog({
 		(state) => state.updateExportSettings,
 	);
 	const isPhone = usePhoneLayout();
+	const orientation = useAppStore(selectSplitOrientation);
+	const [exportSide, setExportSide] = useState<SplitSide>('b');
 
+	const sideLabelId = useId();
 	const formatLabelId = useId();
 	const sizeLabelId = useId();
 	const sizeLimitLabelId = useId();
@@ -270,6 +279,10 @@ export function ExportDialog({
 		);
 		const initialLimitKb = rawSettings.maxFileSizeKb ?? null;
 		const initialLimitMode = fileSizeLimitModeFor(initialLimitKb);
+		if (!exporting) {
+			setExportSide('b');
+		}
+
 		setQualityPreview(null);
 		setQualityDraft(String(quality));
 		setLongestSideDraft(String(longestSide));
@@ -333,6 +346,7 @@ export function ExportDialog({
 		sourceHeight,
 	);
 	const shareSupported = canShare(effectiveFormat);
+	const offersSide = (activeProject.stackA?.instances.length ?? 0) > 0;
 
 	const persistSettings = (next: ExportSettings) => {
 		setError(null);
@@ -589,7 +603,7 @@ export function ExportDialog({
 
 		let currentTask: ExportTask | null = null;
 		const task = bundle.coordinator.exportImage({
-			stack: activeProject.stack,
+			stack: sideStack(activeProject, offersSide ? exportSide : 'b'),
 			scale: toExportScale(finalSettings, sourceWidth, sourceHeight),
 			format: effectiveFormat,
 			quality: finalQuality,
@@ -696,6 +710,42 @@ export function ExportDialog({
 
 	const formBody = (
 		<div className="space-y-4">
+			{offersSide ? (
+				<div className="space-y-2">
+					<span
+						id={sideLabelId}
+						className="block text-sm leading-5 font-medium text-foreground"
+					>
+						Side
+					</span>
+					<ToggleGroup
+						type="single"
+						variant="outline"
+						size="sm"
+						value={exportSide}
+						disabled={exporting}
+						aria-labelledby={sideLabelId}
+						className="w-full"
+						onValueChange={(value) => {
+							if (!(value === 'a' || value === 'b')) {
+								return;
+							}
+
+							setExportSide(value);
+							setError(null);
+							setSummary(null);
+						}}
+					>
+						<ToggleGroupItem value="a" className="flex-1">
+							{sideOptionLabel('a', orientation)}
+						</ToggleGroupItem>
+						<ToggleGroupItem value="b" className="flex-1">
+							{sideOptionLabel('b', orientation)}
+						</ToggleGroupItem>
+					</ToggleGroup>
+				</div>
+			) : null}
+
 			<div className="space-y-2">
 				<span
 					id={formatLabelId}

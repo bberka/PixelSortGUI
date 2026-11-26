@@ -14,6 +14,7 @@ import {
 	validatePresetName,
 	validateProjectName,
 	validateStackForWrite,
+	withSideA,
 } from './helpers.ts';
 import {checkQuotaForImport, type StorageManagerLike} from './quota.ts';
 import {
@@ -219,13 +220,17 @@ export class IndexedDbRepository implements StorageRepository {
 					return null;
 				}
 
-				const updated: ProjectRecord = {
-					...existing,
-					stack: entry.stack,
-					selectedInstanceId: entry.selectedInstanceId,
-					historyHeadSeq: entry.seq,
-					updatedAt: now,
-				};
+				const updated = withSideA<ProjectRecord>(
+					{
+						...existing,
+						stack: entry.stack,
+						selectedInstanceId: entry.selectedInstanceId,
+						historyHeadSeq: entry.seq,
+						updatedAt: now,
+					},
+					entry.stackA,
+					entry.selectedInstanceIdA,
+				);
 				await requestToPromise(projectsStore.put(updated));
 				return {project: updated, entry};
 			},
@@ -575,6 +580,10 @@ export class IndexedDbRepository implements StorageRepository {
 
 	async commitStack(input: CommitStackInput): Promise<CommitStackResult> {
 		validateStackForWrite(input.stack);
+		if (input.stackA) {
+			validateStackForWrite(input.stackA);
+		}
+
 		const now = this.#now();
 
 		return runTransaction(
@@ -604,14 +613,23 @@ export class IndexedDbRepository implements StorageRepository {
 				);
 
 				const nextSeq = existing.historyHeadSeq + 1;
-				const entry: HistoryEntryRecord = {
-					projectId: input.projectId,
-					seq: nextSeq,
-					label: input.label,
-					stack: input.stack,
-					selectedInstanceId: input.selectedInstanceId,
-					createdAt: now,
-				};
+				const stackA = input.stackA ?? existing.stackA;
+				const selectedInstanceIdA =
+					input.selectedInstanceIdA === undefined
+						? existing.selectedInstanceIdA
+						: input.selectedInstanceIdA;
+				const entry = withSideA<HistoryEntryRecord>(
+					{
+						projectId: input.projectId,
+						seq: nextSeq,
+						label: input.label,
+						stack: input.stack,
+						selectedInstanceId: input.selectedInstanceId,
+						createdAt: now,
+					},
+					stackA,
+					selectedInstanceIdA,
+				);
 				await requestToPromise(historyStore.put(entry));
 
 				let nextMinSeq = existing.historyMinSeq;
@@ -628,15 +646,19 @@ export class IndexedDbRepository implements StorageRepository {
 					);
 				}
 
-				const updated: ProjectRecord = {
-					...existing,
-					stack: input.stack,
-					selectedInstanceId: input.selectedInstanceId,
-					historyHeadSeq: nextSeq,
-					historyMinSeq: nextMinSeq,
-					historyMaxSeq: nextSeq,
-					updatedAt: now,
-				};
+				const updated = withSideA<ProjectRecord>(
+					{
+						...existing,
+						stack: input.stack,
+						selectedInstanceId: input.selectedInstanceId,
+						historyHeadSeq: nextSeq,
+						historyMinSeq: nextMinSeq,
+						historyMaxSeq: nextSeq,
+						updatedAt: now,
+					},
+					stackA,
+					selectedInstanceIdA,
+				);
 				await requestToPromise(projectsStore.put(updated));
 
 				return {project: updated, entry};
@@ -735,6 +757,7 @@ export class IndexedDbRepository implements StorageRepository {
 		id: string,
 		viewState: ViewState,
 		selectedInstanceId?: string | null,
+		selectedInstanceIdA?: string | null,
 	): Promise<ProjectRecord> {
 		const normalized = normalizeViewState(viewState);
 		return runTransaction(
@@ -749,14 +772,20 @@ export class IndexedDbRepository implements StorageRepository {
 					throw new StorageNotFoundError(`Project "${id}" not found`);
 				}
 
-				const updated: ProjectRecord = {
-					...existing,
-					viewState: normalized,
-					selectedInstanceId:
-						selectedInstanceId === undefined
-							? existing.selectedInstanceId
-							: selectedInstanceId,
-				};
+				const updated = withSideA<ProjectRecord>(
+					{
+						...existing,
+						viewState: normalized,
+						selectedInstanceId:
+							selectedInstanceId === undefined
+								? existing.selectedInstanceId
+								: selectedInstanceId,
+					},
+					existing.stackA,
+					selectedInstanceIdA === undefined
+						? existing.selectedInstanceIdA
+						: selectedInstanceIdA,
+				);
 				await requestToPromise(projectsStore.put(updated));
 				return updated;
 			},

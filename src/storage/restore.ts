@@ -22,7 +22,7 @@ import {
 	type OpenStorageOptions,
 	type OpenStorageResult,
 } from './index.ts';
-import {resolveStoredStack} from './migrations.ts';
+import {resolveProjectStacks} from './migrations.ts';
 import {
 	getStorageEstimate,
 	isStoragePersisted,
@@ -38,6 +38,7 @@ import {
 
 export type RestoreOptions = {
 	coordinator: RenderCoordinator;
+	createSideCoordinator?: () => RenderCoordinator;
 	registry?: EffectRegistry;
 	routerEnv?: HashRouterEnv;
 	timerEnv?: AppStoreTimerEnv;
@@ -208,6 +209,7 @@ export async function restoreStartup(
 	const bundle = createAppStore({
 		repository,
 		coordinator: options.coordinator,
+		createSideCoordinator: options.createSideCoordinator,
 		registry,
 		routerEnv,
 		timerEnv: options.timerEnv,
@@ -293,10 +295,8 @@ async function hydrateActiveEditor(
 		return;
 	}
 
-	const resolved = resolveStoredStack(project.stack, registry);
-	const hydratedProject: ProjectRecord = resolved.needsWriteBack
-		? {...project, stack: resolved.stack}
-		: project;
+	const resolved = resolveProjectStacks(project, registry);
+	const hydratedProject = resolved.project;
 
 	bundle.store.setState({
 		activeProject: hydratedProject,
@@ -326,7 +326,9 @@ async function hydrateActiveEditor(
 			? globalThis.devicePixelRatio
 			: 1);
 	if (hydratedProject.viewState.fitMode === 'custom') {
-		coordinator.setViewScale(hydratedProject.viewState.zoom * dpr);
+		bundle.store
+			.getState()
+			.setRenderViewScale(hydratedProject.viewState.zoom * dpr);
 	}
 }
 

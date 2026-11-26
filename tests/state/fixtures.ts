@@ -248,10 +248,16 @@ export function createTestStore(
 	const routerEnv = createFakeRouterEnv(options.initialHash ?? '');
 	const syncedThemes: string[] = [];
 	const thumbnailCalls: number[] = [];
+	const sideCoordinators: FakeCoordinator[] = [];
 
 	const bundle = createAppStore({
 		repository,
 		coordinator,
+		createSideCoordinator() {
+			const side = createFakeCoordinator();
+			sideCoordinators.push(side);
+			return side;
+		},
 		routerEnv,
 		timerEnv,
 		storageManager: options.storageManager,
@@ -277,6 +283,7 @@ export function createTestStore(
 		transientStore: bundle.transientStore,
 		repository,
 		coordinator,
+		sideCoordinators,
 		routerEnv,
 		timerEnv: fakeTimerEnv,
 		syncedThemes,

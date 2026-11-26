@@ -59,6 +59,10 @@ describe('compare-logic', () => {
 		expect(stepSplitPosition(0.5, 'Home', false)).toBe(0);
 		expect(stepSplitPosition(0.5, 'End', false)).toBe(1);
 		expect(stepSplitPosition(0.5, 'ArrowUp', false)).toBeNull();
+		expect(stepSplitPosition(0.5, 'ArrowUp', false, 'horizontal')).toBe(0.49);
+		expect(stepSplitPosition(0.5, 'ArrowDown', true, 'horizontal')).toBe(0.6);
+		expect(stepSplitPosition(0.5, 'ArrowLeft', false, 'horizontal')).toBeNull();
+		expect(stepSplitPosition(0.5, 'End', false, 'horizontal')).toBe(1);
 	});
 
 	it('toggles latched compare on a short press (< 300 ms) and returns to edited on a long hold (>= 300 ms)', () => {
@@ -102,7 +106,7 @@ describe('compare-logic', () => {
 });
 
 describe('CompareOverlay', () => {
-	it('renders Original pill in compare mode and Original/Edited + accessible separator in split mode', () => {
+	it('renders Original pill in compare mode and one label per side + accessible separator in split mode', () => {
 		container = document.createElement('div');
 		document.body.append(container);
 		root = createRoot(container);
@@ -133,13 +137,18 @@ describe('CompareOverlay', () => {
 					stageRef={stageRef}
 					showingOriginal={false}
 					splitPosition={0.4}
+					labelB="B"
 					onDragSplit={onDrag}
 					onCommitSplit={onCommit}
 				/>,
 			);
 		});
-		expect(container.textContent).toContain('Original');
-		expect(container.textContent).toContain('Edited');
+		expect(
+			container.querySelector('[data-slot="split-label-a"]')?.textContent,
+		).toBe('Original');
+		expect(
+			container.querySelector('[data-slot="split-label-b"]')?.textContent,
+		).toBe('B');
 		const separator =
 			container.querySelector<HTMLDivElement>('[role="separator"]');
 		expect(separator).not.toBeNull();
@@ -174,6 +183,122 @@ describe('CompareOverlay', () => {
 			);
 		});
 		expect(onCommit).toHaveBeenLastCalledWith(0.31);
+	});
+
+	it('turns the divider horizontal and steps it with Up and Down only', () => {
+		container = document.createElement('div');
+		document.body.append(container);
+		root = createRoot(container);
+		const onCommit = vi.fn();
+
+		act(() => {
+			root!.render(
+				<CompareOverlay
+					splitActive
+					stageRef={{current: container!}}
+					showingOriginal={false}
+					splitPosition={0.5}
+					orientation="horizontal"
+					onDragSplit={vi.fn()}
+					onCommitSplit={onCommit}
+				/>,
+			);
+		});
+		const separator =
+			container.querySelector<HTMLDivElement>('[role="separator"]')!;
+		expect(separator.getAttribute('aria-orientation')).toBe('horizontal');
+		const divider = container.querySelector<HTMLDivElement>(
+			'[data-slot="split-divider"]',
+		)!;
+		expect(divider.style.top).toBe('50%');
+		expect(divider.style.left).toBe('');
+
+		const press = (key: string, shiftKey = false) => {
+			act(() => {
+				separator.dispatchEvent(
+					new KeyboardEvent('keydown', {
+						key,
+						shiftKey,
+						bubbles: true,
+						cancelable: true,
+					}),
+				);
+			});
+		};
+
+		press('ArrowLeft');
+		press('ArrowRight');
+		expect(onCommit).not.toHaveBeenCalled();
+		press('ArrowUp');
+		expect(onCommit).toHaveBeenLastCalledWith(0.49);
+		press('ArrowDown', true);
+		expect(onCommit).toHaveBeenLastCalledWith(0.59);
+		expect(divider.style.top).toBe('59%');
+	});
+});
+
+describe('EditorToolbar split orientation', () => {
+	it('switches orientation with Shift+S and the button, turning the split view on', async () => {
+		const context = createTestStore();
+		await context.store.getState().importImage({
+			name: 'photo.png',
+			blob: makeTestBlob('photo'),
+			width: 32,
+			height: 32,
+		});
+		container = document.createElement('div');
+		document.body.append(container);
+		root = createRoot(container);
+		act(() => {
+			root!.render(
+				<TooltipProvider>
+					<AppRuntimeProvider
+						value={{runtime: stubRuntime, bundle: context.bundle}}
+					>
+						<EditorToolbar />
+					</AppRuntimeProvider>
+				</TooltipProvider>,
+			);
+		});
+		const orientation = () =>
+			context.store.getState().activeProject?.viewState.splitOrientation;
+
+		await act(async () => {
+			globalThis.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 'S',
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(context.store.getState().compareMode).toBe('split');
+		expect(orientation()).toBe('horizontal');
+
+		await act(async () => {
+			document
+				.querySelector<HTMLButtonElement>(
+					'button[aria-label="Switch to left/right view"]',
+				)!
+				.click();
+		});
+		expect(orientation()).toBe('vertical');
+		expect(context.store.getState().compareMode).toBe('split');
+
+		// Plain S still only toggles the split view.
+		await act(async () => {
+			globalThis.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 's',
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(context.store.getState().compareMode).toBe('toggle');
+		expect(orientation()).toBe('vertical');
+		expect(context.store.getState().history).toHaveLength(1);
 	});
 });
 

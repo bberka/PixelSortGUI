@@ -291,4 +291,59 @@ describe('canvas drawing', () => {
 		);
 		expect(recorder.draws[0]?.source).toEqual(recorder.draws[1]?.source);
 	});
+
+	it('clips side A above and side B below in a horizontal split, drawing both frames under one transform', () => {
+		const recorder = record();
+		const original = image(200, 150);
+		const edited = image(200, 150);
+		const sideFrame = image(100, 75);
+		const sideTile = {x: 0, y: 0, ...image(400, 300)};
+		drawCanvas({
+			surface: recorder.surface,
+			viewport: {width: 400, height: 300},
+			view: view(2, 180, 120),
+			source: {width: 400, height: 300},
+			original,
+			frame: edited,
+			tiles: null,
+			sideA: {frame: sideFrame, tiles: [sideTile]},
+			compare: {mode: 'split', position: 0.25, orientation: 'horizontal'},
+			checker: null,
+			dpr: 1,
+		});
+
+		expect(recorder.clips).toEqual([
+			[0, 0, 400, 75],
+			[0, 75, 400, 225],
+		]);
+		expect(recorder.draws.map((call) => call.bitmap)).toEqual([
+			sideFrame.bitmap,
+			sideTile.bitmap,
+			edited.bitmap,
+		]);
+		// A frame of another size still covers the same source rectangle.
+		expect(recorder.draws[0]?.destination).toEqual(
+			recorder.draws[2]?.destination,
+		);
+	});
+
+	it('shows the original on side A until its first frame arrives', () => {
+		const recorder = record();
+		const original = image(200, 150);
+		drawCanvas({
+			surface: recorder.surface,
+			viewport: {width: 400, height: 300},
+			view: view(1, 200, 150),
+			source: {width: 400, height: 300},
+			original,
+			frame: image(200, 150),
+			tiles: null,
+			sideA: {frame: null, tiles: null},
+			compare: {mode: 'split', position: 0.5},
+			checker: null,
+			dpr: 1,
+		});
+
+		expect(recorder.draws[0]?.bitmap).toBe(original.bitmap);
+	});
 });

@@ -13,6 +13,10 @@ import {
 	type EffectRegistry,
 } from '@/engine/types.ts';
 import type {UnsupportedInstanceInfo} from '@/storage/migrations.ts';
+import {
+	selectEditingSelectedId,
+	selectEditingStack,
+} from '@/state/split-sides.ts';
 
 export type EffectStackPanelProps = {
 	/**
@@ -42,10 +46,8 @@ function labelFor(
 export function EffectStackPanel({
 	registry = effectRegistry,
 }: EffectStackPanelProps = {}) {
-	const stack = useAppStore((state) => state.activeProject?.stack ?? null);
-	const selectedInstanceId = useAppStore(
-		(state) => state.activeProject?.selectedInstanceId ?? null,
-	);
+	const stack = useAppStore(selectEditingStack);
+	const selectedInstanceId = useAppStore(selectEditingSelectedId);
 	const unsupportedInstances = useAppStore(
 		(state) => state.unsupportedInstances,
 	);

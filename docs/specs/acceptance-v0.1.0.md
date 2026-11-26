@@ -14,7 +14,7 @@ Maps every first-release feature (`F1`–`F16`, `F18`–`F19` in [product.md](pr
 | `F8` Live preview & full-res view | `tests/e2e/render-workers.spec.ts`, `tests/e2e/canvas.spec.ts`, `tests/e2e/render-bench.spec.ts`, `src/render/coordinator.test.ts` | 12 MP 5 s drag trace & p50/p95 timing sign-off on reference laptop |
 | `F9` Undo and redo | `tests/e2e/toolbar.spec.ts`, `tests/e2e/session-restore.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/storage/repository.test.ts` | — |
 | `F10` Presets | `tests/e2e/toolbar.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/presets/builtin.test.ts` | — |
-| `F11` Compare & split view | `tests/e2e/compare.spec.ts`, `tests/e2e/acceptance.spec.ts` | — |
+| `F11` Compare & split view | `tests/e2e/compare.spec.ts`, `tests/e2e/split-sides.spec.ts`, `tests/e2e/acceptance.spec.ts` | — |
 | `F12` Export | `tests/e2e/export.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/codec/encode.test.ts` | 12 MP Full PNG < 5 s timing & Web Share check where supported |
 | `F13` Zoom and pan | `tests/e2e/canvas.spec.ts`, `tests/e2e/acceptance.spec.ts` | 60 fps continuous wheel/trackpad zoom check on reference laptop |
 | `F14` Themes | `tests/e2e/theme.spec.ts`, `tests/e2e/settings.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/e2e/a11y.spec.ts` | 60 fps reload recording for zero-FOUC verification |

@@ -38,12 +38,21 @@ export type SourceRecord = {
 	createdAt: number;
 };
 
+// The line that divides the split view: vertical is left/right.
+export type SplitOrientation = 'vertical' | 'horizontal';
+// `a` is the left or top side; `b` is the right or bottom side and the main stack.
+export type SplitSide = 'a' | 'b';
+
 export type ViewState = {
 	fitMode: 'fit' | 'custom';
 	zoom: number;
 	centerX: number;
 	centerY: number;
 	splitPosition: number;
+	// Absent means `vertical`.
+	splitOrientation?: SplitOrientation;
+	// The side edited while the split view is on. Absent means `b`.
+	editSide?: SplitSide;
 };
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
@@ -65,6 +74,9 @@ export type ProjectRecord = {
 	sourceHeight: number;
 	stack: EffectStack;
 	selectedInstanceId: string | null;
+	// Split side A. Absent when it has no instances.
+	stackA?: EffectStack;
+	selectedInstanceIdA?: string | null;
 	historyHeadSeq: number;
 	historyMinSeq: number;
 	historyMaxSeq: number;
@@ -90,6 +102,8 @@ export type HistoryEntryRecord = {
 	label: string;
 	stack: EffectStack;
 	selectedInstanceId: string | null;
+	stackA?: EffectStack;
+	selectedInstanceIdA?: string | null;
 	createdAt: number;
 };
 
@@ -142,6 +156,9 @@ export type CommitStackInput = {
 	projectId: string;
 	stack: EffectStack;
 	selectedInstanceId: string | null;
+	// Omitted keeps the stored side A; an empty stack removes it.
+	stackA?: EffectStack;
+	selectedInstanceIdA?: string | null;
 	label: string;
 };
 
@@ -204,6 +221,7 @@ export type StorageRepository = {
 		id: string,
 		viewState: ViewState,
 		selectedInstanceId?: string | null,
+		selectedInstanceIdA?: string | null,
 	): Promise<ProjectRecord>;
 	updateExportSettings(
 		id: string,

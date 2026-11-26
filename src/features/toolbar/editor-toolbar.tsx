@@ -1,5 +1,12 @@
 import {useCallback, useEffect, useMemo, useRef} from 'react';
-import {Columns2Icon, EyeIcon, Redo2Icon, Undo2Icon} from 'lucide-react';
+import {
+	Columns2Icon,
+	EyeIcon,
+	Redo2Icon,
+	RotateCwSquareIcon,
+	Rows2Icon,
+	Undo2Icon,
+} from 'lucide-react';
 import {PresetsControl} from './presets-control.tsx';
 import {
 	formatRedoAriaLabel,
@@ -30,6 +37,7 @@ import {
 	selectUndoLabel,
 } from '@/state/app-store.ts';
 import {selectShowingOriginal} from '@/state/transient.ts';
+import {selectSplitOrientation} from '@/state/split-sides.ts';
 
 export function EditorToolbar() {
 	const {bundle} = useAppRuntime();
@@ -40,6 +48,7 @@ export function EditorToolbar() {
 	const redoLabel = useAppStore(selectRedoLabel);
 	const compareMode = useAppStore((state) => state.compareMode);
 	const showingOriginal = useTransientStore(selectShowingOriginal);
+	const orientation = useAppStore(selectSplitOrientation);
 	const compact = usePhoneLayout();
 
 	const shortcuts = useMemo(() => getShortcutLabels(), []);
@@ -81,6 +90,31 @@ export function EditorToolbar() {
 
 		void state.setCompareMode(nextMode);
 		announce(nextMode === 'split' ? 'Split view on' : 'Split view off');
+	}, [bundle, compareController]);
+
+	// Also turns the split view on, so the change is always visible.
+	const toggleOrientation = useCallback(() => {
+		const state = bundle.store.getState();
+		const next =
+			selectSplitOrientation(state) === 'vertical' ? 'horizontal' : 'vertical';
+		state.setSplitOrientation(next);
+		if (
+			state.compareMode !== 'split' ||
+			selectShowingOriginal(bundle.transientStore.getState())
+		) {
+			compareController.cancel();
+			bundle.transientStore.setState({
+				compareLatched: false,
+				compareHolding: false,
+			});
+			void state.setCompareMode('split');
+		}
+
+		announce(
+			next === 'vertical'
+				? 'Split view left and right'
+				: 'Split view top and bottom',
+		);
 	}, [bundle, compareController]);
 
 	const runUndo = useCallback(async () => {
@@ -159,7 +193,11 @@ export function EditorToolbar() {
 				return;
 			}
 
-			toggleSplit();
+			if (event.shiftKey) {
+				toggleOrientation();
+			} else {
+				toggleSplit();
+			}
 		};
 
 		const handleKeyUp = (event: KeyboardEvent) => {
@@ -190,7 +228,14 @@ export function EditorToolbar() {
 			globalThis.clearTimeout(clearSuppressTimerRef.current as number);
 			clearSuppressTimerRef.current = null;
 		};
-	}, [activeProjectId, compareController, runRedo, runUndo, toggleSplit]);
+	}, [
+		activeProjectId,
+		compareController,
+		runRedo,
+		runUndo,
+		toggleOrientation,
+		toggleSplit,
+	]);
 
 	if (!activeProjectId) {
 		return null;
@@ -201,6 +246,11 @@ export function EditorToolbar() {
 	const undoTooltip = formatUndoTooltip(undoLabel, shortcuts.undo);
 	const redoTooltip = formatRedoTooltip(redoLabel, shortcuts.redo);
 	const splitActive = compareMode === 'split' && !showingOriginal;
+	const SplitIcon = orientation === 'vertical' ? Columns2Icon : Rows2Icon;
+	const orientationLabel =
+		orientation === 'vertical'
+			? 'Switch to top/bottom view'
+			: 'Switch to left/right view';
 
 	const handleComparePointerDown = (
 		event: React.PointerEvent<HTMLButtonElement>,
@@ -336,11 +386,29 @@ export function EditorToolbar() {
 							aria-pressed={splitActive}
 							onClick={toggleSplit}
 						>
-							<Columns2Icon aria-hidden="true" />
+							<SplitIcon aria-hidden="true" />
 							{compact ? null : <span>Split</span>}
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Split view (S)</TooltipContent>
+				</Tooltip>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						{/* The wrapper keeps the button's own slot, and with it the
+						    44 px coarse-pointer size. */}
+						<span className="inline-flex">
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								aria-label={orientationLabel}
+								onClick={toggleOrientation}
+							>
+								<RotateCwSquareIcon aria-hidden="true" />
+							</Button>
+						</span>
+					</TooltipTrigger>
+					<TooltipContent>{orientationLabel} (Shift+S)</TooltipContent>
 				</Tooltip>
 			</div>
 			<Separator orientation="vertical" className="mx-0.5 h-5" />

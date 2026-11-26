@@ -15,6 +15,7 @@ import {
 	validatePresetName,
 	validateProjectName,
 	validateStackForWrite,
+	withSideA,
 } from './helpers.ts';
 import {
 	DB_VERSION,
@@ -86,13 +87,17 @@ export class MemoryStorageAdapter implements StorageRepository {
 			return null;
 		}
 
-		const updated: ProjectRecord = {
-			...existing,
-			stack: cloneRecord(entry.stack),
-			selectedInstanceId: entry.selectedInstanceId,
-			historyHeadSeq: entry.seq,
-			updatedAt: this.#now(),
-		};
+		const updated = withSideA<ProjectRecord>(
+			{
+				...existing,
+				stack: cloneRecord(entry.stack),
+				selectedInstanceId: entry.selectedInstanceId,
+				historyHeadSeq: entry.seq,
+				updatedAt: this.#now(),
+			},
+			entry.stackA && cloneRecord(entry.stackA),
+			entry.selectedInstanceIdA,
+		);
 		this.#projects.set(projectId, updated);
 
 		return {
@@ -323,6 +328,10 @@ export class MemoryStorageAdapter implements StorageRepository {
 
 	async commitStack(input: CommitStackInput): Promise<CommitStackResult> {
 		validateStackForWrite(input.stack);
+		if (input.stackA) {
+			validateStackForWrite(input.stackA);
+		}
+
 		const existing = this.#projects.get(input.projectId);
 		if (!existing) {
 			throw new StorageNotFoundError(`Project "${input.projectId}" not found`);
@@ -342,14 +351,23 @@ export class MemoryStorageAdapter implements StorageRepository {
 		}
 
 		const nextSeq = existing.historyHeadSeq + 1;
-		const entry: HistoryEntryRecord = {
-			projectId: input.projectId,
-			seq: nextSeq,
-			label: input.label,
-			stack: cloneRecord(input.stack),
-			selectedInstanceId: input.selectedInstanceId,
-			createdAt: now,
-		};
+		const stackA = input.stackA ? cloneRecord(input.stackA) : existing.stackA;
+		const selectedInstanceIdA =
+			input.selectedInstanceIdA === undefined
+				? existing.selectedInstanceIdA
+				: input.selectedInstanceIdA;
+		const entry = withSideA<HistoryEntryRecord>(
+			{
+				projectId: input.projectId,
+				seq: nextSeq,
+				label: input.label,
+				stack: cloneRecord(input.stack),
+				selectedInstanceId: input.selectedInstanceId,
+				createdAt: now,
+			},
+			stackA,
+			selectedInstanceIdA,
+		);
 		projectHistory.set(nextSeq, entry);
 
 		let nextMinSeq = existing.historyMinSeq;
@@ -363,15 +381,19 @@ export class MemoryStorageAdapter implements StorageRepository {
 			}
 		}
 
-		const updated: ProjectRecord = {
-			...existing,
-			stack: cloneRecord(input.stack),
-			selectedInstanceId: input.selectedInstanceId,
-			historyHeadSeq: nextSeq,
-			historyMinSeq: nextMinSeq,
-			historyMaxSeq: nextSeq,
-			updatedAt: now,
-		};
+		const updated = withSideA<ProjectRecord>(
+			{
+				...existing,
+				stack: cloneRecord(input.stack),
+				selectedInstanceId: input.selectedInstanceId,
+				historyHeadSeq: nextSeq,
+				historyMinSeq: nextMinSeq,
+				historyMaxSeq: nextSeq,
+				updatedAt: now,
+			},
+			stackA,
+			selectedInstanceIdA,
+		);
 		this.#projects.set(input.projectId, updated);
 
 		return {
@@ -448,20 +470,27 @@ export class MemoryStorageAdapter implements StorageRepository {
 		id: string,
 		viewState: ViewState,
 		selectedInstanceId?: string | null,
+		selectedInstanceIdA?: string | null,
 	): Promise<ProjectRecord> {
 		const existing = this.#projects.get(id);
 		if (!existing) {
 			throw new StorageNotFoundError(`Project "${id}" not found`);
 		}
 
-		const updated: ProjectRecord = {
-			...existing,
-			viewState: normalizeViewState(cloneRecord(viewState)),
-			selectedInstanceId:
-				selectedInstanceId === undefined
-					? existing.selectedInstanceId
-					: selectedInstanceId,
-		};
+		const updated = withSideA<ProjectRecord>(
+			{
+				...existing,
+				viewState: normalizeViewState(cloneRecord(viewState)),
+				selectedInstanceId:
+					selectedInstanceId === undefined
+						? existing.selectedInstanceId
+						: selectedInstanceId,
+			},
+			existing.stackA,
+			selectedInstanceIdA === undefined
+				? existing.selectedInstanceIdA
+				: selectedInstanceIdA,
+		);
 		this.#projects.set(id, updated);
 		return cloneRecord(updated);
 	}

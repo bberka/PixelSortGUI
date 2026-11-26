@@ -1,6 +1,9 @@
+import type {SplitOrientation} from '@/storage/types.ts';
+
 // DESIGN.md section 8.2: presses shorter than 300 ms toggle; longer presses hold-to-peek.
 export const COMPARE_HOLD_MS = 300;
-// AC-F11.3: ArrowLeft/ArrowRight move the split divider by 1%, Shift+Arrow by 10%.
+// AC-F11.3 and AC-F11.6: the arrows across the divider move it by 1%,
+// Shift+Arrow by 10%.
 export const SPLIT_KEY_STEP = 0.01;
 export const SPLIT_KEY_SHIFT_STEP = 0.1;
 
@@ -12,19 +15,26 @@ export function formatSplitPercent(position: number): number {
 	return Math.round(clampSplitPosition(position) * 100);
 }
 
+const SPLIT_KEYS = {
+	vertical: {back: 'ArrowLeft', forward: 'ArrowRight'},
+	horizontal: {back: 'ArrowUp', forward: 'ArrowDown'},
+} as const;
+
 export function stepSplitPosition(
 	current: number,
 	key: string,
 	shiftKey: boolean,
+	orientation: SplitOrientation = 'vertical',
 ): number | null {
 	const base = clampSplitPosition(current);
 	const step = shiftKey ? SPLIT_KEY_SHIFT_STEP : SPLIT_KEY_STEP;
+	const {back, forward} = SPLIT_KEYS[orientation];
 	switch (key) {
-		case 'ArrowLeft': {
+		case back: {
 			return clampSplitPosition(Math.round((base - step) * 1000) / 1000);
 		}
 
-		case 'ArrowRight': {
+		case forward: {
 			return clampSplitPosition(Math.round((base + step) * 1000) / 1000);
 		}
 

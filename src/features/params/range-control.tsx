@@ -83,7 +83,10 @@ export function RangeControl({
 	const field = (end: End) => (
 		<>
 			<Label
-				className={cn('text-xs text-muted-foreground', inline && 'sr-only')}
+				className={cn(
+					'text-xs leading-4 text-muted-foreground',
+					inline && 'sr-only',
+				)}
 				htmlFor={end === 0 ? lowId : highId}
 			>
 				{end === 0 ? 'Low' : 'High'}

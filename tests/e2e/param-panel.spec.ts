@@ -434,6 +434,11 @@ test('the panel shows every parameter with its label, value and unit', async ({
 	await expect(paramRow(page, 'Threshold range')).toContainText('0.25 – 0.8');
 	await expect(page.getByRole('textbox', {name: 'Low'})).toHaveValue('0.25');
 	await expect(page.getByRole('textbox', {name: 'High'})).toHaveValue('0.8');
+	// The range field labels set a smaller size than `Label` and keep its line box.
+	await expect(page.locator('label', {hasText: /^Low$/})).toHaveCSS(
+		'line-height',
+		'16px',
+	);
 
 	await expect(paramRow(page, 'Maximum interval length')).toContainText('0 px');
 	await expect(page.getByRole('slider', {name: 'Skip chance'})).toHaveAttribute(

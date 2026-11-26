@@ -244,7 +244,9 @@ export function ComponentGallery() {
 								>
 									<CardHeader className="pb-2">
 										<div className="flex items-center justify-between gap-2">
-											<CardTitle className="text-sm">{meta.title}</CardTitle>
+											<CardTitle className="text-sm leading-5">
+												{meta.title}
+											</CardTitle>
 											{variant === DEFAULT_SLIDER_VARIANT ? (
 												<Badge>Default</Badge>
 											) : (

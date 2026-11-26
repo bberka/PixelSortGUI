@@ -65,7 +65,7 @@ Packages (70):
 - react-style-singleton 2.2.3 (MIT)
 - scheduler 0.28.0 (MIT)
 - sonner 2.0.8 (MIT)
-- tailwind-merge 2.6.2 (MIT)
+- tailwind-merge 3.7.1 (MIT)
 - tailwindcss 4.3.5 (MIT)
 - tslib 2.9.1 (0BSD)
 - use-callback-ref 1.3.3 (MIT)
@@ -2890,7 +2890,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## tailwind-merge 2.6.2
+## tailwind-merge 3.7.1
 
 - License: MIT
 - Homepage: https://github.com/dcastil/tailwind-merge

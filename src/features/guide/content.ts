@@ -78,6 +78,27 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	{keys: ['1'], where: 'Editor', action: 'Show the image at 100%'},
 	{keys: ['Arrow keys'], where: 'Image canvas', action: 'Pan the image'},
 	{
+		keys: ['Arrow keys'],
+		where: 'Crop handle',
+		action: 'Move that side of the crop box by 1 px. Add Shift for 10 px',
+	},
+	{
+		keys: ['Arrow keys'],
+		where: 'Crop box',
+		action: 'Move the crop box by 1 px. Add Shift for 10 px',
+	},
+	{
+		keys: ['Enter', 'Escape'],
+		where: 'Crop mode',
+		action:
+			'Apply or cancel the crop. Enter works on the crop box and the image',
+	},
+	{
+		keys: ['Space'],
+		where: 'Crop mode',
+		action: 'Hold while dragging to pan instead of moving the crop box',
+	},
+	{
 		keys: ['Left', 'Right'],
 		where: 'Left/right split divider',
 		action: 'Move the divider by 1%. Add Shift for 10%',
@@ -195,6 +216,28 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'Duplicate or remove an effect from its menu.',
 					'Mix sets how strongly an effect shows. Blend chooses how it combines with the image below: Normal, Lighten, Darken or Difference.',
 					'Reset one control or “Reset all”. “Randomize” gives every control a random value so you can explore.',
+				],
+			},
+		],
+	},
+	{
+		id: 'geometry',
+		title: 'Crop, rotate and resize',
+		blocks: [
+			{
+				kind: 'paragraph',
+				text: 'Choose “Transform” in the editor toolbar. These changes happen before the effects, never alter your original photo, and each one is a step you can undo.',
+			},
+			{
+				kind: 'list',
+				items: [
+					'Rotate by 90° either way or flip horizontally or vertically. Each press saves at once, and the crop turns with the image.',
+					'Crop: drag the handles, drag inside the box to move it, choose an aspect ratio, or type X, Y, Width and Height in pixels. “Apply crop” saves it and “Cancel” drops it.',
+					'While cropping you see the whole photo without effects, and Compare and split view pause until you finish. Use “Edit crop” to start again, or “Reset crop” to get the full photo back.',
+					'Resize in pixels or percent, from 1% to 1000%. The lock keeps the proportions. Choose Lanczos-3 for smooth detail, Bilinear for a softer result, or Nearest for hard pixel edges. Press “Apply resize”.',
+					'The largest output is 16,384 px per side and 50 megapixels. A photo imported above 50 megapixels can be made smaller but not larger.',
+					'A crop of a new size removes the resize, so set the size after cropping. Applying a preset keeps your crop, rotation, flips and size.',
+					'Effect sizes given in px apply to the cropped and resized image.',
 				],
 			},
 		],

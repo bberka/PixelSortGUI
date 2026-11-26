@@ -1,5 +1,6 @@
 import {createStore, type StoreApi} from 'zustand/vanilla';
 import type {EffectStack, ParamValue} from '../engine/types.ts';
+import {CLOSED_GEOMETRY, type GeometryState} from './geometry.ts';
 
 export type TransientDragOverlay = {
 	instanceId: string;
@@ -8,10 +9,10 @@ export type TransientDragOverlay = {
 };
 
 /**
- Dedicated store for high-frequency interactive drags (sliders, angle dial,
- split divider). Updating this store never notifies subscribers of the main
- `appStore`, so 60 fps dragging only re-renders the narrow control subscribed
- to its own parameter.
+ Dedicated store for unsaved interaction state, including high-frequency drags
+ (sliders, angle dial, split divider, crop box). Updating this store never
+ notifies subscribers of the main `appStore`, so 60 fps dragging only
+ re-renders the narrow control subscribed to its own value.
 
  Recommended narrow subscription in a parameter control component:
  ```ts
@@ -29,6 +30,7 @@ export type TransientState = {
 	splitPosition: number | null;
 	compareLatched: boolean;
 	compareHolding: boolean;
+	geometry: GeometryState;
 };
 
 export type TransientStore = StoreApi<TransientState>;
@@ -43,6 +45,7 @@ export function createTransientStore(): TransientStore {
 		splitPosition: null,
 		compareLatched: false,
 		compareHolding: false,
+		geometry: CLOSED_GEOMETRY,
 	}));
 }
 

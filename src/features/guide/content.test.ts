@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vite-plus/test';
 import {GUIDE_SECTIONS, SHORTCUTS} from './content.ts';
 import {isGuideShortcut} from './navigation.ts';
+import {arrowDelta} from '@/features/transform/crop-math.ts';
 import {stepSplitPosition} from '@/features/canvas/compare-logic.ts';
 import {viewCommandFor} from '@/features/canvas/gestures.ts';
 import {dialValue, steppedValue} from '@/features/params/keyboard.ts';
@@ -60,6 +61,19 @@ describe('guide content', () => {
 		expect(matchHistoryShortcut({key: 'y', ...modifiers(true, false)})).toBe(
 			'redo',
 		);
+	});
+
+	it('lists crop keys the crop box accepts', () => {
+		for (const where of ['Crop handle', 'Crop box']) {
+			expect(keysFor(where)).toEqual(['Arrow keys']);
+		}
+
+		for (const name of ['Left', 'Right', 'Up', 'Down']) {
+			expect(arrowDelta(key(name).key, false)).not.toBeNull();
+		}
+
+		expect(arrowDelta('ArrowRight', true)).toEqual({dx: 10, dy: 0});
+		expect(keysFor('Crop mode')).toEqual(['Enter', 'Escape', 'Space']);
 	});
 
 	it('lists split divider, slider and dial keys their handlers accept', () => {

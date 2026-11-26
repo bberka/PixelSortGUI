@@ -28,6 +28,7 @@ import {Button} from '@/components/ui/button';
 import {Separator} from '@/components/ui/separator';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {HistorySheetButton} from '@/features/history/history-sheet-button.tsx';
+import {TransformToggle} from '@/features/transform/transform-toggle.tsx';
 import {createCompareHoldController} from '@/features/canvas/compare-logic.ts';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
@@ -50,6 +51,8 @@ export function EditorToolbar() {
 	const compareMode = useAppStore((state) => state.compareMode);
 	const showingOriginal = useTransientStore(selectShowingOriginal);
 	const orientation = useAppStore(selectSplitOrientation);
+	// Crop mode suspends Compare and the split view (DESIGN.md section 7.2).
+	const cropping = useTransientStore((state) => state.geometry.cropping);
 	const compact = usePhoneLayout();
 
 	const shortcuts = useMemo(() => getShortcutLabels(), []);
@@ -145,6 +148,12 @@ export function EditorToolbar() {
 	}, [bundle.store]);
 
 	useEffect(() => {
+		if (cropping) {
+			compareController.cancel();
+		}
+	}, [compareController, cropping]);
+
+	useEffect(() => {
 		if (!activeProjectId) {
 			return;
 		}
@@ -171,7 +180,12 @@ export function EditorToolbar() {
 				return;
 			}
 
-			if (event.ctrlKey || event.metaKey || event.altKey) {
+			if (
+				event.ctrlKey ||
+				event.metaKey ||
+				event.altKey ||
+				bundle.transientStore.getState().geometry.cropping
+			) {
 				return;
 			}
 
@@ -231,6 +245,7 @@ export function EditorToolbar() {
 		};
 	}, [
 		activeProjectId,
+		bundle,
 		compareController,
 		runRedo,
 		runUndo,
@@ -246,8 +261,8 @@ export function EditorToolbar() {
 	const redoAriaLabel = formatRedoAriaLabel(redoLabel);
 	const undoTooltip = formatUndoTooltip(undoLabel, shortcuts.undo);
 	const redoTooltip = formatRedoTooltip(redoLabel, shortcuts.redo);
-	const splitActive = compareMode === 'split' && !showingOriginal;
-	// Seven 44 px targets only fit a phone with tighter spacing.
+	const splitActive = compareMode === 'split' && !showingOriginal && !cropping;
+	// Eight 44 px targets only fit a phone with tighter spacing.
 	const groupClass = cn(
 		'flex shrink-0 items-center gap-1',
 		compact && 'pointer-coarse:gap-0',
@@ -377,6 +392,7 @@ export function EditorToolbar() {
 							size={compact ? 'icon-sm' : 'sm'}
 							aria-label="Compare"
 							aria-pressed={showingOriginal}
+							disabled={cropping}
 							onPointerDown={handleComparePointerDown}
 							onPointerUp={handleComparePointerUp}
 							onPointerCancel={handleComparePointerCancel}
@@ -396,6 +412,7 @@ export function EditorToolbar() {
 							size={compact ? 'icon-sm' : 'sm'}
 							aria-label="Split"
 							aria-pressed={splitActive}
+							disabled={cropping}
 							onClick={toggleSplit}
 						>
 							<SplitIcon aria-hidden="true" />
@@ -414,6 +431,7 @@ export function EditorToolbar() {
 								variant="ghost"
 								size="icon-sm"
 								aria-label={orientationLabel}
+								disabled={cropping}
 								onClick={toggleOrientation}
 							>
 								<RotateCwSquareIcon aria-hidden="true" />
@@ -424,6 +442,7 @@ export function EditorToolbar() {
 				</Tooltip>
 			</div>
 			<Separator orientation="vertical" className={separatorClass} />
+			<TransformToggle compact={compact} />
 			<PresetsControl />
 			{compact ? <HistorySheetButton /> : null}
 		</div>

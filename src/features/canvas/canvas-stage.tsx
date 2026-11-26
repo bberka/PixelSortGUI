@@ -15,6 +15,7 @@ import {
 	type Pinch,
 } from './gestures.ts';
 import {StageOverlays} from './stage-overlays.tsx';
+import {cropFitView} from './crop-fit.ts';
 import {useDelayedFlag} from './use-delayed-flag.ts';
 import {
 	clampCenter,
@@ -34,11 +35,14 @@ import {
 	useAppStore,
 	useTransientStore,
 } from '@/app/runtime-context.tsx';
+import {CropOverlay} from '@/features/transform/crop-overlay.tsx';
+import {useCropBodyDrag} from '@/features/transform/use-crop-body-drag.ts';
 import {projectDimensions} from '@/render/render-source.ts';
+import {projectOrientedDimensions} from '@/state/geometry.ts';
 import {selectShowingOriginal} from '@/state/transient.ts';
 import {sideCanvasLabel, selectSplitOrientation} from '@/state/split-sides.ts';
 import type {RenderStatus} from '@/state/app-store.ts';
-import {DEFAULT_SPLIT_POSITION} from '@/storage/types.ts';
+import {type ProjectRecord, DEFAULT_SPLIT_POSITION} from '@/storage/types.ts';
 
 /**
 AC-F8.3: the progress bar appears once a render has run this long.
@@ -87,6 +91,13 @@ function isPointerTarget(target: EventTarget | null): boolean {
 	);
 }
 
+// Crop mode works on the whole rotated and flipped image.
+function canvasDimensions(project: ProjectRecord, cropping: boolean): Size {
+	return cropping
+		? projectOrientedDimensions(project)
+		: projectDimensions(project);
+}
+
 /**
  The centre of the editor: one canvas drawn imperatively at device pixel ratio
  from the frames the render coordinator delivers, plus the render overlays.
@@ -96,17 +107,20 @@ function isPointerTarget(target: EventTarget | null): boolean {
 export function CanvasStage() {
 	const {bundle} = useAppRuntime();
 	const projectId = useAppStore((state) => state.activeProjectId);
+	const cropping = useTransientStore((state) => state.geometry.cropping);
 	// The canvas works in pixels of the image after its geometry transform.
 	const imageWidth = useAppStore((state) =>
 		state.activeProject
-			? projectDimensions(state.activeProject).width
+			? canvasDimensions(state.activeProject, cropping).width
 			: undefined,
 	);
 	const imageHeight = useAppStore((state) =>
 		state.activeProject
-			? projectDimensions(state.activeProject).height
+			? canvasDimensions(state.activeProject, cropping).height
 			: undefined,
 	);
+	const cropSource = useAppStore((state) => state.cropSource);
+	const cropDrag = useCropBodyDrag(bundle, cropping);
 	const setViewState = useAppStore((state) => state.setViewState);
 	const commitSplitPosition = useAppStore((state) => state.commitSplitPosition);
 	const compareMode = useAppStore((state) => state.compareMode);
@@ -157,6 +171,8 @@ export function CanvasStage() {
 	const gestureStartRef = useRef<Point | null>(null);
 	const lastTapRef = useRef<{time: number; position: Point} | null>(null);
 	const wheelTimerRef = useRef<unknown>(null);
+	const croppingRef = useRef(cropping);
+	const placeCropRef = useRef<(() => void) | null>(null);
 
 	const previewBusyB = busy.drag || busy.settle;
 	const previewBusy = previewBusyB || busyA.drag || busyA.settle;
@@ -231,11 +247,23 @@ export function CanvasStage() {
 			return;
 		}
 
-		const loadedSource = renderSourceRef.current;
-		// Read at draw time: side A's bitmaps close as soon as it leaves the state.
-		const {renderA, activeProject} = bundle.store.getState();
+		// Read at draw time: side A's and the crop preview's bitmaps close as soon
+		// as they leave the state.
+		const {
+			renderA,
+			activeProject,
+			cropSource: cropImage,
+		} = bundle.store.getState();
+		const isCropping = croppingRef.current;
+		let loadedSource = renderSourceRef.current;
+		if (isCropping) {
+			// Without a saved crop or size, the editor's own source is the same image.
+			const {crop, resize} = activeProject?.transform ?? {};
+			loadedSource = cropImage ?? (crop || resize ? undefined : loadedSource);
+		}
+
 		let compare: CompareDraw = {mode: 'none'};
-		if (showingOriginalRef.current) {
+		if (isCropping || showingOriginalRef.current) {
 			compare = {mode: 'original'};
 		} else if (compareModeRef.current === 'split') {
 			compare = {
@@ -263,6 +291,7 @@ export function CanvasStage() {
 			checker: checkerRef.current,
 			dpr,
 		});
+		placeCropRef.current?.();
 	}, [bundle.store]);
 
 	const scheduleDraw = useCallback(() => {
@@ -283,6 +312,11 @@ export function CanvasStage() {
 		}
 	}, []);
 
+	const readView = useCallback(() => {
+		const view = viewRef.current;
+		return view ? {view, viewport: viewportRef.current} : null;
+	}, []);
+
 	const clearWheelTimer = useCallback(() => {
 		if (wheelTimerRef.current === null) {
 			return;
@@ -292,6 +326,14 @@ export function CanvasStage() {
 		wheelTimerRef.current = null;
 	}, []);
 
+	const fitCanvas = useCallback(
+		(source: Size, viewport: Size): CanvasView =>
+			croppingRef.current
+				? cropFitView(source, viewport)
+				: fitView(source, viewport),
+		[],
+	);
+
 	const commitView = useCallback(
 		(next: CanvasView) => {
 			viewRef.current = next;
@@ -300,6 +342,11 @@ export function CanvasStage() {
 			writeLabel(next.zoom);
 			setLabelZoom(next.zoom);
 			scheduleDraw();
+			// The view in crop mode is temporary; the saved one returns afterwards.
+			if (croppingRef.current) {
+				return;
+			}
+
 			setViewState({
 				fitMode: next.fitMode,
 				zoom: next.zoom,
@@ -326,7 +373,11 @@ export function CanvasStage() {
 			dirtyRef.current = false;
 			writeLabel(next.zoom);
 			setLabelZoom(next.zoom);
-			if (viewportRef.current.width > 0 && viewportRef.current.height > 0) {
+			if (
+				!croppingRef.current &&
+				viewportRef.current.width > 0 &&
+				viewportRef.current.height > 0
+			) {
 				bundle.store
 					.getState()
 					.setRenderViewScale(next.zoom * devicePixelRatio());
@@ -337,8 +388,10 @@ export function CanvasStage() {
 		[bundle.store, scheduleDraw, writeLabel],
 	);
 
-	// A new project, or a new source size, takes the stored view state.
+	// A new project, or a new source size, takes the stored view state. Crop
+	// mode starts fitted.
 	useEffect(() => {
+		croppingRef.current = cropping;
 		const project = bundle.store.getState().activeProject;
 		if (!project) {
 			sourceRef.current = null;
@@ -347,10 +400,22 @@ export function CanvasStage() {
 			return;
 		}
 
-		const source: Size = projectDimensions(project);
+		const source = canvasDimensions(project, cropping);
 		sourceRef.current = source;
-		claimView(resolveView(project.viewState, source, viewportRef.current));
-	}, [bundle, projectId, imageWidth, imageHeight, claimView, scheduleDraw]);
+		claimView(
+			cropping
+				? cropFitView(source, viewportRef.current)
+				: resolveView(project.viewState, source, viewportRef.current),
+		);
+	}, [
+		bundle,
+		projectId,
+		imageWidth,
+		imageHeight,
+		cropping,
+		claimView,
+		scheduleDraw,
+	]);
 
 	const syncViewport = useCallback((): Size => {
 		const stage = stageRef.current;
@@ -372,7 +437,7 @@ export function CanvasStage() {
 		if (source && current) {
 			claimView(
 				current.fitMode === 'fit'
-					? fitView(source, next)
+					? fitCanvas(source, next)
 					: clampCenter(current, source, next),
 			);
 			return next;
@@ -380,7 +445,7 @@ export function CanvasStage() {
 
 		scheduleDraw();
 		return next;
-	}, [claimView, scheduleDraw]);
+	}, [claimView, fitCanvas, scheduleDraw]);
 
 	// The viewport decides the fit zoom; a resize keeps a custom zoom and centre.
 	useEffect(() => {
@@ -417,7 +482,7 @@ export function CanvasStage() {
 
 	useEffect(() => {
 		scheduleDraw();
-	}, [frameA, fullA, orientation, scheduleDraw]);
+	}, [frameA, fullA, orientation, cropSource, scheduleDraw]);
 
 	useEffect(
 		() =>
@@ -436,15 +501,21 @@ export function CanvasStage() {
 	);
 
 	useEffect(() => {
+		const stage = stageRef.current;
 		const canvas = canvasRef.current;
-		if (!canvas) {
+		if (!stage || !canvas) {
 			return undefined;
 		}
 
 		const handleWheel = (event: WheelEvent) => {
 			const {current} = viewRef;
 			const source = sourceRef.current;
-			if (!current || !source) {
+			// The crop handles lie over the canvas and zoom like it.
+			const onImage =
+				event.target === canvas ||
+				(event.target instanceof Element &&
+					event.target.closest('[data-crop-handle]') !== null);
+			if (!onImage || !current || !source) {
 				return;
 			}
 
@@ -470,9 +541,9 @@ export function CanvasStage() {
 			}, WHEEL_COMMIT_MS);
 		};
 
-		canvas.addEventListener('wheel', handleWheel, {passive: false});
+		stage.addEventListener('wheel', handleWheel, {passive: false});
 		return () => {
-			canvas.removeEventListener('wheel', handleWheel);
+			stage.removeEventListener('wheel', handleWheel);
 			if (wheelTimerRef.current === null) {
 				return;
 			}
@@ -561,14 +632,18 @@ export function CanvasStage() {
 			}
 
 			event.preventDefault();
-			commitView(commandView(command, current, source, viewportRef.current));
+			commitView(
+				command === 'fit'
+					? fitCanvas(source, viewportRef.current)
+					: commandView(command, current, source, viewportRef.current),
+			);
 		};
 
 		globalThis.addEventListener('keydown', handleKeyDown);
 		return () => {
 			globalThis.removeEventListener('keydown', handleKeyDown);
 		};
-	}, [commitView]);
+	}, [commitView, fitCanvas]);
 
 	const pointerPosition = (event: {
 		clientX: number;
@@ -590,7 +665,7 @@ export function CanvasStage() {
 		commitView(
 			current.fitMode === 'fit'
 				? zoomAt(current, anchor, 1, source, viewport)
-				: fitView(source, viewport),
+				: fitCanvas(source, viewport),
 		);
 	};
 
@@ -622,18 +697,31 @@ export function CanvasStage() {
 			event.currentTarget.classList.replace('cursor-grab', 'cursor-grabbing');
 		}
 
-		if (pointersRef.current.size >= 2) {
-			pinchRef.current = beginPinch(
-				current,
-				[...pointersRef.current.values()],
-				viewportRef.current,
-			);
+		if (pointersRef.current.size === 1) {
+			cropDrag.begin(position, current, viewportRef.current);
 		}
+
+		if (!(pointersRef.current.size >= 2)) {
+			return;
+		}
+
+		cropDrag.cancel();
+		pinchRef.current = beginPinch(
+			current,
+			[...pointersRef.current.values()],
+			viewportRef.current,
+		);
 	};
 
 	const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
 		const previous = pointersRef.current.get(event.pointerId);
 		if (!previous) {
+			const {current} = viewRef;
+			event.currentTarget.style.cursor =
+				current &&
+				cropDrag.over(pointerPosition(event), current, viewportRef.current)
+					? 'move'
+					: '';
 			return;
 		}
 
@@ -657,6 +745,10 @@ export function CanvasStage() {
 				applyLive(next);
 			}
 
+			return;
+		}
+
+		if (cropDrag.move(position, current)) {
 			return;
 		}
 
@@ -695,6 +787,12 @@ export function CanvasStage() {
 
 		pinchRef.current = null;
 		gestureStartRef.current = null;
+		if (canTap) {
+			cropDrag.end();
+		} else {
+			cropDrag.cancel();
+		}
+
 		event.currentTarget.classList.replace('cursor-grabbing', 'cursor-grab');
 		if (dirtyRef.current && viewRef.current) {
 			commitView(viewRef.current);
@@ -764,10 +862,13 @@ export function CanvasStage() {
 				onDoubleClick={handleDoubleClick}
 				onKeyDown={handleKeyDown}
 			/>
+			{cropping && projectId !== null ? (
+				<CropOverlay readView={readView} placeRef={placeCropRef} />
+			) : null}
 			<CompareOverlay
 				stageRef={stageRef}
-				showingOriginal={showingOriginal}
-				splitActive={compareMode === 'split' && projectId !== null}
+				showingOriginal={showingOriginal && !cropping}
+				splitActive={compareMode === 'split' && projectId !== null && !cropping}
 				splitPosition={splitPosition}
 				orientation={orientation}
 				labelA={labelA}
@@ -788,7 +889,7 @@ export function CanvasStage() {
 				zoom={labelZoom}
 				progressVisible={progressVisible}
 				progressFraction={progressFraction}
-				renderingFull={renderingFull}
+				renderingFull={renderingFull && !cropping}
 				renderingFullAtTop={
 					compareMode === 'split' && orientation === 'horizontal'
 				}
@@ -796,7 +897,7 @@ export function CanvasStage() {
 				onFit={() => {
 					const source = sourceRef.current;
 					if (source) {
-						commitView(fitView(source, viewportRef.current));
+						commitView(fitCanvas(source, viewportRef.current));
 					}
 				}}
 				onZoom={(zoom) => {

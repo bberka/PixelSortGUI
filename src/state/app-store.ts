@@ -98,6 +98,8 @@ import {
 	sideSelectedId,
 	sideStack,
 } from './split-sides.ts';
+import {createCropPreview} from './crop-preview.ts';
+import {CLOSED_GEOMETRY} from './geometry.ts';
 import {useThemeStore} from './theme.ts';
 import {
 	createCanvasThumbnailGenerator,
@@ -166,7 +168,7 @@ export type AppStoreTimerEnv = {
 export type AppStoreDependencies = {
 	repository: StorageRepository;
 	coordinator: RenderCoordinator;
-	// Renders split side A. Absent: side A is not rendered.
+	// Renders split side A and the crop preview. Absent: neither is rendered.
 	createSideCoordinator?: () => RenderCoordinator;
 	registry?: EffectRegistry;
 	routerEnv?: HashRouterEnv;
@@ -206,6 +208,8 @@ export type AppState = {
 	render: RenderStatus;
 	// Split side A. Idle while that side is hidden or empty.
 	renderA: RenderStatus;
+	// The rotated and flipped source without effects, while crop mode is on.
+	cropSource: SourceInfo | undefined;
 
 	// Internal / restore hydration
 	hydrateFromRestore(payload: {
@@ -624,6 +628,38 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			},
 			dragging: drag !== null,
 		});
+	};
+
+	const cropPreview = createCropPreview({
+		createCoordinator: deps.createSideCoordinator,
+		onSource(cropSource) {
+			store.setState({cropSource});
+		},
+	});
+	let lastCropInputs: readonly unknown[] = [];
+
+	const syncCropPreview = () => {
+		const {activeProject, activeSource} = store.getState();
+		const {cropping} = transientStore.getState().geometry;
+		const inputs = [cropping, activeSource, activeProject?.transform];
+		if (inputs.every((value, index) => value === lastCropInputs[index])) {
+			return;
+		}
+
+		lastCropInputs = inputs;
+		cropPreview.sync(
+			cropping &&
+				activeProject &&
+				activeSource?.sha256 === activeProject.sourceHash
+				? renderSourceFor(activeProject, activeSource)
+				: null,
+		);
+	};
+
+	const closeGeometry = () => {
+		if (transientStore.getState().geometry !== CLOSED_GEOMETRY) {
+			transientStore.setState({geometry: CLOSED_GEOMETRY});
+		}
 	};
 
 	const clearViewStateTimer = () => {
@@ -1112,6 +1148,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 		render: createDefaultRenderStatus(),
 		renderA: createDefaultRenderStatus(),
+		cropSource: undefined,
 
 		hydrateFromRestore(payload) {
 			const stored = payload.activeProject;
@@ -1463,6 +1500,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async addEffect(type) {
+			// The new effect's parameters take the place of the geometry panel.
+			closeGeometry();
 			await flushPendingCommitImpl();
 			const active = requireActiveProject();
 			const side = selectEditingSide(get());
@@ -1611,6 +1650,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		selectEffect(instanceId) {
+			closeGeometry();
 			const {activeProject} = get();
 			if (!activeProject) {
 				return;
@@ -2382,6 +2422,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			unsubscribeSideA?.();
 			unsubscribeSideA = null;
 			sideRenderer.dispose();
+			cropPreview.dispose();
 			detachCoordinator?.();
 			detachCoordinator = null;
 			detachRouter?.();
@@ -2393,9 +2434,20 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 	const unsubscribeStore = store.subscribe(syncSideA);
 	const unsubscribeDrag = transientStore.subscribe(syncSideA);
+	const unsubscribeProject = store.subscribe((state, previous) => {
+		// Geometry edits belong to one open project.
+		if (state.activeProjectId !== previous.activeProjectId) {
+			closeGeometry();
+		}
+
+		syncCropPreview();
+	});
+	const unsubscribeCropMode = transientStore.subscribe(syncCropPreview);
 	unsubscribeSideA = () => {
 		unsubscribeStore();
 		unsubscribeDrag();
+		unsubscribeProject();
+		unsubscribeCropMode();
 	};
 
 	return {

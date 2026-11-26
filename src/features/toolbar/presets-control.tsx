@@ -14,6 +14,7 @@ import {
 	SavePresetDialog,
 } from './preset-dialogs.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
+import {cn} from '@/lib/utils';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
@@ -332,10 +333,11 @@ export function PresetsControl() {
 			type="button"
 			variant="ghost"
 			size="sm"
-			className="h-8 gap-1.5 px-2.5"
+			// Icon only on phones, where the toolbar has no room for the word.
+			className={cn('h-8 gap-1.5 px-2.5', compact && 'size-8 px-0')}
 		>
 			<BookmarkIcon aria-hidden="true" className="size-4" />
-			<span>Presets</span>
+			<span className={cn(compact && 'sr-only')}>Presets</span>
 		</Button>
 	);
 

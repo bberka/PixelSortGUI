@@ -163,6 +163,7 @@ The panel header also has a "Randomize" button (dice icon) that gives every para
 - An `enum` is drawn uniformly from its options and a `boolean` is true with probability one half.
 - A `seed` is a new uint32, like the one "New seed" writes.
 - Parameters hidden by `visibleWhen` are randomized too, because they keep their values and reach `render` (engine.md section 3); they are ready when a later change reveals them. Every combination of values the schema allows is valid, so nothing is restricted.
+- Randomize keeps the chosen image of every `image` parameter (F26), because only the user can choose one.
 - Randomize leaves the instance's Mix, Blend and on/off state, "Show selection", the other instances and the stack order unchanged.
 - The button is disabled when no effect is selected (the panel then shows its "No effect selected" note beside the disabled button) or the selected effect has no parameters. Activating it announces "Randomized <effect label>". On a phone-width layout it shows the icon only; the tooltip and accessible name stay "Randomize".
 - The random numbers come from `crypto.getRandomValues` in the app and from an injected source in tests. They only choose the stored values; rendering stays deterministic for the stored values.
@@ -177,7 +178,7 @@ The panel header also has a "Randomize" button (dice icon) that gives every para
 - AC-F5.7: The parameter panel header shows a "Randomize" button with a dice icon beside "Reset all". It has the accessible name "Randomize" and a tooltip, is reachable by Tab, and Enter and Space activate it.
 - AC-F5.8: One activation creates exactly one history entry labelled "Randomize <effect label>", so the Undo button reads "Undo Randomize <effect label>". One Undo restores every parameter to its previous value, and Redo reapplies the random values.
 - AC-F5.9: Every randomized value is valid for its `ParamSpec`: within `min` and `max`, a multiple of the step (integers stay integers), a range with low at most high, an enum option, a boolean, a uint32 seed, an angle in [0, 360) on the 0.1 step. For one random source the result is the same every time, and it is unchanged by `validateParams`.
-- AC-F5.10: Randomize changes the instance's parameters only: Mix, Blend, the enabled state, "Show selection" and every other instance are unchanged, and parameters hidden by `visibleWhen` are randomized too.
+- AC-F5.10: Randomize changes the instance's parameters only: Mix, Blend, the enabled state, "Show selection" and every other instance are unchanged, and parameters hidden by `visibleWhen` are randomized too. An `image` parameter keeps its value.
 - AC-F5.11: Randomize is disabled when no effect is selected or the effect has no parameters. After a click the live region says "Randomized <effect label>".
 - AC-F5.12: On a pixel sort instance, Randomize changes at least one displayed value and the rendered canvas, creates one history entry, and Undo restores the exact previous values. At 390 px width the header shows both buttons without horizontal overflow, and the page has no accessibility violations.
 
@@ -503,7 +504,14 @@ Merge or composite a second (third, ...) image into a project using an **`imageB
 - **Controls:** Image picker, Blend mode (`Normal`, `Multiply`, `Screen`, `Overlay`, `Lighten`, `Darken`, `Difference`, `Exclusion`, `Add`, `Subtract`), Opacity (`0%` to `100%`), Fit (`Cover`, `Contain`, `Stretch`, `Tile`, `None`), Scale (`10%` to `400%`), Offset X / Y (`-100%` to `+100%`), and Rotation (`0°` to `360°`).
 - **Limits and storage:** Up to **8** distinct extra images per project (each subject to F1's 16,384 px / 50 MP / 200 MB limits). Extra images live in the existing `sources` store, deduplicated by SHA-256, reference-counted across projects and undo history, and included automatically in `.glproj` project files (`F25`) and backups (`F17`). Saving a stack as a user preset clears `image` parameters to empty so presets never pin images.
 
-`imageBlend` is not offered in "Add effect" or the guide until the image picker exists ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)).
+**The image control** ([DESIGN.md section 7.2](../../DESIGN.md#72-post-v010-ui-specifications-f20-f23-f24)):
+
+- `"Choose image"` offers `"From device"` and `"From library"`.
+- `"From device"` accepts one image under every F1 rule: the formats, the 200 MB and 16,384 px limits, the HEIC/HEIF and RAW refusals with the F1 messages, SVG rasterisation, the first frame of an animated file with its notice, and the `"Import at 50 MP"` / `"Import anyway"` choice. A refused file changes nothing. The image is stored by the same commit that first uses it ([persistence.md section 8.5](persistence.md#85-multi-image-source-reference-counting-and-gc-f26)); it does not become a library project.
+- `"From library"` lists every other project. Choosing one uses that project's source image, without its crop or effects, and stores nothing new.
+- `"Clear"` empties the parameter. Choosing and clearing are each one undo step.
+- A refused choice (the cap of AC-F26.6, or a library image that has been deleted meanwhile) shows its message under the control and changes nothing.
+- `"Missing image"` appears only when the image named by the parameter is not in storage or cannot be decoded, never while it is still being read.
 
 Acceptance criteria:
 

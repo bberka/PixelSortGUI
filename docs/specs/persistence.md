@@ -736,6 +736,14 @@ The upgrade is one-way: a build that knows only version 2 cannot open a version 
 - **Cap:** `stack` and `stackA` together name at most 8 distinct extra sources; `sourceHash` does not count. The write is refused with `"A project can use at most 8 extra blend images."` when the result is over 8 and adds a source the current stacks did not name. Removing one is always possible.
 - **Stored:** a source the project did not refer to before must be in `sources`. A reference the project already holds is not checked again, so a project with a missing image stays editable.
 
+**Storing a picked image** ([product.md F26](product.md#f26-blending-multiple-images-imageblend)). A source that no project refers to yet may be deleted at any moment by another tab's startup cleanup. So an image picked from the device is never stored on its own: its `SourceRecord` is written by the same `readwrite` transaction as the commit that first refers to it. `commitStack` takes it as `newSource` (`{sha256, blob, mimeType, width, height}`, with `sha256` the SHA-256 of the blob) and:
+
+- checks the quota for `blob.size` before the transaction when the source is not stored yet (`StorageQuotaError`, nothing written);
+- inside the transaction, after the cap check and before the stored check, adds the record only when `stack` or `stackA` of the result names `sha256` and no record with that hash exists. An existing record is kept as it is, so the same bytes are stored once;
+- writes nothing at all when the commit is refused or its transaction aborts: no blob is left without a reference, and no reference is left without its blob.
+
+Writing the record also restores a source that a project refers to but that has gone missing. `MemoryStorageAdapter` follows the same rule: it changes nothing until every check has passed. Reusing an image of the library needs no `newSource`, because the project it comes from keeps it stored; if that project has been deleted meanwhile, the stored check refuses the commit.
+
 **Reference-counted deletion and orphan cleanup.** A source is referenced while any project has it in `byReferencedSourceHash`, or as its `sourceHash` in `bySourceHash`.
 
 - `deleteProject(id)` deletes the project, its history and its thumbnail, then deletes each source of its `referencedSourceHashes` that is no longer referenced. `sourceDeleted` in the result says whether the primary source went.

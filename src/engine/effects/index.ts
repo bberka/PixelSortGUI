@@ -8,6 +8,10 @@ import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
+import {
+	scanlineWaveSpec,
+	type ScanlineWaveParams,
+} from './scanline-wave-spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
 	...pixelSortSpec,
@@ -49,6 +53,14 @@ const lazyPosterizeEffect: EffectDefinition<PosterizeParams> = {
 	},
 };
 
+const lazyScanlineWaveEffect: EffectDefinition<ScanlineWaveParams> = {
+	...scanlineWaveSpec,
+	async render(input, output, params, ctx) {
+		const {scanlineWaveEffect} = await import('./scanline-wave.ts');
+		return scanlineWaveEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -61,6 +73,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyChannelSwapEffect,
 	lazySliceShiftEffect,
 	lazyPosterizeEffect,
+	lazyScanlineWaveEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

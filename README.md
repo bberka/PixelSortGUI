@@ -12,6 +12,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Channel swap effect: reassign the red, green and blue channels in any of the six orders.
 - Slice shift effect: shift random bands of rows or columns sideways, with a band size range, a probability, a maximum offset, wrap or stretch at the edges, and a seed.
 - Posterize effect: reduce colour depth to a set number of levels per channel or by dropping low bits, with an optional monochrome output.
+- Scanline wave effect: displace rows or columns along a sine, triangle, square or sawtooth wave, with amplitude, wavelength, phase, per-line jitter with a seed, and wrap or stretch at the edges.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. Each step is named after the change, for example "Angle 90°". History holds 200 steps and survives a reload.
 - History panel: a list of every step, newest first. Select one to jump to it. Later steps stay listed until you make a new change. It is a History tab on desktop and tablet, and a History button in the toolbar on phones.
 - Presets: six built-in ones, and your own saved from the current stack. Apply one, add one to the stack, rename or delete your own.

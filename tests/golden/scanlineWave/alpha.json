@@ -1,0 +1,27 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sw000007",
+				"type": "scanlineWave",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"axis": "horizontal",
+					"waveform": "sine",
+					"amplitude": 6,
+					"wavelength": 16,
+					"phase": 0,
+					"jitter": 2,
+					"edge": "clamp",
+					"seed": 7
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

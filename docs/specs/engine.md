@@ -391,7 +391,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`channelSwap` (version 1, `color`) is implemented as specified in section 16.1. Two already-specified glitch effects (`sliceShift`, `blockShuffle`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `posterize`, `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`channelSwap` and `posterize` (both version 1, `color`) are implemented as specified in section 16.1. Two already-specified glitch effects (`sliceShift`, `blockShuffle`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -657,6 +657,8 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/pixel-sort/  index.ts, select.ts, edges.ts, fill.ts
   effects/channel-shift.ts
   effects/channel-swap.ts
+  effects/posterize.ts
+  effects/slice-shift.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts
@@ -670,7 +672,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap` (section 16.1) and the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap`, `sliceShift` and `posterize` (section 16.1) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -709,6 +711,7 @@ Partitions the image into variable-height horizontal bands (or variable-width ve
 - **Behavior:** Slices are defined in source space so preview and export match. For `horizontal`, slices partition source rows `0..Hs-1` (for `vertical`, swap rows and columns, and `x` and `y`). Let `lo = sliceMin`, `hi = max(sliceMin, sliceMax)`. Starting at `y0 = 0` with `i = 0`: slice `i` covers source rows `[y0, y0 + h)` with `h = intIn(lo, hi, seed, 1, i)`; it is active when `unit(seed, 2, i) < probability`; its offset is `o = intIn(-maxOffset, maxOffset, seed, 3, i)` when active, else 0; then `y0 += h`, `i += 1`, until `y0 >= Hs`. For render row `y`, find the slice containing `ys = clamp(ctx.toSource(y), 0, Hs - 1)`, let `or = ctx.px(o)`, and set `out(x, y) = in(E(x - or, W), y)` for all four channels, with `E` as in section 6.1.
 - **Determinism & locality:** Deterministic via `hash32` with `seed` and purpose codes `1, 2, 3`. Per line once the slice table is built (at most `max(Hs, Ws)` entries). Cost class: Low. Debug views: none.
 - **Provenance:** Standard glitch-art technique (VHS/scanline tearing). Clean-room own specification; no external code copied.
+- **Tests:** hand-computed rows and columns in both edge modes, with the same offset on all four channels; `probability` 0 and `maxOffset` 0 are the identity; `sliceMin` above `sliceMax` behaves as `sliceMax = sliceMin`; slice boundaries and offsets follow the source-space table on a half-scale render; 1 × 1, 1 × N and N × 1 images and both ends of every range; the generic checks of section 14.3; stack JSON round trip; golden cases for defaults, two non-default settings and scale 0.5.
 
 #### 2. `channelSwap` (version 1, `color`, top 5): "Swap the red, green and blue channels."
 
@@ -1003,6 +1006,10 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
   - **Refusals** are decided before `createImageBitmap`, after the file size limit. RAW: the extension is `.dng`, `.cr2`, `.cr3`, `.nef`, `.arw`, `.raf`, `.orf`, or `.rw2` (case-insensitive), or the header is CR2 (`II*\0` then `CR` at offset 8), CR3 (`ftyp` brand `crx `), RAF (`FUJIFILMCCD-RAW`), ORF (`IIRO`, `IIRS`, `MMOR`), or RW2 (`IIU\0`). TIFF-based DNG, NEF, and ARW are recognised by extension only. HEIC/HEIF: the extension is `.heic` or `.heif`, or the `ftyp` major brand is `heic`, `heix`, `heim`, `heis`, `hevc`, `hevx`, `hevm`, or `hevs`, or the major brand is `mif1` or `msf1` and no brand is `avif` or `avis` (AVIF files may use `mif1` as major brand and must import).
   - **Animation** is read from the file's content, never its name: GIF with at least two image blocks, PNG with an `acTL` chunk before `IDAT` declaring more than one frame, WebP with the `VP8X` animation flag, AVIF with the `avis` brand. A truncated or malformed header counts as not animated and the file goes on to the browser decoder. The notice is shown once per stored file, after it is saved.
 - `src/features/import/`: detect `image/svg+xml` (or `.svg`), rasterise on the main thread via `HTMLImageElement` + `<canvas>` (default longest side 2,048 px when no intrinsic pixel size exists, clamped to 16,384 px and 50 MP), and store the resulting PNG `Blob` in `sources`.
+  - **Detection:** the MIME type is `image/svg+xml` or the extension is `.svg` (case-insensitive). The 200 MB file limit applies before the file is read.
+  - **Size:** `width` and `height` on the root element count when they are positive absolute lengths (unitless, `px`, `pt`, `pc`, `in`, `cm`, `mm`, `Q`, converted at 96 px per inch). With both, they are the pixel size. With one and a `viewBox`, the other follows the `viewBox` aspect ratio. With neither, the `viewBox` is scaled (up or down) to a longest side of 2,048 px. Without a `viewBox`, a missing side takes the browser's default viewport (300 wide, 150 high), which also stands in for the `viewBox`.
+  - **Cap:** a size over 16,384 px per side or 50 MP is scaled down to fit both, keeping the aspect ratio to the nearest whole pixel (an added `viewBox` stretches to fill it), so the large-image dialog never appears for an SVG.
+  - **Rasterise:** the file is parsed with `DOMParser` (an inert document), the target size and a missing `viewBox` are written onto the root element, and the result is loaded into an `<img>` from a `data:` URL (Chromium taints the canvas for a `blob:` URL SVG holding a `foreignObject`). The browser's SVG-as-image mode runs no script and loads no external resource, so an SVG that references one renders without it. The file is never inserted into the page. A file that is not well-formed SVG gets the unreadable-format error.
 - `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.
 
 ### 16.5 Multi-image blending (`imageBlend`, F26)

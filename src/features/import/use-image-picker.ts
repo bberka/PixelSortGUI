@@ -1,10 +1,10 @@
 import {useRef, type ChangeEvent, type RefObject} from 'react';
 
 /**
- The picker filter. AVIF, BMP, and GIF are listed by extension because not
+ The picker filter. AVIF, BMP, GIF, and SVG are listed by extension because not
  every operating system maps them to an `image/*` type.
  */
-export const IMPORT_ACCEPT = 'image/*,.avif,.bmp,.gif';
+export const IMPORT_ACCEPT = 'image/*,.avif,.bmp,.gif,.svg';
 
 /**
  The hidden file input behind every import trigger (F1, AC-F19.1). Activating

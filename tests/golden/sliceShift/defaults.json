@@ -1,0 +1,26 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sl000001",
+				"type": "sliceShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"axis": "horizontal",
+					"sliceMin": 4,
+					"sliceMax": 48,
+					"probability": 0.3,
+					"maxOffset": 80,
+					"edge": "wrap",
+					"seed": 7
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

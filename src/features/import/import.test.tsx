@@ -668,7 +668,7 @@ describe('storage', () => {
 			(button) => button.textContent === 'Open images',
 		);
 		expect(trigger).toBeDefined();
-		expect(fileInput().accept).toBe('image/*,.avif,.bmp,.gif');
+		expect(fileInput().accept).toBe('image/*,.avif,.bmp,.gif,.svg');
 		expect(fileInput().multiple).toBe(true);
 	});
 });

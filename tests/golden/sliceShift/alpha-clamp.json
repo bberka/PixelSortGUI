@@ -1,0 +1,26 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sl000003",
+				"type": "sliceShift",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"axis": "horizontal",
+					"sliceMin": 2,
+					"sliceMax": 6,
+					"probability": 0.8,
+					"maxOffset": 12,
+					"edge": "clamp",
+					"seed": 11
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

@@ -486,12 +486,17 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 		);
 		expect(reducedMatch).toBe(true);
 
-		// Verify the phone parameters bottom sheet has transition suppressed
+		// The phone panel exists once there is an effect to edit.
+		await page.getByRole('button', {name: 'Add effect'}).click();
+		await page.getByRole('button', {name: /^Pixel sort/}).click();
+		await expect(page.locator('#editor-phone-params-panel')).toBeVisible();
+
+		// Verify the phone parameter panel has no transition
 		const sheetStyles = await page.evaluate(() => {
 			const panel = globalThis.document.querySelector(
 				'#editor-phone-params-panel',
 			);
-			const sheet = panel?.parentElement;
+			const sheet = panel;
 			if (!sheet) {
 				return null;
 			}
@@ -504,7 +509,6 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 			};
 		});
 		expect(sheetStyles).not.toBeNull();
-		expect(sheetStyles?.transitionProperty).toBe('none');
 		for (const seconds of parseDurationListSeconds(
 			sheetStyles?.transitionDuration ?? '1s',
 		)) {
@@ -543,16 +547,15 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 			}
 		}
 
-		// Verify phone sheet detent still toggles cleanly under reduced motion with no running animations
-		const detentButton = page.getByRole('button', {
-			name: /(Expand|Collapse|Show) parameters/,
-		});
-		const aside = page.locator('aside[aria-label="Effects"]');
-		const initialDetent = await aside.getAttribute('data-sheet-detent');
-		await detentButton.click();
-		await expect(aside).not.toHaveAttribute(
-			'data-sheet-detent',
-			initialDetent ?? '',
+		// The phone panel switches size under reduced motion with no running
+		// animations.
+		// The keyboard, with the pointer parked, so that no control sliding under
+		// a pointer starts its own hover transition.
+		await page.mouse.move(0, 0);
+		await page.getByRole('button', {name: 'Show all controls'}).press('Enter');
+		await expect(page.locator('aside[aria-label="Effects"]')).toHaveAttribute(
+			'data-controls',
+			'all',
 		);
 		await assertNoRunningAnimationsAfterFrame(page);
 

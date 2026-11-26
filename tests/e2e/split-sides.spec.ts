@@ -777,8 +777,10 @@ test('AC-F18.3: on a coarse-pointer phone the split controls meet 44x44 px and s
 		await onScreen(control);
 	}
 
+	await expect(
+		switcher.getByRole('button', {name: 'Switch to top/bottom view'}),
+	).toBeVisible();
 	for (const control of [
-		toolbar.getByRole('button', {name: 'Switch to top/bottom view'}),
 		...(await switcher.getByRole('radio').all()),
 		...(await switcher.getByRole('button').all()),
 	]) {
@@ -788,6 +790,6 @@ test('AC-F18.3: on a coarse-pointer phone the split controls meet 44x44 px and s
 	}
 
 	const canvasBox = (await page.getByLabel('Image canvas').boundingBox())!;
-	expect(canvasBox.height / viewport.height).toBeGreaterThan(0.39);
+	expect(canvasBox.height / viewport.height).toBeGreaterThanOrEqual(0.5);
 	await context.close();
 });

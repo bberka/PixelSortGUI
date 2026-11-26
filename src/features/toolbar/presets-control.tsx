@@ -13,6 +13,7 @@ import {
 	ReplaceEffectsDialog,
 	SavePresetDialog,
 } from './preset-dialogs.tsx';
+import {PHONE_TOOL_CLASS} from './phone-tool.ts';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 import {announce} from '@/app/announcer.ts';
@@ -333,11 +334,10 @@ export function PresetsControl() {
 			type="button"
 			variant="ghost"
 			size="sm"
-			// Icon only on phones, where the toolbar has no room for the word.
-			className={cn('h-8 gap-1.5 px-2.5', compact && 'size-8 px-0')}
+			className={cn('h-8 gap-1.5 px-2.5', compact && PHONE_TOOL_CLASS)}
 		>
 			<BookmarkIcon aria-hidden="true" className="size-4" />
-			<span className={cn(compact && 'sr-only')}>Presets</span>
+			<span>Presets</span>
 		</Button>
 	);
 

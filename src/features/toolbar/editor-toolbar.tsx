@@ -7,12 +7,11 @@ import {
 	Rows2Icon,
 	Undo2Icon,
 } from 'lucide-react';
+import {PHONE_TOOL_CLASS, PHONE_TOOL_SLOT_CLASS} from './phone-tool.ts';
 import {PresetsControl} from './presets-control.tsx';
 import {
 	formatRedoAriaLabel,
-	formatRedoTooltip,
 	formatUndoAriaLabel,
-	formatUndoTooltip,
 	getShortcutLabels,
 	isEditableTarget,
 	isModalDialogOpen,
@@ -30,6 +29,7 @@ import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {HistorySheetButton} from '@/features/history/history-sheet-button.tsx';
 import {TransformToggle} from '@/features/transform/transform-toggle.tsx';
 import {createCompareHoldController} from '@/features/canvas/compare-logic.ts';
+import {useShortcutHint} from '@/lib/keyboard-hints.ts';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 import {
@@ -39,7 +39,11 @@ import {
 	selectUndoLabel,
 } from '@/state/app-store.ts';
 import {selectShowingOriginal} from '@/state/transient.ts';
-import {selectSplitOrientation} from '@/state/split-sides.ts';
+import {
+	orientationAnnouncement,
+	orientationSwitchLabel,
+	selectSplitOrientation,
+} from '@/state/split-sides.ts';
 
 export function EditorToolbar() {
 	const {bundle} = useAppRuntime();
@@ -56,6 +60,7 @@ export function EditorToolbar() {
 	const compact = usePhoneLayout();
 
 	const shortcuts = useMemo(() => getShortcutLabels(), []);
+	const hint = useShortcutHint();
 	const suppressCompareClickRef = useRef(false);
 	const clearSuppressTimerRef = useRef<unknown>(null);
 
@@ -114,11 +119,7 @@ export function EditorToolbar() {
 			void state.setCompareMode('split');
 		}
 
-		announce(
-			next === 'vertical'
-				? 'Split view left and right'
-				: 'Split view top and bottom',
-		);
+		announce(orientationAnnouncement(next));
 	}, [bundle, compareController]);
 
 	const runUndo = useCallback(async () => {
@@ -259,20 +260,18 @@ export function EditorToolbar() {
 
 	const undoAriaLabel = formatUndoAriaLabel(undoLabel);
 	const redoAriaLabel = formatRedoAriaLabel(redoLabel);
-	const undoTooltip = formatUndoTooltip(undoLabel, shortcuts.undo);
-	const redoTooltip = formatRedoTooltip(redoLabel, shortcuts.redo);
+	const undoTooltip = hint(undoAriaLabel, shortcuts.undo);
+	const redoTooltip = hint(redoAriaLabel, shortcuts.redo);
 	const splitActive = compareMode === 'split' && !showingOriginal && !cropping;
-	// Eight 44 px targets only fit a phone with tighter spacing.
-	const groupClass = cn(
-		'flex shrink-0 items-center gap-1',
-		compact && 'pointer-coarse:gap-0',
-	);
-	const separatorClass = cn('mx-0.5 h-5', compact && 'pointer-coarse:mx-0');
+	// On phones the groups dissolve so the seven buttons share the row equally.
+	const groupClass = compact ? 'contents' : 'flex shrink-0 items-center gap-1';
+	const separatorClass = cn('mx-0.5 h-5', compact && 'hidden');
+	const slotClass = compact ? PHONE_TOOL_SLOT_CLASS : 'inline-flex';
+	const labelledSize = compact ? 'default' : 'sm';
+	const iconSize = compact ? 'default' : 'icon-sm';
+	const toolClass = compact ? PHONE_TOOL_CLASS : undefined;
 	const SplitIcon = orientation === 'vertical' ? Columns2Icon : Rows2Icon;
-	const orientationLabel =
-		orientation === 'vertical'
-			? 'Switch to top/bottom view'
-			: 'Switch to left/right view';
+	const orientationLabel = orientationSwitchLabel(orientation);
 
 	const handleComparePointerDown = (
 		event: React.PointerEvent<HTMLButtonElement>,
@@ -339,17 +338,18 @@ export function EditorToolbar() {
 			aria-label="Editor actions"
 			className={cn(
 				'flex h-full w-full min-w-0 items-center gap-1.5 px-2 lg:px-3 pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11',
-				compact && 'pointer-coarse:gap-0.5 pointer-coarse:px-1',
+				compact && 'gap-0 px-0.5 lg:px-0.5',
 			)}
 		>
 			<div className={groupClass}>
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<span className="inline-flex">
+						<span className={slotClass}>
 							<Button
 								type="button"
 								variant="ghost"
-								size="icon-sm"
+								size={iconSize}
+								className={toolClass}
 								aria-label={undoAriaLabel}
 								disabled={!canUndo}
 								onClick={() => {
@@ -357,6 +357,7 @@ export function EditorToolbar() {
 								}}
 							>
 								<Undo2Icon aria-hidden="true" />
+								{compact ? <span>Undo</span> : null}
 							</Button>
 						</span>
 					</TooltipTrigger>
@@ -364,11 +365,12 @@ export function EditorToolbar() {
 				</Tooltip>
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<span className="inline-flex">
+						<span className={slotClass}>
 							<Button
 								type="button"
 								variant="ghost"
-								size="icon-sm"
+								size={iconSize}
+								className={toolClass}
 								aria-label={redoAriaLabel}
 								disabled={!canRedo}
 								onClick={() => {
@@ -376,6 +378,7 @@ export function EditorToolbar() {
 								}}
 							>
 								<Redo2Icon aria-hidden="true" />
+								{compact ? <span>Redo</span> : null}
 							</Button>
 						</span>
 					</TooltipTrigger>
@@ -389,7 +392,8 @@ export function EditorToolbar() {
 						<Button
 							type="button"
 							variant={showingOriginal ? 'default' : 'ghost'}
-							size={compact ? 'icon-sm' : 'sm'}
+							size={labelledSize}
+							className={toolClass}
 							aria-label="Compare"
 							aria-pressed={showingOriginal}
 							disabled={cropping}
@@ -399,47 +403,53 @@ export function EditorToolbar() {
 							onClick={handleCompareClick}
 						>
 							<EyeIcon aria-hidden="true" />
-							{compact ? null : <span>Compare</span>}
+							<span>Compare</span>
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Compare original (\, hold to peek)</TooltipContent>
+					<TooltipContent>
+						{hint('Compare original', '\\', 'hold to peek')}
+					</TooltipContent>
 				</Tooltip>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
 							type="button"
 							variant={splitActive ? 'default' : 'ghost'}
-							size={compact ? 'icon-sm' : 'sm'}
+							size={labelledSize}
+							className={toolClass}
 							aria-label="Split"
 							aria-pressed={splitActive}
 							disabled={cropping}
 							onClick={toggleSplit}
 						>
 							<SplitIcon aria-hidden="true" />
-							{compact ? null : <span>Split</span>}
+							<span>Split</span>
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Split view (S)</TooltipContent>
+					<TooltipContent>{hint('Split view', 'S')}</TooltipContent>
 				</Tooltip>
-				<Tooltip>
-					<TooltipTrigger asChild>
-						{/* The wrapper keeps the button's own slot, and with it the
-						    44 px coarse-pointer size. */}
-						<span className="inline-flex">
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon-sm"
-								aria-label={orientationLabel}
-								disabled={cropping}
-								onClick={toggleOrientation}
-							>
-								<RotateCwSquareIcon aria-hidden="true" />
-							</Button>
-						</span>
-					</TooltipTrigger>
-					<TooltipContent>{orientationLabel} (Shift+S)</TooltipContent>
-				</Tooltip>
+				{/* Phones switch orientation in the split side switcher. */}
+				{compact ? null : (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							{/* The wrapper keeps the button's own slot, and with it the
+							    44 px coarse-pointer size. */}
+							<span className="inline-flex">
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									aria-label={orientationLabel}
+									disabled={cropping}
+									onClick={toggleOrientation}
+								>
+									<RotateCwSquareIcon aria-hidden="true" />
+								</Button>
+							</span>
+						</TooltipTrigger>
+						<TooltipContent>{hint(orientationLabel, 'Shift+S')}</TooltipContent>
+					</Tooltip>
+				)}
 			</div>
 			<Separator orientation="vertical" className={separatorClass} />
 			<TransformToggle compact={compact} />

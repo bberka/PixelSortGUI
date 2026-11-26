@@ -3,6 +3,7 @@ import {geometryController} from './geometry-controller.ts';
 import {useAppRuntime, useTransientStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
+import {PHONE_TOOL_CLASS} from '@/features/toolbar/phone-tool.ts';
 
 // The toolbar button that opens and closes the Geometry panel.
 export function TransformToggle({compact}: {readonly compact: boolean}) {
@@ -15,7 +16,8 @@ export function TransformToggle({compact}: {readonly compact: boolean}) {
 				<Button
 					type="button"
 					variant={open ? 'default' : 'ghost'}
-					size={compact ? 'icon-sm' : 'sm'}
+					size={compact ? 'default' : 'sm'}
+					className={compact ? PHONE_TOOL_CLASS : undefined}
 					aria-label="Transform"
 					aria-pressed={open}
 					onClick={() => {
@@ -28,7 +30,7 @@ export function TransformToggle({compact}: {readonly compact: boolean}) {
 					}}
 				>
 					<CropIcon aria-hidden="true" />
-					{compact ? null : <span>Transform</span>}
+					<span>Transform</span>
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent>Crop, rotate and resize</TooltipContent>

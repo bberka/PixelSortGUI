@@ -117,8 +117,8 @@ Every control renders a visible `<label>` (equal to its accessible name, AC-F5.6
 The same controls have three presentations, chosen by the editor layout (`src/features/params/params-layout.ts`), never by an effect:
 
 - **Regular** (desktop sidebar): as in the table above, each numeric field on its own line below its slider.
-- **Compact** (tablet panel, phone landscape drawer, phone portrait with all controls shown): a numeric field sits on the same line as its slider, to its right. A range puts its `Low` field left and its `High` field right of the slider, with both labels for screen readers only. Row padding is `4 px`.
-- **Focused** (phone portrait, one control at a time, section 6.4): compact, and the angle dial grows to `56 × 56 px`.
+- **Compact** (tablet panel, phone with all controls shown): a numeric field sits on the same line as its slider, to its right. A range puts its `Low` field left and its `High` field right of the slider, with both labels for screen readers only. Row padding is `4 px`.
+- **Focused** (phone, one control at a time, section 6.4): compact, and the angle dial grows to `56 × 56 px`.
 
 #### Slider presentation
 
@@ -137,7 +137,7 @@ All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/
 
 Displayed in the parameter panel whenever an effect instance is selected (outside `ParamSpec`):
 
-- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit), plus a `"Randomize"` `Button` (ghost, `DicesIcon`, tooltip) before it that sets every param to a random valid value as 1 commit and leaves `mix`, `blend` and `enabled` alone; icon-only on phone widths (F5). With one control shown on a portrait phone (section 6.4) the header is for screen readers only: `"Show selection"` becomes an icon toggle button (`ScanEye`, `aria-pressed`) and `"Randomize"` stays beside it at the end of the parameter row, while `"Reset all"` appears with all controls.
+- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit), plus a `"Randomize"` `Button` (ghost, `DicesIcon`, tooltip) before it that sets every param to a random valid value as 1 commit and leaves `mix`, `blend` and `enabled` alone; icon-only on phone widths (F5). With one control shown on a phone (section 6.4) the header is for screen readers only: `"Show selection"` becomes an icon toggle button (`ScanEye`, `aria-pressed`) and `"Randomize"` stays beside it at the end of the parameter row, while `"Reset all"` appears with all controls.
 - **Blend & Mix group (bottom section):**
   - `Mix`: `Slider` + numeric `Input` (`0` to `100%`, step `1%`, stored as `0..1` step `0.01`, default `100%`).
   - `Blend`: `ToggleGroup` (`normal` "Normal", `lighten` "Lighten", `darken` "Darken", `difference` "Difference").
@@ -281,12 +281,12 @@ One control (default)             All controls
 - **App bar:** it starts with the Drift icon (`/icons/icon.svg`, `24 px`, decorative with `alt=""`) immediately left of the `"Drift"` heading on every screen, after the back button where there is one. It has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width.
 - **Toolbar:** a `52 px` row directly **below** the canvas, within thumb reach, holding seven equal-width buttons, each an icon with an `11 px` text label: `Undo`, `Redo`, `Compare`, `Split`, `Transform`, `Presets`, `History`. Every one acts in one tap. The split orientation button lives in the split side switcher on phones (section 7).
 - **Effect strip:** a `52 px` row. A pinned `+` button adds an effect; with an empty stack it reads `"Add effect"` beside `"No effects yet"`. Each effect is a `44 px`-tall chip. Tapping a chip selects it and shows its controls. Only the selected chip carries the enabled switch and the `⋮` menu (Move left, Move right, Duplicate, Remove), so more effects fit; a disabled effect shows its `"Off"` badge on any chip. The strip scrolls the selected chip into view.
-- **Parameter panel, one control (default):** a drag handle, then a row of tabs naming each visible parameter plus `Mix` and `Blend` (horizontal scroll, `aria-label="Parameters"`), ending in the `Show selection` toggle (when the effect has it), `Randomize` and `"Show all controls"`. Below, only the chosen parameter's control, in a fixed `144 px` area so the canvas never changes size when switching parameters. The chosen parameter is remembered per effect type. If it becomes hidden (`visibleWhen`), the first parameter is shown.
+- **Parameter panel, one control (default):** a `16 px` drag handle, then a row of tabs naming each visible parameter plus `Mix` and `Blend` (horizontal scroll, `aria-label="Parameters"`), ending in the `Show selection` toggle (when the effect has it), `Randomize` and `"Show all controls"`. Below, only the chosen parameter's control, in a fixed `144 px` area so the canvas never changes size when switching parameters. The chosen parameter is remembered per effect type. If it becomes hidden (`visibleWhen`), the first parameter is shown.
 - **Parameter panel, all controls:** the full list of section 5.1 in a `ScrollArea`, compact density, with `"Show one control"` in its header. Its height is capped so the canvas keeps at least `40%` of the viewport.
 - **Snap points:** the button switches between the two states. Dragging the handle up more than `24 px` shows all controls and down shows one. The canvas resizes above the panel and a fitted view refits.
 - **Nothing to edit:** with an empty stack and the Geometry panel closed, the parameter panel is absent and the canvas takes the room.
 - **Transform:** the Geometry panel (section 7.2) takes the panel at the all-controls height, with no handle.
-- **Phone landscape (`height < 500 CSS px`):** the canvas column is on the left with the same labelled toolbar below the canvas, and a collapsible `300 px` right drawer holds the effect strip and the full parameter list (compact density). The canvas keeps at least half the viewport width.
+- **Phone landscape (`height < 500 CSS px`):** the canvas column is on the left with the same labelled toolbar below the canvas, and a collapsible `300 px` right drawer holds the effect strip and the same parameter panel, one control by default or all of them, with no drag handle. The canvas keeps at least half the viewport width.
 
 ## 7. Feature-specific visual specifications
 

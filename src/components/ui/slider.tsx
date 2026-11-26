@@ -103,8 +103,11 @@ function Slider({
 			min={min}
 			max={max}
 			className={cn(
-				'relative flex w-full touch-none items-center select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+				// A swipe up or down that starts on a slider scrolls the panel; the
+				// cancelled pointer drops the dragged value (DESIGN.md section 5.1).
+				'relative flex w-full touch-none items-center select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 pointer-coarse:touch-pan-y',
 				activeVariant === 'stepped' ? 'h-7' : 'h-8',
+				'pointer-coarse:h-11',
 				className,
 			)}
 			{...props}
@@ -210,6 +213,7 @@ function Slider({
 						activeVariant === 'fill-bar'
 							? 'h-8 w-6 rounded-md'
 							: 'h-7 w-6 rounded-sm',
+						'pointer-coarse:h-11 pointer-coarse:w-11',
 					)}
 				>
 					{activeVariant === 'fader' ? (

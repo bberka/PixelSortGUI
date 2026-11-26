@@ -15,8 +15,10 @@ import {ExactEntry} from './exact-entry.tsx';
 import {controlId} from './ids.ts';
 import {dialValue, snapAngle} from './keyboard.ts';
 import {ParamRow} from './param-row.tsx';
+import {useParamsLayout} from './params-layout.ts';
 import {useTransientParam} from './use-drag-value.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
+import {cn} from '@/lib/utils';
 
 export type AngleControlProps = {
 	readonly instanceId: string;
@@ -64,6 +66,8 @@ export function AngleControl({
 	const cancelDrag = useAppStore((state) => state.cancelDrag);
 	const transient = useTransientParam(instanceId, paramKey);
 	const current = numberFrom(transient, value);
+	// The focused panel has the height for a dial that a finger can aim.
+	const large = useParamsLayout().density === 'focused';
 	const draggingRef = useRef(false);
 	const inputId = controlId(instanceId, paramKey);
 	const labelId = `${inputId}-label`;
@@ -139,7 +143,10 @@ export function AngleControl({
 					aria-valuemin={0}
 					aria-valuenow={current}
 					aria-valuetext={formatAngle(current)}
-					className="relative size-11 shrink-0 touch-none rounded-full border border-input bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					className={cn(
+						'relative shrink-0 touch-none rounded-full border border-input bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+						large ? 'size-14' : 'size-11',
+					)}
 					role="slider"
 					tabIndex={0}
 					onKeyDown={handleKeyDown}

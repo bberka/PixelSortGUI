@@ -28,6 +28,11 @@ export type GuideSection = {
 	 */
 	readonly id: string;
 	readonly title: string;
+	/**
+	 Left out, with its contents entry, where keyboard hints are hidden
+	 (DESIGN.md section 8.4). No other section names a key.
+	 */
+	readonly keyboardOnly?: boolean;
 	readonly blocks: readonly GuideBlock[];
 };
 
@@ -42,7 +47,6 @@ export type Shortcut = {
 
 export const GUIDE_TITLE = 'Drift guide';
 export const GUIDE_BUTTON_LABEL = 'Guide';
-export const GUIDE_BUTTON_TOOLTIP = 'Guide (?)';
 export const GUIDE_CONTENTS_LABEL = 'Contents';
 export const GUIDE_SETTINGS_LINK = 'Read the guide';
 
@@ -60,14 +64,6 @@ export const LANDING = {
 	privacy: 'Images stay on this device.',
 	offline: 'Drift works offline and needs no account.',
 	formats: 'Opens JPEG, PNG, WebP, GIF, BMP, AVIF, TIFF and SVG.',
-	shortcutsLabel: 'Shortcuts:',
-	// Each key must also be in `SHORTCUTS`; `content.test.ts` checks it.
-	shortcuts: [
-		{key: '?', action: 'Guide'},
-		{key: '\\', action: 'Compare'},
-		{key: 'S', action: 'Split view'},
-		{key: '0', action: 'Fit'},
-	],
 	introTitle: 'See what Drift does',
 	introText:
 		'Pick one to try it on a sample picture. Left is the original, right is the result.',
@@ -96,6 +92,11 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	{keys: ['0'], where: 'Editor', action: 'Fit the image to the view'},
 	{keys: ['1'], where: 'Editor', action: 'Show the image at 100%'},
 	{keys: ['Arrow keys'], where: 'Image canvas', action: 'Pan the image'},
+	{
+		keys: ['Ctrl+wheel', '⌘+wheel'],
+		where: 'Image canvas',
+		action: 'Zoom around the pointer',
+	},
 	{
 		keys: ['Arrow keys'],
 		where: 'Crop handle',
@@ -208,7 +209,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 				items: [
 					'Import: choose “Import images” or drag files onto the window. Each photo becomes a project in the Library. With no projects yet, “Try a sample” makes one from a built-in picture.',
 					'Add effects: choose “Add effect” in the editor, or apply a preset from the toolbar.',
-					'Tweak: select an effect and move its controls. The preview updates as you drag and sharpens when you stop.',
+					'Tweak: select an effect and move its controls. The preview updates as you drag and sharpens when you stop. A phone held upright shows one control at a time: pick it in the row above, or choose “Show all controls”.',
 					'Compare: use Compare to see the original, or split view to put two looks beside each other.',
 					'Export: choose “Export”, pick a format and size, and download the file.',
 				],
@@ -230,8 +231,8 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			{
 				kind: 'list',
 				items: [
-					'Switch an effect off to see the image without it. It keeps its settings.',
-					'Reorder by dragging, with the effect’s menu, or with Alt+Up and Alt+Down.',
+					'Switch an effect off to see the image without it. It keeps its settings. On a phone, tap the effect first: its switch and menu appear on it.',
+					'Reorder with the effect’s menu, or by dragging on wider screens.',
 					'Duplicate or remove an effect from its menu.',
 					'Mix sets how strongly an effect shows. Blend chooses how it combines with the image below: Normal, Lighten, Darken or Difference.',
 					'Reset one control or “Reset all”. “Randomize” gives every control a random value so you can explore.',
@@ -342,7 +343,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 		blocks: [
 			{
 				kind: 'paragraph',
-				text: 'Every finished change, such as releasing a slider or adding an effect, is one step, named after what changed. Use the Undo and Redo buttons or their keyboard shortcuts. Making a new change after undoing drops the steps you undid.',
+				text: 'Every finished change, such as releasing a slider or adding an effect, is one step, named after what changed. Use the Undo and Redo buttons. Making a new change after undoing drops the steps you undid.',
 			},
 			{
 				kind: 'paragraph',
@@ -358,12 +359,12 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 				kind: 'list',
 				items: [
 					'Click Compare to show the original, and click again for your result.',
-					String.raw`Press and hold Compare (or the \ key) to peek at the original and release to return.`,
-					'Split view shows side A on the left and side B on the right. The button beside “Split”, or Shift+S, puts A on top and B below instead.',
+					'Press and hold Compare to peek at the original and release to return.',
+					'Split view shows side A on the left and side B on the right. The turn button puts A on top and B below instead. It sits beside “Split”, or on a phone beside the side buttons.',
 					'Each side has its own effects. Side B is your main effect stack. Side A starts empty, so it shows the original until you add effects to it.',
 					'In split view, choose the side under “Editing” in the effects panel. “Copy to other side” and “Swap sides” sit beside it.',
-					'Drag the divider, or focus it and use the arrow keys that point across it.',
-					'Zoom with Ctrl or ⌘ plus the scroll wheel, pinch on a touch screen, or use the zoom menu. Double-click switches between Fit and 100%.',
+					'Drag the divider to compare more of one side.',
+					'Zoom by pinching or with the zoom menu. Double-tap or double-click switches between Fit and 100%.',
 				],
 			},
 		],
@@ -393,6 +394,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 	{
 		id: 'shortcuts',
 		title: 'Keyboard shortcuts',
+		keyboardOnly: true,
 		blocks: [
 			{
 				kind: 'paragraph',

@@ -52,6 +52,10 @@ export function EffectOptions({
 export type AddEffectPickerProps = {
 	readonly registry: EffectRegistry;
 	readonly compact: boolean;
+	/**
+	On phones the button is the plus icon alone unless this asks for its words.
+	*/
+	readonly labelled?: boolean;
 	readonly disabled: boolean;
 	readonly describedBy?: string;
 	readonly triggerRef?: Ref<HTMLButtonElement>;
@@ -61,6 +65,7 @@ export type AddEffectPickerProps = {
 export function AddEffectPicker({
 	registry,
 	compact,
+	labelled = false,
 	disabled,
 	describedBy,
 	triggerRef,
@@ -78,10 +83,14 @@ export function AddEffectPicker({
 			aria-label="Add effect"
 			aria-describedby={describedBy}
 			disabled={disabled}
-			className={compact ? 'h-11 w-11 px-0' : 'w-full justify-start'}
+			className={cn(
+				compact && 'h-11 min-w-11 shrink-0',
+				compact && !labelled && 'w-11 px-0',
+				!compact && 'w-full justify-start',
+			)}
 		>
 			<PlusIcon aria-hidden="true" />
-			{compact ? null : <span>Add effect</span>}
+			{compact && !labelled ? null : <span>Add effect</span>}
 		</Button>
 	);
 

@@ -2,6 +2,7 @@ import type {KeyboardEvent} from 'react';
 import {ExactEntry} from './exact-entry.tsx';
 import {controlId} from './ids.ts';
 import {parseNumericText} from './format.ts';
+import {useParamsLayout} from './params-layout.ts';
 import {steppedValue} from './keyboard.ts';
 import {useTransientMix} from './use-drag-value.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
@@ -10,6 +11,7 @@ import {Slider} from '@/components/ui/slider';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
 import {clamp} from '@/engine/math.ts';
 import type {BlendMode} from '@/engine/types.ts';
+import {cn} from '@/lib/utils';
 
 const BLEND_MODES: ReadonlyArray<{value: BlendMode; label: string}> = [
 	{value: 'normal', label: 'Normal'},
@@ -45,6 +47,7 @@ export function MixControl({instanceId, mix}: MixControlProps) {
 	const cancelDrag = useAppStore((state) => state.cancelDrag);
 	const transient = useTransientMix(instanceId);
 	const current = transient ?? mix;
+	const inline = useParamsLayout().density !== 'regular';
 	const percent = clamp(Math.round(current * 100), PERCENT.min, PERCENT.max);
 	const inputId = controlId(instanceId, 'mix');
 	const labelId = `${inputId}-label`;
@@ -70,39 +73,42 @@ export function MixControl({instanceId, mix}: MixControlProps) {
 					{formatPercent(current)}
 				</span>
 			</div>
-			<Slider
-				defaultMark={100}
-				max={PERCENT.max}
-				min={PERCENT.min}
-				step={PERCENT.step}
-				thumbLabels={['Mix']}
-				value={[percent]}
-				onKeyDownCapture={handleKeyDownCapture}
-				onPointerCancel={cancelDrag}
-				onValueChange={(values) => {
-					const next = values[0];
-					if (next !== undefined) {
-						dragMix(instanceId, next / 100);
-					}
-				}}
-				onValueCommit={(values) => {
-					const next = values[0];
-					if (next !== undefined) {
-						void commitMix(instanceId, next / 100);
-					}
-				}}
-			/>
-			<div className="flex justify-end">
-				<ExactEntry
-					className="w-24"
-					format={formatPercent}
-					id={inputId}
-					parse={parsePercent}
-					value={current}
-					onCommit={(next) => {
-						void commitMix(instanceId, next);
+			<div className={inline ? 'flex items-center gap-3' : 'contents'}>
+				<Slider
+					className={cn(inline && 'min-w-0 flex-1')}
+					defaultMark={100}
+					max={PERCENT.max}
+					min={PERCENT.min}
+					step={PERCENT.step}
+					thumbLabels={['Mix']}
+					value={[percent]}
+					onKeyDownCapture={handleKeyDownCapture}
+					onPointerCancel={cancelDrag}
+					onValueChange={(values) => {
+						const next = values[0];
+						if (next !== undefined) {
+							dragMix(instanceId, next / 100);
+						}
+					}}
+					onValueCommit={(values) => {
+						const next = values[0];
+						if (next !== undefined) {
+							void commitMix(instanceId, next / 100);
+						}
 					}}
 				/>
+				<div className={cn('flex justify-end', inline && 'shrink-0')}>
+					<ExactEntry
+						className={inline ? 'w-20' : 'w-24'}
+						format={formatPercent}
+						id={inputId}
+						parse={parsePercent}
+						value={current}
+						onCommit={(next) => {
+							void commitMix(instanceId, next);
+						}}
+					/>
+				</div>
 			</div>
 		</div>
 	);

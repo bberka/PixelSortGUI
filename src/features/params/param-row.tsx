@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
 import {RotateCcwIcon} from 'lucide-react';
+import {useParamsLayout} from './params-layout.ts';
 import {Button} from '@/components/ui/button';
 import {Label} from '@/components/ui/label';
 import {cn} from '@/lib/utils';
@@ -39,8 +40,16 @@ export function ParamRow({
 	inline,
 	children,
 }: ParamRowProps) {
+	const compact = useParamsLayout().density !== 'regular';
+
 	return (
-		<div className="flex flex-col gap-1 px-2 py-1.5" data-param-row="">
+		<div
+			className={cn(
+				'flex flex-col px-2',
+				compact ? 'gap-0.5 py-1' : 'gap-1 py-1.5',
+			)}
+			data-param-row=""
+		>
 			<div className="flex min-h-6 items-center justify-between gap-2">
 				<Label className="min-w-0 truncate" htmlFor={htmlFor} id={labelId}>
 					{label}

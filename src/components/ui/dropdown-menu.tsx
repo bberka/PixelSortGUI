@@ -2,6 +2,7 @@ import type * as React from 'react';
 import {createContext, useContext, useRef, type ComponentProps} from 'react';
 import {CheckIcon, ChevronRightIcon, CircleIcon} from 'lucide-react';
 import {DropdownMenu as DropdownMenuPrimitive} from 'radix-ui';
+import {useShowKeyboardHints} from '@/lib/keyboard-hints.ts';
 import {cn} from '@/lib/utils';
 
 const DropdownMenuModalContext = createContext(true);
@@ -250,10 +251,19 @@ function DropdownMenuSeparator({
 	);
 }
 
+/**
+ The key beside a menu item. Left out where there is no keyboard to press it
+ (DESIGN.md section 8.4).
+ */
 function DropdownMenuShortcut({
 	className,
 	...props
 }: React.ComponentProps<'span'>) {
+	const show = useShowKeyboardHints();
+	if (!show) {
+		return null;
+	}
+
 	return (
 		<span
 			data-slot="dropdown-menu-shortcut"

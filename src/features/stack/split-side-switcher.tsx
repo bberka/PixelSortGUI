@@ -1,11 +1,21 @@
 import {useId, type ReactNode} from 'react';
-import {ArrowLeftRightIcon, ArrowUpDownIcon, CopyIcon} from 'lucide-react';
+import {
+	ArrowLeftRightIcon,
+	ArrowUpDownIcon,
+	CopyIcon,
+	RotateCwSquareIcon,
+} from 'lucide-react';
 import {announce} from '@/app/announcer.ts';
-import {useAppStore} from '@/app/runtime-context.tsx';
+import {useAppStore, useTransientStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
+import {useShortcutHint} from '@/lib/keyboard-hints.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
+import {cn} from '@/lib/utils';
 import {
+	orientationAnnouncement,
+	orientationSwitchLabel,
 	otherSide,
 	selectEditingSide,
 	selectEditingStack,
@@ -70,6 +80,10 @@ export function SplitSideSwitcher() {
 	const setEditSide = useAppStore((state) => state.setEditSide);
 	const copyToOtherSide = useAppStore((state) => state.copyToOtherSide);
 	const swapSides = useAppStore((state) => state.swapSides);
+	const setSplitOrientation = useAppStore((state) => state.setSplitOrientation);
+	const cropping = useTransientStore((state) => state.geometry.cropping);
+	const compact = usePhoneLayout();
+	const hint = useShortcutHint();
 	const labelId = useId();
 
 	if (!visible) {
@@ -88,7 +102,10 @@ export function SplitSideSwitcher() {
 		>
 			<span
 				id={labelId}
-				className="shrink-0 text-[11px] leading-4 font-semibold tracking-[0.05em] text-muted-foreground uppercase"
+				className={cn(
+					'shrink-0 text-[11px] leading-4 font-semibold tracking-[0.05em] text-muted-foreground uppercase',
+					compact && 'sr-only',
+				)}
 			>
 				Editing
 			</span>
@@ -140,6 +157,20 @@ export function SplitSideSwitcher() {
 			>
 				<SwapIcon aria-hidden="true" />
 			</SideAction>
+			{compact ? (
+				<SideAction
+					label={orientationSwitchLabel(orientation)}
+					tooltip={hint(orientationSwitchLabel(orientation), 'Shift+S')}
+					disabled={cropping}
+					onClick={() => {
+						const next = orientation === 'vertical' ? 'horizontal' : 'vertical';
+						setSplitOrientation(next);
+						announce(orientationAnnouncement(next));
+					}}
+				>
+					<RotateCwSquareIcon aria-hidden="true" />
+				</SideAction>
+			) : null}
 		</div>
 	);
 }

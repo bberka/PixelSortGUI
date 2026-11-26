@@ -10,6 +10,9 @@ export const CHANGELOG_TEXT = `# Changelog
 - New effect: Pixel smear, which drags selected pixels along an angle in fading trails.
 - New effect: JPEG crush, which crushes blocks like a badly saved JPEG and can corrupt some of them into colour glitches.
 - A new start screen while the library is empty: drop photos or open them, try a built-in sample picture, or pick one of four effect previews to see it applied. It replaces the welcome card.
+- A new editor on phones. The photo stays large while you edit: pick a control by name and drag it, or open all of them. The toolbar has labels and sits under the photo, only the selected effect shows its switch and menu, and "Apply crop" is in view as soon as you open Transform.
+- On touch screens, swiping the controls up or down scrolls them without changing a slider.
+- Keyboard shortcuts are no longer shown on phones and tablets. On computers they are in tooltips, menus and the guide, and no longer on the start screen.
 
 ## v0.2.0
 

@@ -1,0 +1,27 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sw000005",
+				"type": "scanlineWave",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"axis": "vertical",
+					"waveform": "sine",
+					"amplitude": 10,
+					"wavelength": 32,
+					"phase": 90,
+					"jitter": 0,
+					"edge": "clamp",
+					"seed": 1
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

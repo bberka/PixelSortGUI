@@ -662,6 +662,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/posterize.ts
   effects/slice-shift.ts
   effects/block-shuffle.ts
+  effects/scanline-wave.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts
@@ -675,7 +676,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `sliceShift`, `channelSwap`, `blockShuffle` and `posterize` (section 16.1) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -766,6 +767,7 @@ Shifts each row (or column) horizontally (or vertically) by a periodic wave func
   Source offset `os = roundHalfAway(amplitude * wave) + (jitter > 0 ? intIn(-jitter, jitter, seed, 1, ys) : 0)`. Render offset `or = ctx.px(os)`. Set `out(x, y) = in(E(x - or, W), y)` for all four channels.
 - **Determinism & locality:** Deterministic via `DIRECTION_TABLE` and `hash32` (purpose code `1`). Per line. Cost class: Low. Debug views: none.
 - **Provenance:** Classic scanline/CRT wave displacement. Clean-room own implementation reusing `DIRECTION_TABLE` from section 5.2.
+- **Tests:** hand-computed line offsets for all four waveforms on both axes and in both edge modes, with the same offset on all four channels; `phase` advances the cycle; `amplitude` 0 with `jitter` 0 is the identity; jitter is one draw per source line, repeats for a seed, changes with the seed, and the seed is ignored without jitter; a proxy render evaluates the wave and jitter at source lines; input is never written and the same input and parameters give the same output; parameters survive a saved-stack round trip and out-of-range values are repaired; golden cases for each waveform.
 
 #### 5. `posterize` (version 1, `color`, top 5): "Reduce colour depth by quantising levels or crushing low bits."
 

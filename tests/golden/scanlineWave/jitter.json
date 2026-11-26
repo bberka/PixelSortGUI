@@ -1,0 +1,27 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sw000006",
+				"type": "scanlineWave",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"axis": "horizontal",
+					"waveform": "sine",
+					"amplitude": 0,
+					"wavelength": 32,
+					"phase": 0,
+					"jitter": 8,
+					"edge": "wrap",
+					"seed": 1234
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

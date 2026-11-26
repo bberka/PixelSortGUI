@@ -6,6 +6,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 
 - Import photos with a file picker or by dragging files onto the window. Several files can be imported at once. Any format your browser can decode works, such as JPEG, PNG, WebP, GIF, BMP and AVIF, and TIFF works too (the first page; 16-bit samples are reduced to 8-bit). An SVG is converted to a still image at its stated pixel size, or 2,048 pixels on its longest side if it states none; links to outside files in it are not loaded. An animated GIF, WebP, APNG or AVIF imports its first frame and shows a notice. HEIC/HEIF and camera RAW files are refused with a message saying what to convert them to. Images over 16,384 pixels on the longest side or over 200 MB are refused. Images over 50 megapixels offer a choice to import at 50 megapixels or import anyway.
 - Library of saved projects with thumbnails. Open, rename, duplicate and delete a project.
+- Project files: "Save project file" in a Library project's menu or in the editor (on a phone, the menu at the top right) downloads one `.glproj` file holding the original photo, crop and size, effects, export settings and, unless you leave it out, the undo history. A progress bar has Cancel. Open the file with the import picker or by dropping it on the window: it becomes a new project, with "(imported)" added to a name that is taken. A damaged or newer file is refused with a message, and effects this version does not know are kept and reported.
 - A start screen while the library is empty: a drop zone, "Open images", "Try a sample" (a picture drawn by the app, so it works offline) and "Read the guide". On the first launch it also shows before and after previews of pixel sort, channel shift, slice shift and posterize; selecting one opens the sample with that effect. The previews go away when dismissed or after the first import.
 - Geometry, under "Transform" in the editor: rotate by 90° and flip; crop with an on-canvas box (drag, aspect ratios, typed X, Y, width and height, arrow keys, Enter to apply and Escape to cancel); and resize in pixels or percent with an aspect lock and a choice of Lanczos-3, bilinear or nearest, up to 16,384 pixels per side and 50 megapixels. It is applied before the effects, never changes the original photo, and each change can be undone.
 - Effect stack: add effects, turn each one on or off, reorder, duplicate and remove them.
@@ -41,7 +42,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 These are planned and not in the app.
 
 - More effects.
-- Project files and backup and restore.
+- Backup and restore of the whole library.
 - Blending a second image into a project.
 - Masks and painting on the canvas.
 - Animation and video.

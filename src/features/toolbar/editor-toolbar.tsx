@@ -27,6 +27,7 @@ import {Button} from '@/components/ui/button';
 import {Separator} from '@/components/ui/separator';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {HistorySheetButton} from '@/features/history/history-sheet-button.tsx';
+import {SaveProjectButton} from '@/features/project-file/save-project-button.tsx';
 import {TransformToggle} from '@/features/transform/transform-toggle.tsx';
 import {createCompareHoldController} from '@/features/canvas/compare-logic.ts';
 import {useShortcutHint} from '@/lib/keyboard-hints.ts';
@@ -454,6 +455,7 @@ export function EditorToolbar() {
 			<Separator orientation="vertical" className={separatorClass} />
 			<TransformToggle compact={compact} />
 			<PresetsControl />
+			<SaveProjectButton />
 			{compact ? <HistorySheetButton /> : null}
 		</div>
 	);

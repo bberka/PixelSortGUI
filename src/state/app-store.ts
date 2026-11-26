@@ -1382,7 +1382,6 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						unsupportedInstances: [],
 						debugView: null,
 						route: nextRoute,
-						notice: null,
 					});
 					routerEnv.setHash(formatHashRoute(nextRoute));
 					coordinator.setSource(renderSourceFor(result.project, result.source));
@@ -1456,7 +1455,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeThumbnail: null,
 				debugView: null,
 				route: nextRoute,
-				notice: geometryNotice(stored, stored.transform),
+				// A notice still waiting to be shown stays.
+				notice:
+					[state.notice, geometryNotice(stored, stored.transform)]
+						.filter(Boolean)
+						.join(' ') || null,
 			}));
 
 			if (options.updateHash !== false) {

@@ -212,6 +212,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'Tweak: select an effect and move its controls. The preview updates as you drag and sharpens when you stop. A phone held upright shows one control at a time: pick it in the row above, or choose “Show all controls”.',
 					'Compare: use Compare to see the original, or split view to put two looks beside each other.',
 					'Export: choose “Export”, pick a format and size, and download the file.',
+					'Keep the project: choose “Save project file” to download it, effects and all, as a .glproj file.',
 				],
 			},
 			{
@@ -414,8 +415,32 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'The browser sets a storage limit. Settings shows how much you use. If space runs out, delete projects you no longer need.',
 					'In Settings, “Request protection” asks the browser not to clear your data when disk space is low.',
 					'Private browsing windows delete everything when you close them.',
-					'Clearing your browser data deletes your projects. Backup and project files are not in the app yet, so export the results you want to keep.',
+					'Clearing your browser data deletes your projects. Save the ones you want to keep as project files.',
 				],
+			},
+		],
+	},
+	{
+		id: 'project-files',
+		title: 'Project files',
+		blocks: [
+			{
+				kind: 'paragraph',
+				text: 'A project file (.glproj) holds one whole project: the original photo, crop and size, effects, export settings and, if you keep it, the undo history. Saving and opening happen on this device and nothing is uploaded.',
+			},
+			{
+				kind: 'list',
+				items: [
+					'Save: choose “Save project file” in the menu of a Library project, or in the editor. On a phone it is in the menu at the top right of the editor.',
+					'Leave “Include undo history” checked to keep your steps. Without it the file opens with a single starting step.',
+					'Open: choose “Import images” or “Open images” and pick the file, or drop it on the window.',
+					'Opening a file always adds a new project and never replaces one. A name that is already taken gets “(imported)” added.',
+					'A project made with effects this version does not have still opens. Those effects are kept and skipped, and a message says how many.',
+				],
+			},
+			{
+				kind: 'paragraph',
+				text: 'Backing up the whole Library at once is not in the app yet.',
 			},
 		],
 	},

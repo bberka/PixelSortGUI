@@ -2,6 +2,7 @@ import type {ComponentType} from 'react';
 import {ExportAction} from '@/features/export/export-action.tsx';
 import {GuideButton} from '@/features/guide/guide-button.tsx';
 import {ImportImagesAction} from '@/features/import';
+import {EditorOverflowMenu} from '@/features/project-file/editor-overflow-menu.tsx';
 import {SettingsButton} from '@/features/settings/settings-button.tsx';
 import type {AppRoute} from '@/state/router.ts';
 
@@ -25,5 +26,6 @@ export const APP_BAR_ACTIONS: readonly AppBarAction[] = [
 	{id: 'export', screen: 'editor', component: ExportAction},
 	{id: 'guide-editor', screen: 'editor', component: GuideButton},
 	{id: 'settings-editor', screen: 'editor', component: SettingsButton},
+	{id: 'overflow-editor', screen: 'editor', component: EditorOverflowMenu},
 	{id: 'settings-guide', screen: 'guide', component: SettingsButton},
 ];

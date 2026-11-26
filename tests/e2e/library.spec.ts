@@ -189,7 +189,7 @@ test('clicking a card opens the project in the editor', async ({page}) => {
 	expect(new URL(page.url()).hash).toBe(`#/p/${projectId}`);
 });
 
-test('the card menu offers Open, Rename, Duplicate and Delete', async ({
+test('the card menu offers Open, Rename, Duplicate, Save and Delete', async ({
 	page,
 }) => {
 	await page.goto('/');
@@ -201,6 +201,7 @@ test('the card menu offers Open, Rename, Duplicate and Delete', async ({
 		'Open',
 		'Rename',
 		'Duplicate',
+		'Save project file',
 		'Delete',
 	]);
 });
@@ -400,7 +401,7 @@ test('the last card action keeps working from the keyboard', async ({page}) => {
 	await page.getByRole('button', {name: 'Actions for Alpha'}).focus();
 	await page.keyboard.press('Enter');
 	await expect(page.getByRole('menuitem', {name: 'Open'})).toBeFocused();
-	for (const name of ['Rename', 'Duplicate', 'Delete']) {
+	for (const name of ['Rename', 'Duplicate', 'Save project file', 'Delete']) {
 		await page.keyboard.press('ArrowDown');
 		// Each step waits for the menu to move focus before the next key arrives.
 		await expect(page.getByRole('menuitem', {name})).toBeFocused();
@@ -608,6 +609,14 @@ for (const {viewport, theme} of DIALOG_CASES) {
 		await openCardMenu(page, 'Alpha');
 		await page.getByRole('menuitem', {name: 'Delete'}).click();
 		await expect(page.getByRole('alertdialog')).toBeVisible();
+		// On a phone the pointer is left over the confirm button; the scan judges
+		// the resting colours.
+		await page.mouse.move(0, 0);
+		await page.waitForFunction(() =>
+			globalThis.document
+				.getAnimations()
+				.every((item) => item.playState !== 'running'),
+		);
 		await assertNoA11yViolations(page);
 		await page.keyboard.press('Escape');
 		await expect(page.getByRole('alertdialog')).toHaveCount(0);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Project files: save a project, with or without its undo history, as one `.glproj` file from the Library or the editor, and open it again with the import picker or by dropping it on the window. Nothing is uploaded.
 - New effect: Mirror fold, which mirrors or folds the image left to right, top to bottom, four ways or as a kaleidoscope.
 - New effect: Bayer dither.
 - New effect: RGB noise, which adds colour or monochrome noise and dead or hot pixels.

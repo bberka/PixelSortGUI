@@ -140,7 +140,10 @@ test('AC-F9.1 AC-F9.2: undo and redo buttons, shortcuts, tooltips, and exact par
 	);
 
 	// Keyboard shortcuts: Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y
-	await page.getByRole('region', {name: 'Canvas toolbar'}).click();
+	// The padding at the start: focus leaves the field and no button is pressed.
+	await page
+		.getByRole('region', {name: 'Canvas toolbar'})
+		.click({position: {x: 2, y: 2}});
 	await page.keyboard.press('Control+z');
 	await expect(angleInput).toHaveValue('0.0');
 

@@ -39,8 +39,11 @@ export function ImportProblemDialog({
 								<p>{problems[0].message}</p>
 							) : (
 								<ul className="list-disc pl-4">
-									{problems.map((problem) => (
-										<li key={problem.fileName}>{problem.message}</li>
+									{problems.map((problem, index) => (
+										// Two chosen files may share a name.
+										<li key={`${index} ${problem.fileName}`}>
+											{problem.message}
+										</li>
 									))}
 								</ul>
 							)}

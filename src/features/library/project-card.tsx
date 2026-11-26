@@ -1,5 +1,6 @@
 import {memo, useCallback, useEffect, useRef} from 'react';
 import {
+	ArchiveIcon,
 	CopyIcon,
 	EllipsisIcon,
 	FolderOpenIcon,
@@ -31,6 +32,7 @@ export type ProjectCardProps = {
 	readonly onOpen: (projectId: string) => void;
 	readonly onRename: (project: ProjectRecord) => void;
 	readonly onDuplicate: (project: ProjectRecord) => void;
+	readonly onSaveFile: (project: ProjectRecord) => void;
 	readonly onDelete: (project: ProjectRecord) => void;
 	readonly onElement: (projectId: string, element: HTMLElement | null) => void;
 };
@@ -42,6 +44,7 @@ const ProjectCardView = ({
 	onOpen,
 	onRename,
 	onDuplicate,
+	onSaveFile,
 	onDelete,
 	onElement,
 }: ProjectCardProps) => {
@@ -100,6 +103,7 @@ const ProjectCardView = ({
 										size="icon-sm"
 										className="max-lg:size-11"
 										aria-label={`Actions for ${project.name}`}
+										data-slot="project-actions"
 									>
 										<EllipsisIcon aria-hidden="true" />
 									</Button>
@@ -127,6 +131,14 @@ const ProjectCardView = ({
 							>
 								<CopyIcon aria-hidden="true" />
 								Duplicate
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onSelect={() => {
+									onSaveFile(project);
+								}}
+							>
+								<ArchiveIcon aria-hidden="true" />
+								Save project file
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem

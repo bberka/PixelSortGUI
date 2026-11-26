@@ -1,6 +1,7 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
 import {channelShiftEffect} from './channel-shift.ts';
+import {channelSwapEffect} from './channel-swap.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 
 /**
@@ -10,6 +11,7 @@ import {pixelSortEffect} from './pixel-sort/index.ts';
 export const runtimeEffects: readonly EffectDefinition[] = [
 	pixelSortEffect,
 	channelShiftEffect,
+	channelSwapEffect,
 ];
 
 export const runtimeEffectRegistry = createRegistry(runtimeEffects);

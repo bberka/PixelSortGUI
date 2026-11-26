@@ -172,6 +172,29 @@ describe('startup restore sequence (persistence.md section 9)', () => {
 		result.bundle.dispose();
 	});
 
+	it('step 4: keeps #/guide and restores the dismissed welcome card state', async () => {
+		const repository = new MemoryStorageAdapter();
+		await repository.updateAppState({welcomeDismissed: true});
+		const routerEnv = createFakeRouterEnv('#/guide');
+		const result = await restoreStartup({
+			coordinator: createFakeCoordinator(),
+			routerEnv,
+			isSecureContext: true,
+			openStorageFn: withRepo(repository),
+			scheduleIdle: (cb) => cb(),
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') {
+			return;
+		}
+
+		expect(result.route).toEqual({screen: 'guide'});
+		expect(routerEnv.getHash()).toBe('#/guide');
+		expect(result.bundle.store.getState().welcomeDismissed).toBe(true);
+		result.bundle.dispose();
+	});
+
 	it('step 4: opens editor directly when #/p/<id> matches a stored project', async () => {
 		const repository = new MemoryStorageAdapter();
 		const created = await repository.createProject({

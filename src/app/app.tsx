@@ -27,6 +27,7 @@ import {
 } from '@/app/use-app-boot.ts';
 import {Toaster} from '@/components/ui/sonner';
 import {TooltipProvider} from '@/components/ui/tooltip';
+import {useGuideShortcut} from '@/features/guide/navigation.ts';
 import {WindowFileDrop} from '@/features/import/window-file-drop.tsx';
 import type {AppRuntime} from '@/state/index.ts';
 
@@ -102,6 +103,7 @@ function BootedApp({
 function AppFrame({screens}: {readonly screens?: ScreenRegistry}) {
 	const route = useAppStore((state) => state.route);
 	const {chrome} = (screens ?? SCREENS)[route.screen];
+	useGuideShortcut();
 
 	if (chrome === 'bare') {
 		return (

@@ -256,7 +256,9 @@ describe('Settings view', () => {
 			expect(dialog.textContent).toContain(notice.license);
 		}
 
-		const externalLinks = [...dialog.querySelectorAll('a[href]')];
+		const externalLinks = [
+			...dialog.querySelectorAll('a[href]:not([href^="#"])'),
+		];
 		expect(externalLinks.length).toBeGreaterThan(0);
 		for (const link of externalLinks) {
 			expect(link.getAttribute('target')).toBe('_blank');

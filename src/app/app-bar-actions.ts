@@ -1,5 +1,6 @@
 import type {ComponentType} from 'react';
 import {ExportAction} from '@/features/export/export-action.tsx';
+import {GuideButton} from '@/features/guide/guide-button.tsx';
 import {ImportImagesAction} from '@/features/import';
 import {SettingsButton} from '@/features/settings/settings-button.tsx';
 import type {AppRoute} from '@/state/router.ts';
@@ -19,7 +20,10 @@ export type AppBarAction = {
 
 export const APP_BAR_ACTIONS: readonly AppBarAction[] = [
 	{id: 'import-images', screen: 'library', component: ImportImagesAction},
+	{id: 'guide-library', screen: 'library', component: GuideButton},
 	{id: 'settings-library', screen: 'library', component: SettingsButton},
 	{id: 'export', screen: 'editor', component: ExportAction},
+	{id: 'guide-editor', screen: 'editor', component: GuideButton},
 	{id: 'settings-editor', screen: 'editor', component: SettingsButton},
+	{id: 'settings-guide', screen: 'guide', component: SettingsButton},
 ];

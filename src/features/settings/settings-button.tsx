@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useRef, useState, type RefObject} from 'react';
 import {SettingsIcon} from 'lucide-react';
 import {SettingsContent} from './settings-content.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
@@ -25,14 +25,22 @@ export type SettingsDialogProps = {
 	readonly open: boolean;
 	readonly onOpenChange: (open: boolean) => void;
 	readonly storageManager?: StorageManagerLike;
+	readonly returnFocusTo?: RefObject<HTMLElement | null>;
 };
 
 export function SettingsDialog({
 	open,
 	onOpenChange,
 	storageManager,
+	returnFocusTo,
 }: SettingsDialogProps) {
 	const isPhone = usePhoneLayout();
+	const handleCloseAutoFocus = returnFocusTo
+		? (event: Event) => {
+				event.preventDefault();
+				returnFocusTo.current?.focus();
+			}
+		: undefined;
 
 	if (isPhone) {
 		return (
@@ -40,6 +48,7 @@ export function SettingsDialog({
 				<SheetContent
 					side="bottom"
 					className="h-[100dvh] gap-0 rounded-none p-0"
+					onCloseAutoFocus={handleCloseAutoFocus}
 				>
 					<SheetHeader className="border-b border-border px-4 py-3.5">
 						<SheetTitle>Settings</SheetTitle>
@@ -59,7 +68,10 @@ export function SettingsDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+			<DialogContent
+				className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+				onCloseAutoFocus={handleCloseAutoFocus}
+			>
 				<DialogHeader className="border-b border-border px-6 py-4">
 					<DialogTitle>Settings</DialogTitle>
 					<DialogDescription className="sr-only">
@@ -82,12 +94,14 @@ export type SettingsButtonProps = {
 
 export function SettingsButton({storageManager}: SettingsButtonProps = {}) {
 	const [open, setOpen] = useState(false);
+	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	return (
 		<>
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<Button
+						ref={triggerRef}
 						type="button"
 						variant="ghost"
 						size="icon-sm"
@@ -103,6 +117,7 @@ export function SettingsButton({storageManager}: SettingsButtonProps = {}) {
 			</Tooltip>
 			<SettingsDialog
 				open={open}
+				returnFocusTo={triggerRef}
 				storageManager={storageManager}
 				onOpenChange={setOpen}
 			/>

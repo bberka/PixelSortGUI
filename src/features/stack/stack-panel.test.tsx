@@ -464,3 +464,52 @@ describe('unsupported effect instance', () => {
 		expect(rowElements()).toHaveLength(1);
 	});
 });
+
+describe('live announcements and focus restoration', () => {
+	it('announces adding and removing the last effect and restores focus to Add effect', async () => {
+		const context = await setup();
+		mountPanel(context);
+
+		const triggerButton = container!.querySelector<HTMLButtonElement>(
+			'button[aria-label="Add effect"]',
+		);
+		expect(triggerButton).not.toBeNull();
+
+		act(() => {
+			triggerButton!.click();
+		});
+		await flush();
+
+		const pixelSortOption = [...document.querySelectorAll('button')].find(
+			(button) => button.textContent?.includes('Pixel sort'),
+		);
+		expect(pixelSortOption).toBeDefined();
+		act(() => {
+			pixelSortOption!.click();
+		});
+		await flush();
+
+		const status = container!.querySelector('[role="status"]');
+		expect(status?.textContent).toBe('Added Pixel sort');
+
+		await choose(await openMenu(0), 'Remove');
+
+		expect(status?.textContent).toBe('Removed Pixel sort');
+		expect(globalThis.document.activeElement?.getAttribute('aria-label')).toBe(
+			'Add effect',
+		);
+	});
+
+	it('moves focus to the clamped sibling row when removing one of multiple effects', async () => {
+		const context = await setup({effects: ['pixelSort', 'channelShift']});
+		mountPanel(context);
+
+		const status = container!.querySelector('[role="status"]');
+
+		await choose(await openMenu(1), 'Remove');
+
+		expect(status?.textContent).toBe('Removed Channel shift');
+		expect(rowElements()).toHaveLength(1);
+		expect(globalThis.document.activeElement).toBe(selectButton(0));
+	});
+});

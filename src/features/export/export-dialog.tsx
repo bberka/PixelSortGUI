@@ -6,6 +6,7 @@ import {
 	useState,
 	type KeyboardEvent,
 	type ReactNode,
+	type RefObject,
 } from 'react';
 import {DownloadIcon, Share2Icon} from 'lucide-react';
 import {
@@ -73,6 +74,7 @@ export type ExportDialogProps = {
 	readonly open: boolean;
 	readonly onOpenChange: (open: boolean) => void;
 	readonly onBusyChange?: (busy: boolean) => void;
+	readonly returnFocusTo?: RefObject<HTMLElement | null>;
 	readonly supportedFormats?: SupportedEncodeFormats;
 	readonly canShare?: (format: ExportFormat) => boolean;
 	readonly shareFile?: (file: File, title: string) => Promise<void>;
@@ -96,6 +98,7 @@ export function ExportDialog({
 	open,
 	onOpenChange,
 	onBusyChange,
+	returnFocusTo,
 	supportedFormats: providedFormats,
 	canShare = canShareFiles,
 	shareFile = defaultShareFile,
@@ -764,12 +767,20 @@ export function ExportDialog({
 		</>
 	);
 
+	const handleCloseAutoFocus = returnFocusTo
+		? (event: Event) => {
+				event.preventDefault();
+				returnFocusTo.current?.focus();
+			}
+		: undefined;
+
 	if (isPhone) {
 		return (
 			<Sheet open={open} onOpenChange={onOpenChange}>
 				<SheetContent
 					side="bottom"
 					className="h-dvh max-h-dvh gap-0 rounded-none p-0"
+					onCloseAutoFocus={handleCloseAutoFocus}
 				>
 					<SheetHeader className="border-b border-border px-4 py-3.5">
 						<SheetTitle>Export</SheetTitle>
@@ -795,7 +806,10 @@ export function ExportDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent
+				className="sm:max-w-md"
+				onCloseAutoFocus={handleCloseAutoFocus}
+			>
 				<DialogHeader>
 					<DialogTitle>Export</DialogTitle>
 					<DialogDescription className="sr-only">

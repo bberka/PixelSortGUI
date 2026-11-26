@@ -20,11 +20,14 @@ function ToggleGroup({
 	size,
 	spacing = 0,
 	children,
+	onKeyDownCapture,
+	onBlur,
 	...props
 }: React.ComponentProps<typeof ToggleGroupPrimitive.Root> &
 	VariantProps<typeof toggleVariants> & {
 		readonly spacing?: number;
 	}) {
+	const tabbingBackOutRef = React.useRef(false);
 	const contextValue = React.useMemo(
 		() => ({variant, size, spacing}),
 		[variant, size, spacing],
@@ -41,6 +44,32 @@ function ToggleGroup({
 				'group/toggle-group flex w-fit items-center gap-[--spacing(var(--gap))] rounded-md',
 				className,
 			)}
+			onKeyDownCapture={(event) => {
+				// Radix RovingFocusGroup updates the container tabIndex via React state,
+				// which does not flush before Firefox resolves Shift+Tab focus traversal.
+				if (
+					event.key === 'Tab' &&
+					event.shiftKey &&
+					props.rovingFocus !== false &&
+					event.currentTarget.tabIndex === 0
+				) {
+					tabbingBackOutRef.current = true;
+					event.currentTarget.tabIndex = -1;
+				}
+
+				onKeyDownCapture?.(event);
+			}}
+			onBlur={(event) => {
+				if (
+					tabbingBackOutRef.current &&
+					!event.currentTarget.contains(event.relatedTarget)
+				) {
+					tabbingBackOutRef.current = false;
+					event.currentTarget.tabIndex = 0;
+				}
+
+				onBlur?.(event);
+			}}
 			{...props}
 		>
 			<ToggleGroupContext.Provider value={contextValue}>

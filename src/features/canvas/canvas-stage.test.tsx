@@ -9,6 +9,7 @@ import {
 	WHEEL_COMMIT_MS,
 } from './canvas-stage.tsx';
 import type {AppRuntime} from '@/state/index.ts';
+import {LiveRegion} from '@/app/live-region.tsx';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -57,6 +58,7 @@ async function mount(options: {withProject?: boolean} = {}): Promise<Mounted> {
 		root.render(
 			<AppRuntimeProvider value={{runtime: stubRuntime, bundle: test.bundle}}>
 				<CanvasStage />
+				<LiveRegion />
 			</AppRuntimeProvider>,
 		);
 	});
@@ -582,5 +584,70 @@ describe('canvas stage', () => {
 			vi.advanceTimersByTime(0);
 		});
 		expect(document.activeElement).toBe(zoomTrigger);
+	});
+
+	it('announces Rendering, Rendered, and Render failed on long settle/full renders, ignoring fast renders', async () => {
+		const view = await mount();
+		const status = view.container.querySelector('[role="status"]');
+		expect(status?.getAttribute('aria-live')).toBe('polite');
+
+		// Rapid drag renders do not change the live region.
+		const beforeDrag = status?.textContent;
+		setRender(view.store, {busy: {drag: true}});
+		act(() => {
+			vi.advanceTimersByTime(100);
+		});
+		setRender(view.store, {busy: {drag: false}});
+		expect(status?.textContent).toBe(beforeDrag);
+
+		// Fast full-resolution renders (< 300 ms) do not chatter Rendering/Rendered.
+		setRender(view.store, {busy: {full: true}});
+		act(() => {
+			vi.advanceTimersByTime(100);
+		});
+		setRender(view.store, {busy: {full: false}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS);
+		});
+		expect(status?.textContent).toBe(beforeDrag);
+
+		// A settle render lasting >= 300 ms announces Rendering then Rendered.
+		setRender(view.store, {busy: {settle: true}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS);
+		});
+		expect(status?.textContent).toBe('Rendering');
+
+		setRender(view.store, {busy: {settle: false}});
+		expect(status?.textContent).toBe('Rendered');
+
+		// A full-resolution render lasting >= 300 ms announces Rendering then Rendered.
+		setRender(view.store, {busy: {full: true}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS - 1);
+		});
+		expect(status?.textContent).toBe('Rendered');
+
+		act(() => {
+			vi.advanceTimersByTime(1);
+		});
+		expect(status?.textContent).toBe('Rendering');
+
+		setRender(view.store, {busy: {full: false}});
+		expect(status?.textContent).toBe('Rendered');
+
+		// If a render fails after Rendering was announced, announce Render failed.
+		setRender(view.store, {busy: {settle: true}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS);
+		});
+		expect(status?.textContent).toBe('Rendering');
+
+		setRender(view.store, {busy: {settle: false}, failed: true});
+		expect(status?.textContent).toBe('Render failed.');
+
+		// Clearing failed does not emit a stale Rendered announcement.
+		setRender(view.store, {failed: false});
+		expect(status?.textContent).toBe('Render failed.');
 	});
 });

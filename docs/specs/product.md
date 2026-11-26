@@ -301,6 +301,9 @@ Settings shows the storage used by the app and the browser's quota (from `naviga
 - AC-F16.1: Settings shows "Using <used> of <quota>" with values rounded to 0.1 GB or 1 MB.
 - AC-F16.2: When an import does not fit in the remaining quota, no partial project is created and the "Storage is full" dialog appears with a "Manage library" button.
 - AC-F16.4: When IndexedDB cannot be opened, the app still works for the current session and shows the persistent banner "Storage unavailable: nothing will be saved after you close this tab."
+- AC-F16.5: Clicking "Request protection" shows whether protection was granted, and if not, what the user can do in this browser ([persistence.md section 7.3](persistence.md#73-requesting-persistent-storage)); the persistence line shows `persisted()` as read after the request.
+- AC-F16.6: A request the browser never answers shows a waiting message after 5 s and leaves the button usable.
+- AC-F16.7: The private browsing note is worded as a condition and never says the current window is private.
 
 ### F18. Responsive layouts (phone, tablet and desktop widths)
 

@@ -254,6 +254,13 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** The edited result covers only the current crop, so it cannot show what lies outside it. Effects depend on the crop's edges, so effects drawn on the uncropped image would not match the result, and with no effects there is nothing for Compare or a second side to show. Changing the main coordinator's transform instead would also change what an export during crop mode writes. A kept resize would stretch a crop of another shape.
 - **Revisit if:** Users need to judge effects while cropping.
 
+### D37. Storage protection feedback and a general private window note (2026-11-26)
+
+- **Request:** the owner reported that "Request protection" does not work and that Settings showed a private browsing sentence outside a private window.
+- **Choice:** Every click shows a result message with advice for the browser family, a request unanswered after 5 s releases the button, and the private window sentence is always shown but worded as a condition (`persistence.md` sections 5.2 and 7.3).
+- **Reason:** Chromium and Safari refuse silently, so an unchanged line looked broken. Private mode cannot be detected reliably (quota size gives false positives), and an unconditional statement read as a detection result.
+- **Revisit if:** Browsers expose a reliable private mode signal.
+
 ---
 
 ## Open questions for the owner

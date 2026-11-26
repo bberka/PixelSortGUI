@@ -222,7 +222,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D32. In-app guide instead of a landing page (2026-11-26)
 
-- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch (since replaced by the introduction on the empty Library, D37).
+- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch (since replaced by the introduction on the empty Library, D38).
 - **Reason:** The first thing a user wants is to open a photo and get a result. A landing page adds a step on every visit and marketing copy that `DESIGN.md` section 1 rules out. An in-app guide is part of the offline precache, so it also works without a connection.
 - **Revisit if:** The owner wants a public page that explains Drift to people who have not opened it.
 

@@ -1,5 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {drawCanvas} from './draw.ts';
+import {CompareOverlay} from './compare.tsx';
+import {clampSplitPosition} from './compare-logic.ts';
+import {drawCanvas, type CompareDraw} from './draw.ts';
 import {createCheckerPattern} from './checker.ts';
 import {
 	arrowPan,
@@ -26,7 +28,13 @@ import {
 	type Point,
 	type Size,
 } from './view.ts';
-import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
+import {
+	useAppRuntime,
+	useAppStore,
+	useTransientStore,
+} from '@/app/runtime-context.tsx';
+import {selectShowingOriginal} from '@/state/transient.ts';
+import {DEFAULT_SPLIT_POSITION} from '@/storage/types.ts';
 
 /**
 AC-F8.3: the progress bar appears once a render has run this long.
@@ -72,6 +80,14 @@ export function CanvasStage() {
 		(state) => state.activeProject?.sourceHeight,
 	);
 	const setViewState = useAppStore((state) => state.setViewState);
+	const commitSplitPosition = useAppStore((state) => state.commitSplitPosition);
+	const compareMode = useAppStore((state) => state.compareMode);
+	const splitPosition = useAppStore(
+		(state) =>
+			state.activeProject?.viewState.splitPosition ?? DEFAULT_SPLIT_POSITION,
+	);
+	const showingOriginal = useTransientStore(selectShowingOriginal);
+	const renderSource = useAppStore((state) => state.render.source);
 	const frame = useAppStore((state) => state.render.frame);
 	const full = useAppStore((state) => state.render.full);
 	const busy = useAppStore((state) => state.render.busy);
@@ -86,8 +102,12 @@ export function CanvasStage() {
 	const viewRef = useRef<CanvasView | null>(null);
 	const viewportRef = useRef<Size>({width: 0, height: 0});
 	const sourceRef = useRef<Size | null>(null);
+	const renderSourceRef = useRef(renderSource);
 	const frameRef = useRef(frame);
 	const fullRef = useRef(full);
+	const compareModeRef = useRef(compareMode);
+	const showingOriginalRef = useRef(showingOriginal);
+	const splitPositionRef = useRef(clampSplitPosition(splitPosition));
 	const checkerRef = useRef<CanvasPattern | null>(null);
 	const rafRef = useRef<number | null>(null);
 	const dirtyRef = useRef(false);
@@ -128,11 +148,26 @@ export function CanvasStage() {
 		}
 
 		const tiles = fullRef.current;
+		const loadedSource = renderSourceRef.current;
+		let compare: CompareDraw = {mode: 'none'};
+		if (showingOriginalRef.current) {
+			compare = {mode: 'original'};
+		} else if (compareModeRef.current === 'split') {
+			compare = {mode: 'split', position: splitPositionRef.current};
+		}
+
 		drawCanvas({
 			surface,
 			viewport: {width, height},
 			view: viewRef.current,
 			source: sourceRef.current,
+			original: loadedSource
+				? {
+						bitmap: loadedSource.original,
+						width: loadedSource.settle.width,
+						height: loadedSource.settle.height,
+					}
+				: null,
 			frame: frameRef.current
 				? {
 						bitmap: frameRef.current.bitmap,
@@ -149,6 +184,7 @@ export function CanvasStage() {
 						height: tile.bitmap.height,
 					}))
 				: null,
+			compare,
 			checker: checkerRef.current,
 			dpr,
 		});
@@ -285,10 +321,34 @@ export function CanvasStage() {
 	}, [claimView, scheduleDraw]);
 
 	useEffect(() => {
+		renderSourceRef.current = renderSource;
 		frameRef.current = frame;
 		fullRef.current = full;
 		scheduleDraw();
-	}, [frame, full, scheduleDraw]);
+	}, [renderSource, frame, full, scheduleDraw]);
+
+	useEffect(() => {
+		compareModeRef.current = compareMode;
+		showingOriginalRef.current = showingOriginal;
+		splitPositionRef.current = clampSplitPosition(splitPosition);
+		scheduleDraw();
+	}, [compareMode, showingOriginal, splitPosition, scheduleDraw]);
+
+	useEffect(
+		() =>
+			bundle.transientStore.subscribe((state, previous) => {
+				if (
+					state.splitPosition === previous.splitPosition ||
+					state.splitPosition === null
+				) {
+					return;
+				}
+
+				splitPositionRef.current = clampSplitPosition(state.splitPosition);
+				scheduleDraw();
+			}),
+		[bundle.transientStore, scheduleDraw],
+	);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -618,10 +678,22 @@ export function CanvasStage() {
 				onDoubleClick={handleDoubleClick}
 				onKeyDown={handleKeyDown}
 			/>
-			{/*
-				T5.2 (compare and split) draws its overlay layers here, using the
-				same `viewRef` and `sourceRef` so both stay aligned under zoom and pan.
-			*/}
+			<CompareOverlay
+				stageRef={stageRef}
+				showingOriginal={showingOriginal}
+				splitActive={compareMode === 'split' && projectId !== null}
+				splitPosition={splitPosition}
+				onDragSplit={(position) => {
+					splitPositionRef.current = clampSplitPosition(position);
+					scheduleDraw();
+				}}
+				onCommitSplit={(position) => {
+					const clamped = clampSplitPosition(position);
+					splitPositionRef.current = clamped;
+					scheduleDraw();
+					commitSplitPosition(clamped);
+				}}
+			/>
 			<StageOverlays
 				labelRef={labelRef}
 				zoom={labelZoom}

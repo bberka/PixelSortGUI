@@ -22,6 +22,11 @@ export type CanvasSurface = {
 	): void;
 	clearRect(x: number, y: number, width: number, height: number): void;
 	fillRect(x: number, y: number, width: number, height: number): void;
+	save(): void;
+	restore(): void;
+	beginPath(): void;
+	rect(x: number, y: number, width: number, height: number): void;
+	clip(): void;
 	drawImage(
 		image: CanvasImageSource,
 		sx: number,
@@ -47,14 +52,21 @@ export type TileImage = FrameImage & {
 	readonly y: number;
 };
 
+export type CompareDraw =
+	| {readonly mode: 'none'}
+	| {readonly mode: 'original'}
+	| {readonly mode: 'split'; readonly position: number};
+
 export type DrawInput = {
 	readonly surface: CanvasSurface;
 	// Viewport size in CSS px.
 	readonly viewport: Size;
 	readonly view: CanvasView | null;
 	readonly source: Size | null;
+	readonly original?: FrameImage | null;
 	readonly frame: FrameImage | null;
 	readonly tiles: readonly TileImage[] | null;
+	readonly compare?: CompareDraw;
 	// Backdrop for transparent pixels; null leaves the area cleared.
 	readonly checker: CanvasPattern | null;
 	readonly dpr: number;
@@ -101,25 +113,65 @@ export function drawCanvas(input: DrawInput): void {
 
 	surface.imageSmoothingEnabled = !(view.zoom > SMOOTHING_MAX_ZOOM);
 
-	if (input.frame) {
-		drawRegion(
-			surface,
-			input.frame,
-			{x: 0, y: 0, width: source.width, height: source.height},
-			view,
-			viewport,
-		);
+	const fullRegion: Region = {
+		x: 0,
+		y: 0,
+		width: source.width,
+		height: source.height,
+	};
+	const drawEdited = () => {
+		if (input.frame) {
+			drawRegion(surface, input.frame, fullRegion, view, viewport);
+		}
+
+		for (const tile of input.tiles ?? []) {
+			drawRegion(
+				surface,
+				tile,
+				{x: tile.x, y: tile.y, width: tile.width, height: tile.height},
+				view,
+				viewport,
+			);
+		}
+	};
+
+	const {compare} = input;
+	if (compare?.mode === 'original') {
+		if (input.original) {
+			drawRegion(surface, input.original, fullRegion, view, viewport);
+		}
+
+		return;
 	}
 
-	for (const tile of input.tiles ?? []) {
-		drawRegion(
-			surface,
-			tile,
-			{x: tile.x, y: tile.y, width: tile.width, height: tile.height},
-			view,
-			viewport,
-		);
+	if (compare?.mode === 'split') {
+		const ratio = Number.isFinite(compare.position)
+			? Math.min(1, Math.max(0, compare.position))
+			: 0.5;
+		const splitX = ratio * viewport.width;
+
+		if (splitX > 0 && input.original) {
+			surface.save();
+			surface.beginPath();
+			surface.rect(0, 0, splitX, viewport.height);
+			surface.clip();
+			drawRegion(surface, input.original, fullRegion, view, viewport);
+			surface.restore();
+		}
+
+		if (splitX < viewport.width) {
+			surface.save();
+			surface.beginPath();
+			surface.rect(splitX, 0, viewport.width - splitX, viewport.height);
+			surface.clip();
+			drawEdited();
+			surface.restore();
+		}
+
+		return;
 	}
+
+	drawEdited();
 }
 
 /**

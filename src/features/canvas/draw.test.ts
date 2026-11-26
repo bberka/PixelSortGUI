@@ -12,6 +12,7 @@ type Recorder = {
 	surface: CanvasSurface;
 	calls: string[];
 	draws: DrawCall[];
+	clips: Array<[number, number, number, number]>;
 	transform: number[] | null;
 };
 
@@ -19,6 +20,7 @@ function record(): Recorder {
 	const recorder: Recorder = {
 		calls: [],
 		draws: [],
+		clips: [],
 		transform: null,
 		surface: {
 			imageSmoothingEnabled: true,
@@ -31,6 +33,22 @@ function record(): Recorder {
 			},
 			fillRect(x, y, width, height) {
 				recorder.calls.push(`fillRect(${x},${y},${width},${height})`);
+			},
+			save() {
+				recorder.calls.push('save');
+			},
+			restore() {
+				recorder.calls.push('restore');
+			},
+			beginPath() {
+				recorder.calls.push('beginPath');
+			},
+			rect(x, y, width, height) {
+				recorder.calls.push(`rect(${x},${y},${width},${height})`);
+				recorder.clips.push([x, y, width, height]);
+			},
+			clip() {
+				recorder.calls.push('clip');
 			},
 			drawImage(bitmap, sx, sy, sw, sh, dx, dy, dw, dh) {
 				recorder.calls.push('drawImage');
@@ -218,5 +236,59 @@ describe('canvas drawing', () => {
 
 		expect(recorder.calls).toEqual(['clearRect(0,0,200,150)']);
 		expect(recorder.draws).toEqual([]);
+	});
+
+	it('draws only the original bitmap in compare original mode', () => {
+		const recorder = record();
+		const original = image(400, 300);
+		const edited = image(400, 300);
+		drawCanvas({
+			surface: recorder.surface,
+			viewport: {width: 400, height: 300},
+			view: view(1, 200, 150),
+			source: {width: 400, height: 300},
+			original,
+			frame: edited,
+			tiles: [{x: 0, y: 0, ...image(400, 300)}],
+			compare: {mode: 'original'},
+			checker: null,
+			dpr: 1,
+		});
+
+		expect(recorder.draws).toHaveLength(1);
+		expect(recorder.draws[0]?.bitmap).toBe(original.bitmap);
+		expect(recorder.draws[0]?.destination).toEqual([0, 0, 400, 300]);
+	});
+
+	it('clips original on the left and edited result on the right in split mode with identical alignment', () => {
+		const recorder = record();
+		const original = image(200, 150);
+		const edited = image(200, 150);
+		const tile = {x: 0, y: 0, ...image(400, 300)};
+		drawCanvas({
+			surface: recorder.surface,
+			viewport: {width: 400, height: 300},
+			view: view(2, 180, 120),
+			source: {width: 400, height: 300},
+			original,
+			frame: edited,
+			tiles: [tile],
+			compare: {mode: 'split', position: 0.35},
+			checker: null,
+			dpr: 1,
+		});
+
+		expect(recorder.clips).toEqual([
+			[0, 0, 140, 300],
+			[140, 0, 260, 300],
+		]);
+		expect(recorder.draws).toHaveLength(3);
+		expect(recorder.draws[0]?.bitmap).toBe(original.bitmap);
+		expect(recorder.draws[1]?.bitmap).toBe(edited.bitmap);
+		expect(recorder.draws[2]?.bitmap).toBe(tile.bitmap);
+		expect(recorder.draws[0]?.destination).toEqual(
+			recorder.draws[1]?.destination,
+		);
+		expect(recorder.draws[0]?.source).toEqual(recorder.draws[1]?.source);
 	});
 });

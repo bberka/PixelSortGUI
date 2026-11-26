@@ -201,6 +201,11 @@
 	box-shadow: var(--overlay-shadow);
 }
 
+.split-divider-line {
+	background-color: #ffffff;
+	box-shadow: 0 0 0 1px #000000;
+}
+
 .bg-checkerboard {
 	background-color: rgb(var(--checker-b));
 	background-image:

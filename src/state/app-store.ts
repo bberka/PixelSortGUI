@@ -929,7 +929,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						selectedInstanceId: null,
 						createdAt: result.project.createdAt,
 					};
-					transientStore.setState({activeDrag: null, splitPosition: null});
+					transientStore.setState({
+						activeDrag: null,
+						splitPosition: null,
+						compareLatched: false,
+						compareHolding: false,
+					});
 					lastThumbnailKey = null;
 					const nextRoute: AppRoute = {
 						screen: 'editor',
@@ -1008,7 +1013,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 			const opened = await repository.openProject(id);
 			const nextRoute: AppRoute = {screen: 'editor', projectId: opened.id};
-			transientStore.setState({activeDrag: null, splitPosition: null});
+			transientStore.setState({
+				activeDrag: null,
+				splitPosition: null,
+				compareLatched: false,
+				compareHolding: false,
+			});
 			openProjectRequestId++;
 			const requestId = openProjectRequestId;
 
@@ -1041,7 +1051,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			openProjectRequestId++;
 
 			await repository.closeActiveProject();
-			transientStore.setState({activeDrag: null, splitPosition: null});
+			transientStore.setState({
+				activeDrag: null,
+				splitPosition: null,
+				compareLatched: false,
+				compareHolding: false,
+			});
 			const nextRoute: AppRoute = {screen: 'library'};
 
 			set({
@@ -1120,7 +1135,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			}));
 
 			if (wasActive) {
-				transientStore.setState({activeDrag: null, splitPosition: null});
+				transientStore.setState({
+					activeDrag: null,
+					splitPosition: null,
+					compareLatched: false,
+					compareHolding: false,
+				});
 				const nextRoute: AppRoute = {screen: 'library'};
 				set({
 					activeProjectId: null,

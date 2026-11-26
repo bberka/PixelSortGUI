@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import {VitePWA as vitePwa} from 'vite-plugin-pwa';
 import {defineConfig} from 'vite-plus';
+import {changelogCheck} from './scripts/changelog.ts';
 import {thirdPartyNotices} from './scripts/notices-plugin.ts';
 import {resolveBuildVersion} from './scripts/release-version.ts';
 
@@ -23,6 +24,7 @@ export default defineConfig({
 		react(),
 		tailwindcss(),
 		notices.plugin,
+		changelogCheck(import.meta.dirname),
 		vitePwa({
 			registerType: 'prompt',
 			injectRegister: false,

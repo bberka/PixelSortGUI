@@ -29,6 +29,7 @@ Defined in `package.json` or `vite.config.ts`, never both under one name (`vp ru
 | `vp run test:e2e` | Playwright end-to-end suite against the production build on Chromium and Firefox, without the `@perf` tests |
 | `vp run test:perf` | The `@perf` speed budgets on both browsers, serially (`--workers=1`), via `playwright.perf.config.ts` |
 | `pnpm run gen:notices`, `pnpm run check:notices` | Write the third-party notices from the bundled packages; check the committed ones are current (see [licensing.md](licensing.md)) |
+| `pnpm run gen:changelog` | Write the bundled release notes from `CHANGELOG.md`; the build and the unit tests fail when they differ |
 | `vp run check:a11y` | Playwright `@axe-core/playwright` accessibility checks (`@a11y` tests) |
 | `vp run proof:sheet` | Capture proof viewports and build a contact sheet via `scripts/proof-sheet.ts` |
 | `vp run browser:install` | Install Playwright Chromium and Firefox browsers |

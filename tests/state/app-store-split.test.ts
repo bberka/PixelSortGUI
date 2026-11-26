@@ -304,6 +304,24 @@ describe('app store — split sides', () => {
 		expect(stackRequests(coordinator)).toEqual([]);
 	});
 
+	it('re-sends side B when undo drops its drag but changes only side A', async () => {
+		const context = await setupSplit();
+		const {store, coordinator} = context;
+		const main = await store.getState().addEffect('channelShift');
+		await store.getState().setEditSide('a');
+		await store.getState().addEffect('channelShift');
+		const committed = active(context).stack.instances[0].params.redX;
+		coordinator.calls.length = 0;
+
+		store.getState().dragParam(main.id, 'redX', 11);
+		await store.getState().undo();
+
+		expect(active(context).stackA).toBeUndefined();
+		const last = stackRequests(coordinator).at(-1);
+		expect(last?.request.stack.instances[0]?.params.redX).toBe(committed);
+		expect(last?.options?.dragging ?? false).toBe(false);
+	});
+
 	it('keeps side A frames apart from side B and clears them with the renderer', async () => {
 		const context = await setupSplit();
 		const {store, sideCoordinators} = context;

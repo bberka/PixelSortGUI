@@ -868,6 +868,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		const currentDebug = store.getState().debugView;
 		const nextDebugView = keepDebugView(currentDebug, nextProject);
+		const wasDragging = transientStore.getState().activeDrag !== null;
 
 		transientStore.setState({activeDrag: null});
 		store.setState((state) => ({
@@ -880,6 +881,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		}));
 
 		if (
+			wasDragging ||
 			nextDebugView !== currentDebug ||
 			canonicalStackJson(nextProject.stack) !== canonicalStackJson(active.stack)
 		) {

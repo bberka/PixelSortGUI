@@ -564,14 +564,31 @@ describe('readBackup', () => {
 });
 
 describe('estimateBackupBytes', () => {
+	const record = (sourceHash: string, referenced = [sourceHash]) => ({
+		sourceHash,
+		stack: stackOf(),
+		referencedSourceHashes: referenced,
+	});
+
 	it('counts a shared source once', () => {
 		const sizes = {a: 10, b: 5};
 
 		expect(
-			estimateBackupBytes(
-				[{sourceHash: 'a'}, {sourceHash: 'a'}, {sourceHash: 'b'}],
-				sizes,
-			),
+			estimateBackupBytes([record('a'), record('a'), record('b')], sizes),
 		).toBe(15);
+	});
+
+	it('counts sources only history uses when history is included', () => {
+		const [primary, current, earlier] = ['a', 'b', 'c'].map((digit) =>
+			digit.repeat(64),
+		);
+		const project = {
+			...record(primary, [primary, current, earlier]),
+			stack: stackOf(instance({type: 'imageBlend', params: {image: current}})),
+		};
+		const sizes = {[primary]: 100, [current]: 20, [earlier]: 3};
+
+		expect(estimateBackupBytes([project], sizes)).toBe(123);
+		expect(estimateBackupBytes([project], sizes, false)).toBe(120);
 	});
 });

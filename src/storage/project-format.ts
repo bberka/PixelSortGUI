@@ -2,6 +2,11 @@
 // 8.3). `project-file.ts` reads and writes the archive.
 import {MAX_STACK_INSTANCES, type EffectStack} from '../engine/types.ts';
 import type {SourceTransform} from '../engine/transform.ts';
+import {
+	MAX_EXTRA_SOURCES,
+	extraSourceHashes,
+	type StackPair,
+} from './extra-sources.ts';
 import {resolveStoredGeometry} from './geometry.ts';
 import {normalizeExportSettings, normalizeViewState} from './helpers.ts';
 import {
@@ -295,6 +300,17 @@ function sideA(record: Record<string, unknown>, what: string) {
 	};
 }
 
+function withinSourceCap<Value extends StackPair>(
+	record: Value,
+	sourceHash: string,
+): Value {
+	ensure(
+		extraSourceHashes(record, sourceHash).size <= MAX_EXTRA_SOURCES,
+		'extra sources',
+	);
+	return record;
+}
+
 function transformValue(
 	value: unknown,
 	width: number,
@@ -424,7 +440,7 @@ export function payloadValue(value: unknown): ProjectFilePayload {
 	);
 	const seq = (key: 'historyHeadSeq' | 'historyMinSeq' | 'historyMaxSeq') =>
 		integerValue(project[key], 0, Number.MAX_SAFE_INTEGER, key);
-	return {
+	const payload: ProjectFilePayload = {
 		id: stringValue(project.id, 'id'),
 		name,
 		createdAt: timestamp(project.createdAt, 'createdAt'),
@@ -446,6 +462,7 @@ export function payloadValue(value: unknown): ProjectFilePayload {
 		historyMinSeq: seq('historyMinSeq'),
 		historyMaxSeq: seq('historyMaxSeq'),
 	};
+	return withinSourceCap(payload, payload.sourceHash);
 }
 
 export function historyValue(
@@ -461,7 +478,7 @@ export function historyValue(
 	);
 	const parsed = entries.map((item): HistoryEntryRecord => {
 		const entry = objectValue(item, 'history entry');
-		return {
+		const record: HistoryEntryRecord = {
 			projectId: stringValue(entry.projectId, 'history projectId'),
 			seq: integerValue(entry.seq, 0, Number.MAX_SAFE_INTEGER, 'seq'),
 			label: stringValue(entry.label, 'label'),
@@ -478,6 +495,7 @@ export function historyValue(
 			),
 			createdAt: timestamp(entry.createdAt, 'history createdAt'),
 		};
+		return withinSourceCap(record, project.sourceHash);
 	});
 	const first = parsed[0].seq;
 	ensure(

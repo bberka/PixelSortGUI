@@ -18,6 +18,13 @@ import {
 	type BackupSelection,
 	type BackupTransferDependencies,
 } from './backup-transfer.ts';
+import {
+	addedSourceReferences,
+	missingSourceError,
+	projectSourceHashes,
+	referencedSourceHashes,
+	stripSourceReferences,
+} from './extra-sources.ts';
 import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	cloneRecord,
@@ -145,6 +152,40 @@ export class MemoryStorageAdapter implements StorageRepository {
 		};
 	}
 
+	#historyOf(projectId: string): HistoryEntryRecord[] {
+		return [...(this.#history.get(projectId)?.values() ?? [])];
+	}
+
+	// As the IndexedDB indexes see it (persistence.md section 8.5).
+	#referencedSources(): Set<string> {
+		return new Set(
+			Array.from(this.#projects.values()).flatMap((project) => [
+				project.sourceHash,
+				...project.referencedSourceHashes,
+			]),
+		);
+	}
+
+	// Deletes those of the sources that no project refers to, and returns them.
+	#deleteUnreferencedSources(hashes: Iterable<string>): string[] {
+		const referenced = this.#referencedSources();
+		return [...hashes].filter(
+			(sha256) => !referenced.has(sha256) && this.#sources.delete(sha256),
+		);
+	}
+
+	// The stored ones among `hashes`, in their order.
+	#storedSources(hashes: Iterable<string>): SourceRecord[] {
+		return [...hashes].flatMap((sha256) => this.#sources.get(sha256) ?? []);
+	}
+
+	#requireSources(hashes: readonly string[]): void {
+		const missing = hashes.find((sha256) => !this.#sources.has(sha256));
+		if (missing) {
+			throw missingSourceError(missing);
+		}
+	}
+
 	#backupStore(): BackupImportStore {
 		return {
 			async checkQuota() {},
@@ -173,14 +214,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 				return plan;
 			},
 			discardSources: async (hashes) => {
-				const used = new Set(
-					Array.from(this.#projects.values(), (item) => item.sourceHash),
-				);
-				for (const sha256 of hashes) {
-					if (!used.has(sha256)) {
-						this.#sources.delete(sha256);
-					}
-				}
+				this.#deleteUnreferencedSources(hashes);
 			},
 			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
 		};
@@ -262,6 +296,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 			id: projectId,
 			name,
 			sourceHash: sha256,
+			referencedSourceHashes: [sha256],
 			sourceWidth: input.width,
 			sourceHeight: input.height,
 			transform: IDENTITY_TRANSFORM,
@@ -383,6 +418,10 @@ export class MemoryStorageAdapter implements StorageRepository {
 		);
 		const copy: ProjectRecord = {
 			...cloneRecord(existing),
+			referencedSourceHashes: referencedSourceHashes(
+				existing,
+				this.#historyOf(id),
+			),
 			id: newId,
 			name: createDuplicateProjectName(existing.name),
 			viewState: createDefaultViewState(
@@ -436,21 +475,13 @@ export class MemoryStorageAdapter implements StorageRepository {
 			};
 		}
 
-		let stillReferenced = false;
-		for (const project of this.#projects.values()) {
-			if (project.sourceHash === existing.sourceHash) {
-				stillReferenced = true;
-				break;
-			}
-		}
-
-		let sourceDeleted = false;
-		if (!stillReferenced) {
-			this.#sources.delete(existing.sourceHash);
-			sourceDeleted = true;
-		}
-
-		return {deleted: true, sourceDeleted};
+		const removed = this.#deleteUnreferencedSources(
+			existing.referencedSourceHashes,
+		);
+		return {
+			deleted: true,
+			sourceDeleted: removed.includes(existing.sourceHash),
+		};
 	}
 
 	async exportProjectFile(
@@ -462,13 +493,15 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${projectId}" not found`);
 		}
 
+		const copy = cloneRecord(project);
+		const history =
+			(options.includeHistory ?? true)
+				? await this.getHistory(projectId)
+				: undefined;
 		const snapshot = {
-			project: cloneRecord(project),
-			source: this.#sources.get(project.sourceHash),
-			history:
-				(options.includeHistory ?? true)
-					? await this.getHistory(projectId)
-					: undefined,
+			project: copy,
+			sources: this.#storedSources(projectSourceHashes(copy, history)),
+			history,
 			thumbnail: this.#thumbnails.get(projectId),
 		};
 		return writeProjectArchive(snapshot, options, this.#transfer);
@@ -544,15 +577,13 @@ export class MemoryStorageAdapter implements StorageRepository {
 			});
 		}
 
-		const sources: SourceRecord[] = [];
-		for (const hash of new Set(
-			projects.flatMap((project) => backupSourceHashes(project)),
-		)) {
-			const source = this.#sources.get(hash);
-			if (source) {
-				sources.push(source);
-			}
-		}
+		const sources = this.#storedSources(
+			new Set(
+				items.flatMap(({project, history}) =>
+					backupSourceHashes(project, history),
+				),
+			),
+		);
 
 		const {theme, compareMode} = this.#appState;
 		const snapshot = {
@@ -611,8 +642,12 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${input.projectId}" not found`);
 		}
 
-		// Validated first, so a rejected transform leaves history alone.
+		// Validated first, so a rejected commit leaves history alone.
 		const geometry = commitGeometry(existing, input.transform);
+		const stackA = input.stackA ? cloneRecord(input.stackA) : existing.stackA;
+		this.#requireSources(
+			addedSourceReferences(existing, {stack: input.stack, stackA}),
+		);
 		const now = this.#now();
 		let projectHistory = this.#history.get(input.projectId);
 		if (!projectHistory) {
@@ -627,7 +662,6 @@ export class MemoryStorageAdapter implements StorageRepository {
 		}
 
 		const nextSeq = existing.historyHeadSeq + 1;
-		const stackA = input.stackA ? cloneRecord(input.stackA) : existing.stackA;
 		const selectedInstanceIdA =
 			input.selectedInstanceIdA === undefined
 				? existing.selectedInstanceIdA
@@ -672,6 +706,9 @@ export class MemoryStorageAdapter implements StorageRepository {
 			stackA,
 			selectedInstanceIdA,
 		);
+		updated.referencedSourceHashes = referencedSourceHashes(updated, [
+			...projectHistory.values(),
+		]);
 		this.#projects.set(input.projectId, updated);
 
 		return {
@@ -691,6 +728,9 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${id}" not found`);
 		}
 
+		this.#requireSources(
+			addedSourceReferences(existing, {stack, stackA: existing.stackA}),
+		);
 		const updated: ProjectRecord = {
 			...existing,
 			stack: cloneRecord(stack),
@@ -700,6 +740,10 @@ export class MemoryStorageAdapter implements StorageRepository {
 					: selectedInstanceId,
 			updatedAt: this.#now(),
 		};
+		updated.referencedSourceHashes = referencedSourceHashes(
+			updated,
+			this.#historyOf(id),
+		);
 		this.#projects.set(id, updated);
 		return cloneRecord(updated);
 	}
@@ -822,7 +866,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 			id: `user:${generateId()}`,
 			name,
 			nameLower: name.toLocaleLowerCase('en'),
-			stack: cloneRecord(input.stack),
+			stack: cloneRecord(stripSourceReferences(input.stack)),
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -879,22 +923,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 	}
 
 	async cleanupOrphanedSources(): Promise<number> {
-		const referenced = new Set<string>();
-		for (const project of this.#projects.values()) {
-			referenced.add(project.sourceHash);
-		}
-
-		let removed = 0;
-		for (const sha256 of this.#sources.keys()) {
-			if (referenced.has(sha256)) {
-				continue;
-			}
-
-			this.#sources.delete(sha256);
-			removed++;
-		}
-
-		return removed;
+		return this.#deleteUnreferencedSources(this.#sources.keys()).length;
 	}
 
 	close(): void {

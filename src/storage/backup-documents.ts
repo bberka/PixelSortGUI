@@ -151,7 +151,7 @@ export async function readBackupDocuments(
 	const projects: BackupProjectDocuments[] = [];
 	for (const entry of manifest.projects) {
 		const read = await readProject(reader, entry, formatVersion);
-		for (const hash of backupSourceHashes(read.project)) {
+		for (const hash of backupSourceHashes(read.project, read.history)) {
 			if (!listed.has(hash)) {
 				const path = `sources/${hash}`;
 				throw new BackupError(

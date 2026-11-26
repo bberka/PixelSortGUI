@@ -357,7 +357,7 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 	},
 	{
 		name: 'tailwind-merge',
-		version: '2.6.2',
+		version: '3.7.1',
 		license: 'MIT',
 		url: 'https://github.com/dcastil/tailwind-merge',
 	},

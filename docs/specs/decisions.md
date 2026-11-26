@@ -5,7 +5,7 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup/restore (F17), and multi-image blending (F26) decisions (D27 to D30) and open questions (Q16 to Q19) by Gemini 4 Neon (Antigravity, thought level low), specification subagent.
 Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
-Updated with cloud backup and sync decisions (D37 to D39, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with cloud backup and sync decisions (D38 to D40, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift decisions and open questions
 
@@ -255,7 +255,14 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** The edited result covers only the current crop, so it cannot show what lies outside it. Effects depend on the crop's edges, so effects drawn on the uncropped image would not match the result, and with no effects there is nothing for Compare or a second side to show. Changing the main coordinator's transform instead would also change what an export during crop mode writes. A kept resize would stretch a crop of another shape.
 - **Revisit if:** Users need to judge effects while cropping.
 
-### D37. Opt-in cloud backup and sync as the one exception to the offline rule (2026-11-26)
+### D37. Storage protection feedback and a general private window note (2026-11-26)
+
+- **Request:** the owner reported that "Request protection" does not work and that Settings showed a private browsing sentence outside a private window.
+- **Choice:** Every click shows a result message with advice for the browser family, a request unanswered after 5 s releases the button, and the private window sentence is always shown but worded as a condition (`persistence.md` sections 5.2 and 7.3).
+- **Reason:** Chromium and Safari refuse silently, so an unchanged line looked broken. Private mode cannot be detected reliably (quota size gives false positives), and an unconditional statement read as a detection result.
+- **Revisit if:** Browsers expose a reliable private mode signal.
+
+### D38. Opt-in cloud backup and sync as the one exception to the offline rule (2026-11-26)
 
 - **Status:** proposed; the owner approves it by merging the pull request that adds this entry.
 - **Request:** "can we implement dropbox / google drive sync between devices and backup when I can get client ids and secrets for login?"
@@ -265,14 +272,14 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** (a) needs nothing new but gives no safe way to merge changes from two devices, and (c) ends the static, serverless design. The user's own storage keeps Drift from ever holding photos.
 - **Revisit if:** A feature wants a second exception; it needs its own decision.
 
-### D38. Browser-only sign-in: Dropbox with PKCE, Google with its token model (2026-11-26)
+### D39. Browser-only sign-in: Dropbox with PKCE, Google with its token model (2026-11-26)
 
 - **Options considered:** (a) Dropbox code flow with PKCE and Google Identity Services (GIS) token model; (b) the same for Dropbox and a hand-built Google redirect without the script; (c) a small token service that holds the secrets and gives both providers refresh tokens; (d) Dropbox only.
 - **Choice:** Option (a), Dropbox first. Public client IDs only. Dropbox keeps a refresh token limited to 90 days. Google Drive uses the `drive.appdata` scope; Dropbox uses an App folder app (`persistence.md` section 11.3).
 - **Reason:** A secret in a static app is public, and (c) adds a server to run and trust. Google documents the token model for browser-only apps and calls the hand-built redirect strongly discouraged. The price of (a): Google's script, which cannot be self-hosted and can reach everything in the page, and no Google refresh token, so Drive sync pauses about hourly until a click.
 - **Revisit if:** Google documents PKCE without a secret for web clients (which removes both costs), or the hourly click makes Drive sync useless in practice.
 
-### D39. Per-project cloud layout, backup first, sync second (2026-11-26)
+### D40. Per-project cloud layout, backup first, sync second (2026-11-26)
 
 - **Options considered:** (a) One F17 ZIP of the whole library per backup or sync; (b) the F17 payloads stored as separate, content-addressed files, one folder per project revision.
 - **Choice:** Option (b) (`persistence.md` section 11.6). Manual "Back up now" and "Restore from cloud" ship first; automatic sync follows. Each device writes only its own head file, compared with version vectors. A conflict keeps both versions: the later `updatedAt` keeps the project ID and the other becomes a conflict copy. Histories are not merged.
@@ -338,12 +345,12 @@ Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains ope
 
 ### Q20. Allowing the network exception
 
-- **Question:** Do you approve opt-in Dropbox and Google Drive backup and sync as the one exception to "nothing leaves the browser" (`D37`)?
-- **Recommended default:** Yes, with the limits in `D37`. Merging the proposal is the approval.
+- **Question:** Do you approve opt-in Dropbox and Google Drive backup and sync as the one exception to "nothing leaves the browser" (`D38`)?
+- **Recommended default:** Yes, with the limits in `D38`. Merging the proposal is the approval.
 
 ### Q21. Google Drive's costs
 
-- **Question:** Google Drive needs Google's script inside the page and a click about every hour for sync (`D38`). Build it with those limits, build Dropbox only, or run a token service for Google (a server, against the current design)?
+- **Question:** Google Drive needs Google's script inside the page and a click about every hour for sync (`D39`). Build it with those limits, build Dropbox only, or run a token service for Google (a server, against the current design)?
 - **Recommended default:** Dropbox first, then Google Drive with the limits.
 
 ### Q22. How long Dropbox stays connected

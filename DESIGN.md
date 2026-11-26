@@ -286,7 +286,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
   - Actions: `"Download"` primary button, `"Share"` secondary button (shown only when `navigator.canShare?.({files: [...]})` is true), and during export a `Progress` bar with stage label (`Decoding`, `Rendering`, `Encoding`) and `"Cancel"` button (AC-F12.4).
 - **Settings and About (F14, F15, F16):**
   - Appearance: Theme `ToggleGroup` (`System`, `Light`, `True Black`).
-  - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, and a short note that Private Browsing does not retain data after closing.
+  - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, the result message of a request as small body text in a polite live region under the button ([persistence.md section 7.3](docs/specs/persistence.md#73-requesting-persistent-storage)), and a short muted note, worded as a condition, that a private window does not retain data after closing.
   - App installation: `"Install app"` button when `beforeinstallprompt` is captured (desktop Chromium).
   - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section listing each bundled package with its version and licence, and a `"Full licence texts"` link to the same-origin file `THIRD-PARTY-NOTICES.txt` (no licence text in the app's JavaScript).
 

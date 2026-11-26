@@ -51,7 +51,7 @@ test.describe('Settings, storage status, and About', () => {
 		).toBeVisible();
 		await expect(
 			dialog.getByText(
-				'Private Browsing windows clear all stored data when closed.',
+				'If you use a private or incognito window, everything Drift saves in it is deleted when you close it.',
 			),
 		).toBeVisible();
 
@@ -91,7 +91,7 @@ test.describe('Settings, storage status, and About', () => {
 			page.getByRole('button', {name: 'Back to library'}),
 		).toBeVisible();
 		const editorDialog = await openSettings(page);
-		await expect(editorDialog.getByText('Drift')).toBeVisible();
+		await expect(editorDialog.getByText('Drift', {exact: true})).toBeVisible();
 
 		expect(externalRequests).toEqual([]);
 	});
@@ -219,6 +219,85 @@ test.describe('Settings, storage status, and About', () => {
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 		await page.keyboard.press('Escape');
 		await expect(dialog).toBeHidden();
+	});
+
+	for (const answer of ['granted', 'denied', 'rejected', 'missing'] as const) {
+		test(`AC-F16.5: a ${answer} protection request shows its result`, async ({
+			page,
+			browserName,
+		}) => {
+			await page.addInitScript((mode) => {
+				let persisted = false;
+				Object.defineProperties(navigator.storage, {
+					persisted: {configurable: true, value: async () => persisted},
+					persist: {
+						configurable: true,
+						value:
+							mode === 'missing'
+								? undefined
+								: async () => {
+										if (mode === 'rejected') {
+											throw new Error('rejected');
+										}
+
+										persisted = mode === 'granted';
+										return persisted;
+									},
+					},
+				});
+			}, answer);
+			await page.goto('/');
+			const dialog = await openSettings(page);
+			await dialog.getByRole('button', {name: 'Request protection'}).click();
+
+			const denied =
+				browserName === 'firefox' ? 'choose Allow' : 'Bookmark Drift';
+			const expected = {
+				granted: 'Storage protection granted.',
+				denied,
+				rejected: 'The protection request failed.',
+				missing: 'Storage protection is not available here.',
+			}[answer];
+			await expect(dialog.getByTestId('protection-feedback')).toContainText(
+				expected,
+			);
+			await expect(
+				dialog.getByText(
+					answer === 'granted'
+						? 'Storage protection: Persistent'
+						: 'Storage protection: Best-effort',
+				),
+			).toBeVisible();
+		});
+	}
+
+	test('AC-F16.6: an unanswered protection request releases the button', async ({
+		page,
+		browserName,
+	}) => {
+		await page.addInitScript(() => {
+			Object.defineProperties(navigator.storage, {
+				persisted: {configurable: true, value: async () => false},
+				persist: {
+					configurable: true,
+					value: () => new Promise<boolean>(() => {}),
+				},
+			});
+		});
+		await page.clock.install();
+		await page.goto('/');
+		const dialog = await openSettings(page);
+		await dialog.getByRole('button', {name: 'Request protection'}).click();
+		await page.clock.fastForward(5000);
+
+		await expect(dialog.getByTestId('protection-feedback')).toContainText(
+			browserName === 'firefox'
+				? 'Waiting for your answer.'
+				: 'The browser has not answered yet.',
+		);
+		await expect(
+			dialog.getByRole('button', {name: 'Request protection'}),
+		).toBeEnabled();
 	});
 
 	for (const theme of ['light', 'dark'] as const) {

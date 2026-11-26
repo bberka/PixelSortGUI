@@ -6,6 +6,9 @@ export type StorageManagerLike = {
 	persist?: () => Promise<boolean>;
 };
 
+export type PersistenceOutcome =
+	'granted' | 'denied' | 'unsupported' | 'failed';
+
 export type StorageQuotaEstimate = {
 	usage: number | null;
 	quota: number | null;
@@ -109,21 +112,22 @@ export async function isStoragePersisted(
  */
 export function requestPersistentStorage(
 	storage: StorageManagerLike | undefined = getDefaultStorageManager(),
-	onSettled?: (persisted: boolean) => void,
+	onSettled?: (persisted: boolean, outcome: PersistenceOutcome) => void,
 ): void {
 	if (!storage?.persist) {
-		onSettled?.(false);
+		onSettled?.(false, 'unsupported');
 		return;
 	}
 
 	void (async () => {
+		let refusal: PersistenceOutcome = 'denied';
 		try {
 			await storage.persist?.();
 		} catch {
-			// Ignore rejection; always read persisted() below.
+			refusal = 'failed';
 		}
 
 		const persisted = await isStoragePersisted(storage);
-		onSettled?.(persisted);
+		onSettled?.(persisted, persisted ? 'granted' : refusal);
 	})();
 }

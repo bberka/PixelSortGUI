@@ -302,6 +302,9 @@ Settings shows the storage used by the app and the browser's quota (from `naviga
 - AC-F16.1: Settings shows "Using <used> of <quota>" with values rounded to 0.1 GB or 1 MB.
 - AC-F16.2: When an import does not fit in the remaining quota, no partial project is created and the "Storage is full" dialog appears with a "Manage library" button.
 - AC-F16.4: When IndexedDB cannot be opened, the app still works for the current session and shows the persistent banner "Storage unavailable: nothing will be saved after you close this tab."
+- AC-F16.5: Clicking "Request protection" shows whether protection was granted, and if not, what the user can do in this browser ([persistence.md section 7.3](persistence.md#73-requesting-persistent-storage)); the persistence line shows `persisted()` as read after the request.
+- AC-F16.6: A request the browser never answers shows a waiting message after 5 s and leaves the button usable.
+- AC-F16.7: The private browsing note is worded as a condition and never says the current window is private.
 
 ### F18. Responsive layouts (phone, tablet and desktop widths)
 
@@ -509,7 +512,7 @@ Acceptance criteria:
 
 ### F28. Optional cloud backup and sync (Dropbox, Google Drive)
 
-The user can keep a copy of the library in their own Dropbox or Google Drive and, later, keep several devices in step. Technical rules (sign-in, formats, conflicts, security, provider setup) are in [persistence.md section 11](persistence.md#11-cloud-backup-and-sync-f28); the reasons are in [decisions.md D37 to D39](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). F28 builds on F17 and comes after it ([roadmap.md Milestone 9](roadmap.md#milestone-9-optional-cloud-backup-and-sync-v040-and-v050)).
+The user can keep a copy of the library in their own Dropbox or Google Drive and, later, keep several devices in step. Technical rules (sign-in, formats, conflicts, security, provider setup) are in [persistence.md section 11](persistence.md#11-cloud-backup-and-sync-f28); the reasons are in [decisions.md D38 to D40](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). F28 builds on F17 and comes after it ([roadmap.md Milestone 9](roadmap.md#milestone-9-optional-cloud-backup-and-sync-v040-and-v050)).
 
 **Opt-in.** Off by default. The app stays fully usable offline and without an account. A provider is offered only when its client ID was built into the app; with no client ID there is no cloud UI at all. No request goes to any provider before the user presses that provider's Connect button. One provider is connected at a time.
 

@@ -5,11 +5,11 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/bberka/PixelSortGUI"
+		"url": "https://github.com/bberka/drift"
 	},
 	"homepage": "https://drift.bbay.dev",
 	"bugs": {
-		"url": "https://github.com/bberka/PixelSortGUI/issues"
+		"url": "https://github.com/bberka/drift/issues"
 	},
 	"type": "module",
 	"engines": {

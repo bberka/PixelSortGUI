@@ -215,7 +215,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D31. Product rename to Drift and domain change to drift.bbay.dev (2026-11-26)
 
-- **Choice:** Rename the product to **Drift**, move the custom domain to **`drift.bbay.dev`**, and rename package and unreleased browser storage identifiers (`drift` package name and IndexedDB database; `drift:theme`, `drift:tablet-panel-height`, and `drift:tablet-panel-collapsed` `localStorage` keys).
+- **Choice:** Rename the product to **Drift**, move the custom domain to **`drift.bbay.dev`**, rename the GitHub repository from `bberka/PixelSortGUI` to `bberka/drift`, and rename package and unreleased browser storage identifiers (`drift` package name and IndexedDB database; `drift:theme`, `drift:tablet-panel-height`, and `drift:tablet-panel-collapsed` `localStorage` keys).
 - **Reason:** The app covers many glitch and image effects rather than pixel sorting alone, so a broader product name fits better and `drift.bbay.dev` matches it. Because the app is unreleased, browser storage identifiers are renamed cleanly without a legacy migration. Pixel sorting remains the name of the technique.
 - **Revisit if:** Never; once `v0.1.0` ships, storage identifiers are frozen and migrated rather than renamed.
 

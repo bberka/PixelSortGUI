@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta content="width=device-width, initial-scale=1.0" name="viewport" />
-		<title>Drift</title>
+		<title>Drift — Offline Pixel Sorting &amp; Glitch Art Photo Editor</title>
 		<script>
 			try {
 				var t = localStorage.getItem('drift:theme');
@@ -14,11 +14,77 @@
 			}
 		</script>
 		<meta
-			content="Offline web editor for glitch art and pixel sorting of still photos."
+			content="Offline web editor for glitch art and pixel sorting of still photos. Runs entirely in your browser with no accounts, no uploads, and no tracking."
 			name="description"
 		/>
+		<link href="https://drift.bbay.dev/" rel="canonical" />
+		<link href="/favicon.ico" rel="icon" sizes="32x32" />
 		<link type="image/svg+xml" href="/icons/icon.svg" rel="icon" />
 		<link href="/icons/apple-touch-icon.png" rel="apple-touch-icon" />
+		<!-- eslint-disable @html-eslint/use-baseline -->
+		<meta
+			content="#ffffff"
+			media="(prefers-color-scheme: light)"
+			name="theme-color"
+		/>
+		<meta
+			content="#000000"
+			media="(prefers-color-scheme: dark)"
+			name="theme-color"
+		/>
+		<!-- eslint-enable @html-eslint/use-baseline -->
+		<meta content="website" property="og:type" />
+		<meta content="Drift" property="og:site_name" />
+		<meta
+			content="Drift — Offline Pixel Sorting &amp; Glitch Art Photo Editor"
+			property="og:title"
+		/>
+		<meta
+			content="Offline web editor for glitch art and pixel sorting of still photos. Runs entirely in your browser with no accounts, no uploads, and no tracking."
+			property="og:description"
+		/>
+		<meta content="https://drift.bbay.dev/" property="og:url" />
+		<meta content="https://drift.bbay.dev/og-image.png" property="og:image" />
+		<meta content="1200" property="og:image:width" />
+		<meta content="630" property="og:image:height" />
+		<meta
+			content="Drift — Offline glitch art and pixel sorting photo editor"
+			property="og:image:alt"
+		/>
+		<meta content="summary_large_image" name="twitter:card" />
+		<meta
+			content="Drift — Offline Pixel Sorting &amp; Glitch Art Photo Editor"
+			name="twitter:title"
+		/>
+		<meta
+			content="Offline web editor for glitch art and pixel sorting of still photos. Runs entirely in your browser with no accounts, no uploads, and no tracking."
+			name="twitter:description"
+		/>
+		<meta content="https://drift.bbay.dev/og-image.png" name="twitter:image" />
+		<script type="application/ld+json">
+			{
+				"@context": "https://schema.org",
+				"@type": "WebApplication",
+				"name": "Drift",
+				"url": "https://drift.bbay.dev/",
+				"description": "Offline web editor for glitch art and pixel sorting of still photos. Runs entirely in your browser with no accounts, no uploads, and no tracking.",
+				"applicationCategory": "DesignApplication",
+				"operatingSystem": "Any",
+				"browserRequirements": "Requires a modern browser with Canvas and Web Workers support",
+				"offers": {
+					"@type": "Offer",
+					"price": "0",
+					"priceCurrency": "USD"
+				},
+				"isAccessibleForFree": true,
+				"featureList": [
+					"Pixel sorting",
+					"Channel shift",
+					"Offline PWA",
+					"Local-only processing with zero network uploads"
+				]
+			}
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

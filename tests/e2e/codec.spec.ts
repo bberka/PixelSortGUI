@@ -5,33 +5,37 @@ import {expect, test, type Page} from '@playwright/test';
 import type * as DecodeModule from '../../src/codec/decode.ts';
 import type * as EncodeModule from '../../src/codec/encode.ts';
 
-const codecDir = path.resolve(import.meta.dirname, '../../src/codec');
+const sourceDir = path.resolve(import.meta.dirname, '../../src');
 
-function loadCodecModuleJs(filename: 'decode.ts' | 'encode.ts'): string {
-	const source = fs.readFileSync(path.join(codecDir, filename), 'utf8');
-	const stripped = stripTypeScriptTypes(source, {mode: 'strip'});
-	return stripped.replaceAll("'./decode.ts'", "'./decode.js'");
-}
+// `decode.ts`, `encode.ts` and everything they import statically.
+const CODEC_MODULES = [
+	'codec/decode.ts',
+	'codec/encode.ts',
+	'codec/bmp-writer.ts',
+	'codec/tiff.ts',
+	'engine/resample.ts',
+	'engine/types.ts',
+];
 
 async function mountCodecModules(page: Page): Promise<void> {
-	const decodeJs = loadCodecModuleJs('decode.ts');
-	const encodeJs = loadCodecModuleJs('encode.ts');
-
-	await page.route('**/__codec-test/decode.js', async (route) => {
-		await route.fulfill({
-			status: 200,
-			contentType: 'application/javascript; charset=utf-8',
-			body: decodeJs,
-		});
-	});
-
-	await page.route('**/__codec-test/encode.js', async (route) => {
-		await route.fulfill({
-			status: 200,
-			contentType: 'application/javascript; charset=utf-8',
-			body: encodeJs,
-		});
-	});
+	for (const file of CODEC_MODULES) {
+		const source = fs.readFileSync(path.join(sourceDir, file), 'utf8');
+		// Every module is served from one folder.
+		const body = stripTypeScriptTypes(source, {mode: 'strip'}).replaceAll(
+			/'(?:\.|\.\.\/engine)\/([\w-]+)\.ts'/g,
+			"'./$1.js'",
+		);
+		await page.route(
+			`**/__codec-test/${path.basename(file, '.ts')}.js`,
+			async (route) => {
+				await route.fulfill({
+					status: 200,
+					contentType: 'application/javascript; charset=utf-8',
+					body,
+				});
+			},
+		);
+	}
 }
 
 test.describe('native worker codec in real browsers', () => {

@@ -391,7 +391,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`channelSwap` and `posterize` (both version 1, `color`) are implemented as specified in section 16.1. Two already-specified glitch effects (`sliceShift`, `blockShuffle`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`sliceShift`, `channelSwap`, `blockShuffle` and `posterize` (all version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -405,8 +405,10 @@ Defined in `src/presets/builtin.ts` with ids `builtin:<slug>`. Parameters not li
 | `builtin:grey-band` | Grey band | `pixelSort` angle 0, `selectKey` lightness, threshold [0.196, 0.627], `discretize` 3 |
 | `builtin:hue-bands` | Hue bands | `pixelSort` angle 0, `intervalMode` whole, `sortKey` hue, `maxLength` 240, `lengthJitter` 0.5, seed 1 |
 | `builtin:edge-melt` | Edge melt | `pixelSort` angle 270, `intervalMode` edges, `edgeThreshold` 0.20, `edgeBlur` 2 |
+| `builtin:vhs-split` | VHS split | `sliceShift` defaults with seed 7; then `channelShift` defaults |
+| `builtin:tile-scramble` | Tile scramble | `blockShuffle` `tileSize` 96, `amount` 0.25, seed 3; then `channelSwap` `gbr` |
 
-"ASDF classic" credits the column-then-row recipe of Kim Asendorf's ASDFPixelSort, the community's acknowledged origin of the technique; the About screen credits it. "Grey band" reproduces the look of a grey-band sort with a small tolerance, written in our own parameters. (`builtin:vhs-split` and `builtin:tile-scramble` move to section 16.1 with their effects.)
+"ASDF classic" credits the column-then-row recipe of Kim Asendorf's ASDFPixelSort, the community's acknowledged origin of the technique; the About screen credits it. "Grey band" reproduces the look of a grey-band sort with a small tolerance, written in our own parameters.
 
 ## 8. Preview strategy
 
@@ -659,6 +661,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/channel-swap.ts
   effects/posterize.ts
   effects/slice-shift.ts
+  effects/block-shuffle.ts
   effects/scanline-wave.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
@@ -673,7 +676,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap`, `sliceShift`, `posterize` and `scanlineWave` (section 16.1) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -739,6 +742,7 @@ Divides the image into a square grid of tiles in source space and swaps a random
 - **Behavior:** Source grid: `T = tileSize`, `cols = floor(Ws / T)`, `rows = floor(Hs / T)`, `N = cols * rows` full tiles; the right and bottom remainders never move. If `N < 2`, output equals input. Permutation `π` starts as identity; for `t` from 0 to `N - 1`, if `unit(seed, 1, t) < amount`, swap `π[t]` and `π[intIn(0, N - 1, seed, 2, t)]`. Render pixel `(x, y)`: `xs = (x + 0.5) / scale`, `ys = (y + 0.5) / scale`, `tx = floor(xs / T)`, `ty = floor(ys / T)`. If `tx < cols` and `ty < rows`: `t2 = π[ty * cols + tx]`, `xs2 = xs + (t2 % cols - tx) * T`, `ys2 = ys + (floor(t2 / cols) - ty) * T`, and `out(x, y) = in(clamp(floor(xs2 * scale), 0, W - 1), clamp(floor(ys2 * scale), 0, H - 1))`. Otherwise `out(x, y) = in(x, y)`. At scale 1 this is an exact tile swap.
 - **Determinism & locality:** Deterministic via `hash32` with `seed` and purpose codes `1, 2`. Needs whole image (random tile gather). Cost class: Low. Debug views: none.
 - **Provenance:** Classic tile-scramble glitch effect. Clean-room own specification; no external code copied.
+- **Tests:** a hand-computed tile swap; `amount` 0, fewer than two full tiles, and the right and bottom remainders stay put; the permutation and sample positions follow the source-space grid on a scaled render; 1 × 1, 1 × N and N × 1 images and both ends of every range; the generic checks of section 14.3; stack JSON round trip; golden cases for defaults, two non-default settings and scale 0.5.
 
 #### 4. `scanlineWave` (version 1, `glitch`, top 5): "Displace rows or columns along a wave with optional jitter."
 
@@ -893,13 +897,6 @@ Runs a deterministic integer 8×8 block transform and aggressive quantisation di
 - **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: Medium. Debug views: none.
 - **Provenance:** Standard ITU-T T.81 JPEG baseline quantisation tables (public standard) and data-bending aesthetics. Clean-room own implementation. (Note: true raw-bitstream JPEG corruption remains deferred because browser JPEG decoders vary across engines; pixel-space `jpegCrush` gives identical output across Chromium, Firefox, and Node.)
 
-#### Deferred built-in presets (enabled with F22 top 5)
-
-| Id | Name | Instances |
-|---|---|---|
-| `builtin:vhs-split` | VHS split | `sliceShift` defaults with seed 7; then `channelShift` defaults |
-| `builtin:tile-scramble` | Tile scramble | `blockShuffle` `tileSize` 96, `amount` 0.25, seed 3; then `channelSwap` `gbr` |
-
 ### 16.2 iOS canvas-limit decode and export path
 
 Needed when mobile/Safari acceptance is added or when packaging for iOS/macOS with Tauri (which uses WebKit).
@@ -1013,6 +1010,17 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
   - **Cap:** a size over 16,384 px per side or 50 MP is scaled down to fit both, keeping the aspect ratio to the nearest whole pixel (an added `viewBox` stretches to fill it), so the large-image dialog never appears for an SVG.
   - **Rasterise:** the file is parsed with `DOMParser` (an inert document), the target size and a missing `viewBox` are written onto the root element, and the result is loaded into an `<img>` from a `data:` URL (Chromium taints the canvas for a `blob:` URL SVG holding a `foreignObject`). The browser's SVG-as-image mode runs no script and loads no external resource, so an SVG that references one renders without it. The file is never inserted into the page. A file that is not well-formed SVG gets the unreadable-format error.
 - `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.
+
+#### TIFF and BMP details
+
+- **TIFF code (`src/codec/tiff.ts`):** every TIFF path goes through this module, which is the only importer of `utif2`. The import probe on the main thread reads the first IFD only and never decompresses pixels. The preview and export workers decode. The "Import at 50 MP" downscale decodes on the main thread.
+- **Accepted:** the first IFD, chunky (not planar) integer samples. Compression none, LZW, PackBits, Deflate or JPEG (compression 7). Grayscale 1, 4, 8 or 16 bit; RGB and RGBA 8 or 16 bit; palette 1, 2, 4 or 8 bit. Anything else, and a file whose strips or tiles run past its end, is refused at import as unreadable.
+- **Orientation:** tag 274 is applied after decoding, and the probe reports the upright width and height. Associated (premultiplied) alpha is converted to straight alpha.
+- **Deflate:** `utif2` depends on `pako`, whose licence includes Zlib, which [licensing.md](../agents/licensing.md) does not allow. The build aliases `pako` to `src/codec/inflate.ts`, our own raw-inflate function, so `pako` is not bundled.
+- **BMP:** 24 bit when every pixel is opaque, otherwise 32 bit with the alpha byte in the fourth channel. Rows are bottom-up, with a 40-byte `BITMAPINFOHEADER`.
+- **TIFF export:** one uncompressed 8-bit RGBA strip, unassociated alpha.
+- **File-size limit:** BMP and TIFF sizes follow from the dimensions, so a limit scales the image once with `boxDownscale` to the largest size that fits, never below a shortest side of 64 px.
+- **Offline:** the `utif2` chunk is precached by the service worker with the rest of the build, so TIFF works offline. The app itself does not load it until a TIFF is imported or exported.
 
 ### 16.5 Multi-image blending (`imageBlend`, F26)
 

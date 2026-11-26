@@ -1,0 +1,22 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "bs000003",
+				"type": "blockShuffle",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"tileSize": 20,
+					"amount": 1,
+					"seed": 9
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

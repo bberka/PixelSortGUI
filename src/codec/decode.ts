@@ -1,4 +1,10 @@
 import type {RgbaImage} from '../engine/types.ts';
+import {
+	decodeTiff,
+	isTiff,
+	readTiffInfo,
+	UnsupportedTiffError,
+} from './tiff.ts';
 
 export const MAX_LONGEST_SIDE = 16_384;
 export const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
@@ -70,7 +76,7 @@ export type DecodeCanvas = {
 
 export type DecodeRuntime = {
 	createImageBitmap(
-		source: Blob,
+		source: Blob | ImageData,
 		options?: ImageBitmapOptions,
 	): Promise<DecodeBitmap>;
 	createCanvas(width: number, height: number): DecodeCanvas;
@@ -226,7 +232,35 @@ export function isMemoryError(error: unknown): boolean {
 	return false;
 }
 
+class DimensionLimitError extends Error {
+	readonly codecError: CodecError;
+
+	constructor(codecError: CodecError) {
+		super(codecError.message);
+		this.codecError = codecError;
+	}
+}
+
+function assertWithinLimits(width: number, height: number): void {
+	const {hardError} = checkDimensionLimits(width, height);
+	if (hardError) {
+		throw new DimensionLimitError(hardError);
+	}
+}
+
 function makeDecodeError(error: unknown): CodecError {
+	if (error instanceof DimensionLimitError) {
+		return error.codecError;
+	}
+
+	if (error instanceof UnsupportedTiffError) {
+		return {
+			code: 'unsupported-format',
+			message: error.message,
+			cause: error,
+		};
+	}
+
 	if (isMemoryError(error)) {
 		return {
 			code: 'out-of-memory',
@@ -476,11 +510,18 @@ export async function probeImageDimensions(
 
 	let bitmap: DecodeBitmap | undefined;
 	try {
-		bitmap = await runtime.createImageBitmap(blob, {
-			imageOrientation: 'from-image',
-			colorSpaceConversion: 'default',
-		});
-		const {width, height} = bitmap;
+		let size: {readonly width: number; readonly height: number};
+		if (await isTiff(blob)) {
+			size = await readTiffInfo(blob);
+		} else {
+			bitmap = await runtime.createImageBitmap(blob, {
+				imageOrientation: 'from-image',
+				colorSpaceConversion: 'default',
+			});
+			size = bitmap;
+		}
+
+		const {width, height} = size;
 		const limits = checkDimensionLimits(width, height);
 		if (limits.hardError) {
 			return {ok: false, error: limits.hardError};
@@ -553,7 +594,26 @@ export async function decodeImage(
 	let bitmap: DecodeBitmap | undefined;
 	let canvas: DecodeCanvas | undefined;
 	try {
-		bitmap = await runtime.createImageBitmap(blob, bitmapOptions);
+		let source: Blob | ImageData = blob;
+		// No browser target decodes TIFF, so its pixels come from `utif2` and only
+		// a resize goes through the browser.
+		if (await isTiff(blob)) {
+			const image = await decodeTiff(
+				blob,
+				options.skipDimensionLimits ? undefined : assertWithinLimits,
+			);
+			if (bitmapOptions.resizeQuality === undefined) {
+				return {ok: true, value: image};
+			}
+
+			source = new ImageData(
+				image.data as Uint8ClampedArray<ArrayBuffer>,
+				image.width,
+				image.height,
+			);
+		}
+
+		bitmap = await runtime.createImageBitmap(source, bitmapOptions);
 		const {width, height} = bitmap;
 
 		if (!options.skipDimensionLimits) {

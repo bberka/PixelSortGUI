@@ -90,7 +90,7 @@ The user adds images through a file picker (multiple selection allowed) or by dr
 - AC-F1.4: A 20,000 × 1,000 px image is rejected with "Image too large: the longest side is 20,000 px; the limit is 16,384 px."
 - AC-F1.5: Importing an image larger than 50 MP (for example 60 MP) within the longest-side and file-size limits shows a dialog with "Import at 50 MP" and "Import anyway"; choosing the first creates a project whose source image is at most 50,000,000 px and keeps the aspect ratio within 1 px.
 - AC-F1.6: A JPEG with EXIF orientation 6 (rotated 90°) appears upright in the library thumbnail, in the editor and in the export.
-- AC-F1.7: Importing the same file twice creates two projects; the storage usage shown in Settings grows by less than 1% of the file size on the second import.
+- AC-F1.7: Importing the same file twice creates two projects; the second import grows the browser's storage usage estimate (the figure Settings shows) by less than 1% of the file size. Check it with a file of 2 MB or more: the new project's own records, such as its thumbnail, do not scale with the file and can exceed 1% of a small one. Offline-cache writes are not part of the import.
 
 ### F2. Library
 

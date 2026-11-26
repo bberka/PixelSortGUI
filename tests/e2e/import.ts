@@ -1,5 +1,6 @@
 import {Buffer} from 'node:buffer';
-import type {Page} from '@playwright/test';
+import {randomBytes} from 'node:crypto';
+import {expect, type Page} from '@playwright/test';
 import type {AppRuntime} from '../../src/state/index.ts';
 
 type RuntimeGlobal = {
@@ -29,6 +30,7 @@ export type ImportSnapshot = {
 	readonly screen: string;
 	readonly quotaFull: boolean;
 	readonly sourceCount: number;
+	readonly thumbnailCount: number;
 };
 
 type ImageOptions = {
@@ -236,26 +238,32 @@ export async function readImportState(page: Page): Promise<ImportSnapshot> {
 		}
 
 		const state = booted.bundle.store.getState();
-		const sourceCount = await new Promise<number>((resolve, reject) => {
-			const request = globalThis.indexedDB.open('drift');
-			request.addEventListener('error', () => {
-				reject(request.error ?? new Error('IndexedDB open failed'));
+		const countRecords = async (storeName: string) =>
+			new Promise<number>((resolve, reject) => {
+				const request = globalThis.indexedDB.open('drift');
+				request.addEventListener('error', () => {
+					reject(request.error ?? new Error('IndexedDB open failed'));
+				});
+				request.addEventListener('success', () => {
+					try {
+						const transaction = request.result.transaction(
+							storeName,
+							'readonly',
+						);
+						const count = transaction.objectStore(storeName).count();
+						count.addEventListener('error', () => {
+							reject(count.error ?? new Error(`Count of ${storeName} failed`));
+						});
+						count.addEventListener('success', () => {
+							resolve(count.result);
+						});
+					} catch (error) {
+						reject(error instanceof Error ? error : new Error(String(error)));
+					}
+				});
 			});
-			request.addEventListener('success', () => {
-				try {
-					const transaction = request.result.transaction('sources', 'readonly');
-					const count = transaction.objectStore('sources').count();
-					count.addEventListener('error', () => {
-						reject(count.error ?? new Error('Source count failed'));
-					});
-					count.addEventListener('success', () => {
-						resolve(count.result);
-					});
-				} catch (error) {
-					reject(error instanceof Error ? error : new Error(String(error)));
-				}
-			});
-		});
+		const sourceCount = await countRecords('sources');
+		const thumbnailCount = await countRecords('thumbnails');
 
 		return {
 			projects: state.projects.map((project) => ({
@@ -270,6 +278,7 @@ export async function readImportState(page: Page): Promise<ImportSnapshot> {
 			screen: state.route.screen,
 			quotaFull: state.storage.quotaFull,
 			sourceCount,
+			thumbnailCount,
 		};
 	});
 }
@@ -302,11 +311,48 @@ export async function decodedSourceSize(
 	});
 }
 
-export async function readStorageUsage(page: Page): Promise<number | null> {
+async function readStorageUsage(page: Page): Promise<number> {
 	return page.evaluate(async () => {
-		const estimate = await globalThis.navigator.storage.estimate();
-		return typeof estimate.usage === 'number' ? estimate.usage : null;
+		const {usage} = await globalThis.navigator.storage.estimate();
+		if (usage === undefined) {
+			throw new TypeError('Storage estimate reports no usage');
+		}
+
+		return usage;
 	});
+}
+
+/**
+ The usage estimate once it has stopped moving: Chromium updates it some time
+ after a transaction commits.
+ */
+export async function readSettledStorageUsage(page: Page): Promise<number> {
+	let previous = -1;
+	await expect
+		.poll(
+			async () => {
+				const usage = await readStorageUsage(page);
+				const unchanged = usage === previous;
+				previous = usage;
+				return unchanged;
+			},
+			{intervals: [500]},
+		)
+		.toBe(true);
+	return previous;
+}
+
+/**
+Pads a JPEG after its end-of-image marker, where decoders stop reading.
+*/
+export function withTrailingBytes(
+	fixture: ImageFixture,
+	byteLength: number,
+): ImageFixture {
+	return {
+		...fixture,
+		buffer: Buffer.concat([fixture.buffer, randomBytes(byteLength)]),
+	};
 }
 
 export type StallSample = {

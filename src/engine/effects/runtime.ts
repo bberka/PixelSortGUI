@@ -4,6 +4,7 @@ import {bayerDitherEffect} from './bayer-dither.ts';
 import {blockShuffleEffect} from './block-shuffle.ts';
 import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
+import {mirrorFoldEffect} from './mirror-fold.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 import {sliceShiftEffect} from './slice-shift.ts';
 import {posterizeEffect} from './posterize.ts';
@@ -21,6 +22,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	blockShuffleEffect,
 	posterizeEffect,
 	scanlineWaveEffect,
+	mirrorFoldEffect,
 	bayerDitherEffect,
 ];
 

@@ -12,6 +12,7 @@ import {
 import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
+import {mirrorFoldSpec, type MirrorFoldParams} from './mirror-fold-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
 import {
 	scanlineWaveSpec,
@@ -74,6 +75,14 @@ const lazyScanlineWaveEffect: EffectDefinition<ScanlineWaveParams> = {
 	},
 };
 
+const lazyMirrorFoldEffect: EffectDefinition<MirrorFoldParams> = {
+	...mirrorFoldSpec,
+	async render(input, output, params, ctx) {
+		const {mirrorFoldEffect} = await import('./mirror-fold.ts');
+		return mirrorFoldEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyBayerDitherEffect: EffectDefinition<BayerDitherParams> = {
 	...bayerDitherSpec,
 	async render(input, output, params, ctx) {
@@ -96,6 +105,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyBlockShuffleEffect,
 	lazyPosterizeEffect,
 	lazyScanlineWaveEffect,
+	lazyMirrorFoldEffect,
 	lazyBayerDitherEffect,
 ];
 

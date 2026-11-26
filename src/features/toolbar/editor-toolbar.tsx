@@ -20,6 +20,7 @@ import {
 import {Button} from '@/components/ui/button';
 import {Separator} from '@/components/ui/separator';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
+import {HistorySheetButton} from '@/features/history/history-sheet-button.tsx';
 import {createCompareHoldController} from '@/features/canvas/compare-logic.ts';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {
@@ -344,6 +345,7 @@ export function EditorToolbar() {
 			</div>
 			<Separator orientation="vertical" className="mx-0.5 h-5" />
 			<PresetsControl />
+			{compact ? <HistorySheetButton /> : null}
 		</div>
 	);
 }

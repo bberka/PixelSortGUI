@@ -86,7 +86,7 @@ System stacks only (zero network requests):
 - **Base grid:** 4 px (`4, 8, 12, 16, 20, 24, 32`).
 - **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges, pills, and fader slider tracks/grips; `9999px` for the angle dial.
 - **Chrome dimensions:**
-  - Editor toolbar row on desktop and tablet: `40 px`, `44 px` under a coarse pointer so its buttons are not cut off.
+  - Editor toolbar row on desktop and tablet: `40 px`, `45 px` under a coarse pointer (a `44 px` button plus the border).
   - Top bar height: `48 px` on desktop; `52 px` plus `env(safe-area-inset-top)` on tablet and phone.
   - Desktop right sidebar width: `340 px` (fixed).
   - Tablet docked bottom panel height: `360 px` default, resizable by pointer/keyboard handle between `240 px` and `50%` of viewport height, collapsible to a `48 px` header strip.

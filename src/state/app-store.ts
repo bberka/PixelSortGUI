@@ -23,6 +23,7 @@ import type {
 	RenderEvent,
 	SourceInfo,
 } from '../render/coordinator.ts';
+import {renderSourceFor} from '../render/render-source.ts';
 import {normalizeViewState} from '../storage/helpers.ts';
 import {
 	resolveStoredStack,
@@ -833,12 +834,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			return;
 		}
 
-		coordinator.setSource({
-			key: source.sha256,
-			blob: source.blob,
-			width: source.width,
-			height: source.height,
-		});
+		coordinator.setSource(renderSourceFor(hydratedProject, source));
 		dispatchStackToCoordinator(hydratedProject.stack, null, false);
 		syncCoordinatorViewScale(hydratedProject.viewState);
 	};
@@ -1016,12 +1012,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						notice: null,
 					});
 					routerEnv.setHash(formatHashRoute(nextRoute));
-					coordinator.setSource({
-						key: result.source.sha256,
-						blob: result.source.blob,
-						width: result.source.width,
-						height: result.source.height,
-					});
+					coordinator.setSource(renderSourceFor(result.project, result.source));
 					dispatchStackToCoordinator(result.project.stack, null, false);
 					syncCoordinatorViewScale(result.project.viewState);
 				}

@@ -20,6 +20,7 @@ import {
 import {LiveRegion} from '@/app/live-region.tsx';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import type {SupportedEncodeFormats} from '@/codec/encode.ts';
+import {IDENTITY_TRANSFORM} from '@/engine/transform.ts';
 import type {
 	ExportOptions,
 	ExportOutcome,
@@ -637,5 +638,67 @@ describe('ExportDialog', () => {
 		expect(formatByteSize(512)).toBe('512 B');
 		expect(formatByteSize(500 * 1024)).toBe('500 KB');
 		expect(formatByteSize(2.5 * 1024 * 1024)).toBe('2.50 MB');
+	});
+});
+
+describe('ExportDialog under a geometry transform (engine.md section 16.3)', () => {
+	async function croppedProject() {
+		const context = await setup({width: 4000, height: 3000});
+		const project = context.store.getState().activeProject!;
+		context.store.setState({
+			activeProject: {
+				...project,
+				transform: {
+					...IDENTITY_TRANSFORM,
+					crop: {x: 100, y: 200, width: 1200, height: 800},
+				},
+			},
+		});
+		return context;
+	}
+
+	const dimensions = () =>
+		document.querySelector('[data-slot="export-dimensions"]')?.textContent;
+
+	it('AC-F20.5: sizes Full and 1/2 from the cropped image', async () => {
+		const context = await croppedProject();
+		const jobs = attachExportController(context);
+		mountDialog(context);
+		expect(dimensions()).toBe('1200 × 800 px');
+
+		act(() => {
+			findButton('1/2').click();
+		});
+		await flush();
+		expect(dimensions()).toBe('600 × 400 px');
+
+		act(() => {
+			findButton('Download').click();
+		});
+		await flush();
+		expect(jobs[0].options.scale).toBe(0.5);
+	});
+
+	it('limits the custom longest side to the cropped image', async () => {
+		const context = await croppedProject();
+		mountDialog(context);
+		act(() => {
+			findButton('Custom').click();
+		});
+		await flush();
+
+		const input = [
+			...document.querySelectorAll<HTMLInputElement>('input[type="number"]'),
+		].find((element) => element.max === '1200')!;
+		expect(input.value).toBe('1200');
+		setInputValue(input, '5000');
+		act(() => {
+			input.dispatchEvent(
+				new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}),
+			);
+		});
+		await flush();
+		expect(input.value).toBe('1200');
+		expect(dimensions()).toBe('1200 × 800 px');
 	});
 });

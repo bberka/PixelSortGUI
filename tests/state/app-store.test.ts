@@ -1,4 +1,5 @@
-import {describe, expect, it} from 'vite-plus/test';
+import {describe, expect, it, vi} from 'vite-plus/test';
+import {IDENTITY_TRANSFORM} from '../../src/engine/transform.ts';
 import {MISSING_PROJECT_NOTICE} from '../../src/state/app-store.ts';
 import {DEV_GALLERY_HASH} from '../../src/state/router.ts';
 import {createTestStore, flushMicrotasks, makeTestBlob} from './fixtures.ts';
@@ -184,6 +185,37 @@ describe('app store — projects, routing, settings, coordinator, and quota', ()
 		await store.getState().openProject(second.project.id, {replaceHash: true});
 		expect(routerEnv.history).toHaveLength(historyLengthBefore);
 		expect(routerEnv.getHash()).toBe(`#/p/${second.project.id}`);
+	});
+
+	it('openProject hands the stored geometry transform to the coordinator', async () => {
+		const {store, repository, coordinator} = createTestStore();
+		const {project, source} = await store.getState().importImage({
+			name: 'turned.png',
+			blob: makeTestBlob('turned'),
+			width: 400,
+			height: 300,
+		});
+		await store.getState().closeProject();
+		const transform = {...IDENTITY_TRANSFORM, rotation: 90} as const;
+		const stored = (await repository.getProject(project.id))!;
+		vi.spyOn(repository, 'openProject').mockResolvedValue({
+			...stored,
+			transform,
+		});
+		coordinator.calls.length = 0;
+
+		await store.getState().openProject(project.id);
+
+		expect(coordinator.calls[0]).toEqual({
+			type: 'setSource',
+			source: {
+				key: source.sha256,
+				blob: source.blob,
+				width: 400,
+				height: 300,
+				transform,
+			},
+		});
 	});
 
 	it('openProject on a missing id returns to library, sets notice, clears activeProjectId, and clears coordinator source', async () => {

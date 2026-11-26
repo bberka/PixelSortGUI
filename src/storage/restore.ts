@@ -1,6 +1,7 @@
 import {effectRegistry} from '../engine/effects/index.ts';
 import type {EffectRegistry} from '../engine/types.ts';
 import type {RenderCoordinator} from '../render/coordinator.ts';
+import {renderSourceFor} from '../render/render-source.ts';
 import {
 	createAppStore,
 	MISSING_PROJECT_NOTICE,
@@ -311,12 +312,7 @@ async function hydrateActiveEditor(
 		return;
 	}
 
-	coordinator.setSource({
-		key: source.sha256,
-		blob: source.blob,
-		width: source.width,
-		height: source.height,
-	});
+	coordinator.setSource(renderSourceFor(hydratedProject, source));
 	coordinator.setStack({stack: hydratedProject.stack});
 	const dpr =
 		timerEnv?.getDevicePixelRatio() ??

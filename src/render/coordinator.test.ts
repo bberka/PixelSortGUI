@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vite-plus/test';
+import {IDENTITY_TRANSFORM, type SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
 import type {
 	ExportRequest,
@@ -1001,5 +1002,189 @@ describe('dispose', () => {
 		coordinator.setStack({stack: stackOf(3)});
 		coordinator.setSource({...SOURCE, key: 'other'});
 		expect(previews).toHaveLength(1);
+	});
+});
+
+describe('geometry transform', () => {
+	const transformOf = (overrides: Partial<SourceTransform>) => ({
+		...IDENTITY_TRANSFORM,
+		...overrides,
+	});
+	const cropped = transformOf({
+		crop: {x: 0, y: 0, width: 1200, height: 800},
+	});
+	const moved = transformOf({
+		crop: {x: 500, y: 300, width: 1200, height: 800},
+	});
+
+	function loadedWith(transform: SourceTransform) {
+		const context = setup();
+		context.coordinator.setSource({...SOURCE, transform});
+		const finishTransform = (
+			width = 1200,
+			height = 800,
+			effective = {width, height},
+		) => {
+			const requests = [
+				...context.posted('loadSource'),
+				...context.posted('setTransform'),
+			];
+			const original = bitmap();
+			context.preview().reply({
+				type: 'sourceLoaded',
+				requestId: Math.max(...requests.map((item) => item.requestId)),
+				sourceKey: 'photo',
+				settle: {width, height},
+				drag: {width: width / 2, height: height / 2},
+				effective,
+				original,
+			});
+			return original;
+		};
+
+		const original = finishTransform();
+		context.coordinator.setStack({stack: stackOf(1)});
+		const shown = context.answer(context.renders()[0]);
+		return {...context, finishTransform, original, shown};
+	}
+
+	it('sends the transform with the load and reports the effective size', () => {
+		const {coordinator, posted} = loadedWith(cropped);
+		expect(posted('loadSource')).toMatchObject([
+			{sourceWidth: 4000, sourceHeight: 3000, transform: cropped},
+		]);
+		expect(coordinator.getState().source).toMatchObject({
+			width: 1200,
+			height: 800,
+		});
+	});
+
+	it('invalidates everything rendered when only the crop changes', () => {
+		const context = loadedWith(cropped);
+		const {coordinator, posted, renders, events, original, shown} = context;
+		coordinator.setStack({stack: stackOf(2)});
+		const inFlight = renders().at(-1)!;
+		const before = coordinator.getState().generation;
+
+		coordinator.setSource({...SOURCE, transform: moved});
+
+		expect(coordinator.getState().generation).toBeGreaterThan(before);
+		expect(posted('setTransform')).toMatchObject([
+			{sourceKey: 'photo', transform: moved},
+		]);
+		expect(posted('loadSource')).toHaveLength(1);
+		expect(posted('cancel').at(-1)!.belowGeneration).toBe(
+			coordinator.getState().generation,
+		);
+		expect(coordinator.getState().frame).toBeUndefined();
+		expect(coordinator.getState().source).toBeUndefined();
+		expect(events).toContainEqual({type: 'source', source: undefined});
+		expect([original.closed, shown.closed]).toEqual([true, true]);
+
+		// A result for the old crop that was already on its way is dropped.
+		const stale = context.answer(inFlight);
+		expect(stale.closed).toBe(true);
+		expect(coordinator.getState().frame).toBeUndefined();
+
+		const count = renders().length;
+		const next = context.finishTransform();
+		expect(coordinator.getState().source?.original).toBe(next);
+		expect(renders()).toHaveLength(count + 1);
+		expect(renders().at(-1)).toMatchObject({
+			level: 'settle',
+			generation: coordinator.getState().generation,
+			stack: stackOf(2),
+		});
+	});
+
+	it('ignores the same geometry, and no transform equals the identity', () => {
+		const {coordinator, posted, frames} = loadedWith(IDENTITY_TRANSFORM);
+		const before = coordinator.getState().generation;
+		coordinator.setSource(SOURCE);
+		coordinator.setSource({...SOURCE, transform: {...IDENTITY_TRANSFORM}});
+
+		expect(posted('setTransform')).toEqual([]);
+		expect(coordinator.getState().generation).toBe(before);
+		expect(coordinator.getState().frame).toBe(frames()[0]);
+	});
+
+	it('sends the identity when a transform is removed', () => {
+		const {coordinator, posted} = loadedWith(cropped);
+		coordinator.setSource(SOURCE);
+		expect(posted('setTransform')).toMatchObject([
+			{transform: IDENTITY_TRANSFORM},
+		]);
+	});
+
+	it('ignores the answer to a transform that was replaced', () => {
+		const {coordinator, posted, preview} = loadedWith(cropped);
+		coordinator.setSource({...SOURCE, transform: moved});
+		coordinator.setSource({...SOURCE, transform: cropped});
+		const late = bitmap();
+		preview().reply({
+			type: 'sourceLoaded',
+			requestId: posted('setTransform')[0].requestId,
+			sourceKey: 'photo',
+			settle: {width: 1200, height: 800},
+			drag: {width: 600, height: 400},
+			effective: {width: 1200, height: 800},
+			original: late,
+		});
+
+		expect(late.closed).toBe(true);
+		expect(coordinator.getState().source).toBeUndefined();
+	});
+
+	it('judges the full-resolution zoom against the effective size', () => {
+		const {coordinator, exports} = loadedWith(cropped);
+		// The settle proxy is as large as the crop, though smaller than the source.
+		coordinator.setViewScale(4);
+		vi.advanceTimersByTime(1000);
+		expect(exports).toHaveLength(0);
+	});
+
+	it('renders full and exports with the current transform', () => {
+		const context = loadedWith(cropped);
+		const {coordinator, exports} = context;
+		coordinator.setSource({...SOURCE, transform: moved});
+		// A proxy smaller than the crop, so zooming in asks for `full`.
+		context.finishTransform(600, 400, {width: 1200, height: 800});
+		context.answer(context.renders().at(-1)!);
+
+		coordinator.exportImage({stack: stackOf(1), scale: 1, format: 'png'});
+		expect(exports[0].posted[0]).toMatchObject({
+			type: 'export',
+			sourceWidth: 4000,
+			sourceHeight: 3000,
+			transform: moved,
+		});
+
+		coordinator.setViewScale(2);
+		vi.advanceTimersByTime(500);
+		expect(exports[1].posted[0]).toMatchObject({
+			type: 'renderFull',
+			transform: moved,
+		});
+	});
+
+	it('loads the changed geometry into a restarted worker', () => {
+		const {coordinator, preview, posted, previews} = loadedWith(cropped);
+		coordinator.setSource({...SOURCE, transform: moved});
+		preview().fail('boom');
+
+		expect(previews).toHaveLength(2);
+		expect(posted('loadSource')).toMatchObject([{transform: moved}]);
+	});
+
+	it('keeps a change made after repeated crashes for the retry', () => {
+		const {coordinator, preview, posted, previews} = loadedWith(cropped);
+		preview().fail('boom');
+		preview().fail('boom');
+		expect(coordinator.getState().failed).toBe(true);
+
+		coordinator.setSource({...SOURCE, transform: moved});
+		expect(previews).toHaveLength(2);
+		coordinator.retry();
+		expect(posted('loadSource')).toMatchObject([{transform: moved}]);
 	});
 });

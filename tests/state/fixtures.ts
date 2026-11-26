@@ -14,6 +14,7 @@ import {
 import type {HashRouterEnv} from '../../src/state/router.ts';
 import {MemoryStorageAdapter} from '../../src/storage/memory-adapter.ts';
 import type {StorageManagerLike} from '../../src/storage/quota.ts';
+import type {StorageRepository} from '../../src/storage/types.ts';
 import type {StackRequest} from '../../src/worker/protocol.ts';
 
 export type FakeCoordinatorCall =
@@ -236,7 +237,7 @@ export function createTestStore(
 		initialHash?: string;
 		timerEnv?: AppStoreTimerEnv;
 		storageManager?: StorageManagerLike;
-		repository?: MemoryStorageAdapter;
+		repository?: StorageRepository;
 		thumbnailGenerator?: AppStoreDependencies['thumbnailGenerator'];
 	} = {},
 ) {

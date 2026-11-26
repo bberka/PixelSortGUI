@@ -45,7 +45,7 @@ function makeTestEffectV2(): EffectDefinition {
 }
 
 describe('Database schema migrations and VersionError handling', () => {
-	it('upgrades from v1 to v2 sequentially while preserving v1 records and updating schemaInfo', async () => {
+	it('upgrades from v1 through a later version sequentially while preserving v1 records and updating schemaInfo', async () => {
 		const idb = new IDBFactory();
 
 		const dbV1 = await openDatabase({indexedDB: idb, version: 1});
@@ -59,60 +59,60 @@ describe('Database schema migrations and VersionError handling', () => {
 		expect((await repoV1.getSchemaInfo())?.dbVersion).toBe(1);
 		repoV1.close();
 
-		const dbV2 = await openDatabase({
+		const dbV3 = await openDatabase({
 			indexedDB: idb,
-			version: 2,
+			version: 3,
 			migrations: {
 				...dbMigrations,
-				1(database) {
+				2(database) {
 					if (!database.objectStoreNames.contains('masks')) {
 						database.createObjectStore('masks', {keyPath: 'id'});
 					}
 				},
 			},
 		});
-		const repoV2 = new IndexedDbRepository(dbV2);
+		const repoV3 = new IndexedDbRepository(dbV3);
 		try {
-			expect(dbV2.objectStoreNames.contains('masks')).toBe(true);
-			expect((await repoV2.getSchemaInfo())?.dbVersion).toBe(2);
-			const existing = await repoV2.getProject(created.project.id);
+			expect(dbV3.objectStoreNames.contains('masks')).toBe(true);
+			expect((await repoV3.getSchemaInfo())?.dbVersion).toBe(3);
+			const existing = await repoV3.getProject(created.project.id);
 			expect(existing?.name).toBe('LegacyProject');
 		} finally {
-			repoV2.close();
+			repoV3.close();
 		}
 	});
 
 	it('throws StorageVersionError when opening a database written by a newer schema version without deleting it', async () => {
 		const idb = new IDBFactory();
 
-		const dbV2 = await openDatabase({
+		const dbV3 = await openDatabase({
 			indexedDB: idb,
-			version: 2,
+			version: 3,
 			migrations: {
 				...dbMigrations,
-				1(database) {
+				2(database) {
 					database.createObjectStore('masks', {keyPath: 'id'});
 				},
 			},
 		});
-		const repoV2 = new IndexedDbRepository(dbV2);
-		const created = await repoV2.createProject({
+		const repoV3 = new IndexedDbRepository(dbV3);
+		const created = await repoV3.createProject({
 			name: 'NewerVersionProject.png',
 			blob: new Blob([new Uint8Array([9, 8, 7])], {type: 'image/png'}),
 			width: 100,
 			height: 100,
 		});
-		repoV2.close();
+		repoV3.close();
 
-		await expect(openDatabase({indexedDB: idb, version: 1})).rejects.toThrow(
+		await expect(openDatabase({indexedDB: idb, version: 2})).rejects.toThrow(
 			StorageVersionError,
 		);
-		await expect(openStorage({indexedDB: idb, version: 1})).rejects.toThrow(
+		await expect(openStorage({indexedDB: idb, version: 2})).rejects.toThrow(
 			StorageVersionError,
 		);
 
-		const reopenedV2 = await openDatabase({indexedDB: idb, version: 2});
-		const verifyRepo = new IndexedDbRepository(reopenedV2);
+		const reopenedV3 = await openDatabase({indexedDB: idb, version: 3});
+		const verifyRepo = new IndexedDbRepository(reopenedV3);
 		try {
 			const intact = await verifyRepo.getProject(created.project.id);
 			expect(intact?.name).toBe('NewerVersionProject');

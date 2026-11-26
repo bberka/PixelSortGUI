@@ -18,6 +18,7 @@ import {
 import {applyThemePreference, useThemeStore} from '../state/theme.ts';
 import type {ThumbnailGenerator} from '../state/thumbnail.ts';
 import type {TransientStore} from '../state/transient.ts';
+import {repairProjectGeometry} from './geometry.ts';
 import {
 	openStorage,
 	type OpenStorageOptions,
@@ -296,7 +297,10 @@ async function hydrateActiveEditor(
 		return;
 	}
 
-	const resolved = resolveProjectStacks(project, registry);
+	const resolved = resolveProjectStacks(
+		repairProjectGeometry(project),
+		registry,
+	);
 	const hydratedProject = resolved.project;
 
 	bundle.store.setState({

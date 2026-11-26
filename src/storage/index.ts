@@ -51,6 +51,7 @@ export async function openStorage(
 }
 
 export * from './db.ts';
+export * from './geometry.ts';
 export * from './helpers.ts';
 export * from './memory-adapter.ts';
 export * from './migrations.ts';

@@ -60,6 +60,7 @@ describe('app store — projects, routing, settings, coordinator, and quota', ()
 					blob: result.source.blob,
 					width: 800,
 					height: 600,
+					transform: IDENTITY_TRANSFORM,
 				},
 			},
 			{
@@ -167,6 +168,7 @@ describe('app store — projects, routing, settings, coordinator, and quota', ()
 					blob: first.source.blob,
 					width: 400,
 					height: 300,
+					transform: IDENTITY_TRANSFORM,
 				},
 			},
 			{

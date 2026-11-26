@@ -415,7 +415,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'The browser sets a storage limit. Settings shows how much you use. If space runs out, delete projects you no longer need.',
 					'In Settings, “Request protection” asks the browser not to clear your data when disk space is low.',
 					'Private browsing windows delete everything when you close them.',
-					'Clearing your browser data deletes your projects. Save the ones you want to keep as project files.',
+					'Clearing your browser data deletes your projects. Export a backup, or save the ones you want to keep as project files.',
 				],
 			},
 		],
@@ -438,9 +438,25 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'A project made with effects this version does not have still opens. Those effects are kept and skipped, and a message says how many.',
 				],
 			},
+		],
+	},
+	{
+		id: 'backups',
+		title: 'Backup and restore',
+		blocks: [
 			{
 				kind: 'paragraph',
-				text: 'Backing up the whole Library at once is not in the app yet.',
+				text: 'A backup is one ZIP file holding the projects you choose and, if you keep them ticked, their undo history, your own presets and your settings. It is made and read on this device and nothing is uploaded.',
+			},
+			{
+				kind: 'list',
+				items: [
+					'Export: choose “Export backup” in Settings under Storage, or in the menu at the top right of the Library. On a phone it is in the editor’s top right menu too.',
+					'Import: choose “Import backup” in the same places and pick the file. A backup also opens when you drop it on the window or pick it with “Import images” or “Open images”. Drift shows what it holds and writes nothing until you choose “Import”.',
+					'Merge keeps what you have. A project that has not changed is skipped, and one you changed since the backup is added as a copy with “(imported)” in its name.',
+					'Replace first deletes every project and user preset on this device, after asking. It then imports what you ticked.',
+					'One backup holds up to 4 GB. If yours is larger, export fewer projects or leave out undo history.',
+				],
 			},
 		],
 	},

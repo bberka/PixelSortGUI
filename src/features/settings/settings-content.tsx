@@ -10,6 +10,7 @@ import {
 	MoonIcon,
 	ShieldCheckIcon,
 	SunIcon,
+	UploadIcon,
 } from 'lucide-react';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {CHANGELOG_TEXT} from './changelog.generated.ts';
@@ -23,6 +24,10 @@ import {
 	THIRD_PARTY_NOTICES_FILE,
 } from './third-party-notices.generated.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
+import {
+	EXPORT_BACKUP_LABEL,
+	IMPORT_BACKUP_LABEL,
+} from '@/features/backup/backup-context.tsx';
 import {GUIDE_SETTINGS_LINK} from '@/features/guide/content.ts';
 import {GUIDE_HASH} from '@/features/guide/navigation.ts';
 import {Badge} from '@/components/ui/badge';
@@ -74,12 +79,21 @@ export type SettingsContentProps = {
 	 Called when the guide link is followed, so the dialog can close.
 	 */
 	readonly onOpenGuide?: () => void;
+	/**
+	 The "Backup & restore" row, left out where nothing can open the dialogs.
+	 */
+	readonly backup?: {
+		onExportBackup(): void;
+		onImportBackup(): void;
+		readonly importBackupDisabled: boolean;
+	};
 };
 
 export function SettingsContent({
 	open,
 	storageManager,
 	onOpenGuide,
+	backup,
 }: SettingsContentProps) {
 	const theme = useAppStore((state) => state.theme);
 	const setTheme = useAppStore((state) => state.setTheme);
@@ -289,6 +303,34 @@ export function SettingsContent({
 					If you use a private or incognito window, everything Drift saves in it
 					is deleted when you close it.
 				</p>
+				{backup ? (
+					<div className="flex flex-col gap-2">
+						<h3 className="font-medium text-foreground">
+							Backup &amp; restore
+						</h3>
+						<div className="flex flex-wrap gap-2">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={backup.onExportBackup}
+							>
+								<DownloadIcon className="size-4" aria-hidden="true" />
+								{EXPORT_BACKUP_LABEL}
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={backup.importBackupDisabled}
+								onClick={backup.onImportBackup}
+							>
+								<UploadIcon className="size-4" aria-hidden="true" />
+								{IMPORT_BACKUP_LABEL}
+							</Button>
+						</div>
+					</div>
+				) : null}
 			</section>
 
 			{installPrompt ? (

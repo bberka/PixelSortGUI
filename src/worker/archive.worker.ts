@@ -1,5 +1,7 @@
-// Saves and opens project files and backups off the main thread
+// Saves and opens project files and backups off the main thread, and tells
+// them apart,
 // (persistence.md sections 8.3 and 8.4).
+import {readArchiveKind} from '../storage/archive-kind.ts';
 import {BackupError} from '../storage/backup-error.ts';
 import {readBackup, writeBackup} from '../storage/backup.ts';
 import {ProjectFileError} from '../storage/project-file-error.ts';
@@ -50,6 +52,11 @@ async function run(request: ArchiveRequest): Promise<ArchiveResponse> {
 		case 'readBackup': {
 			const contents = await readBackup(request.file, options);
 			return {type: 'backupRead', contents};
+		}
+
+		case 'readKind': {
+			const kind = await readArchiveKind(request.file);
+			return {type: 'kindRead', kind};
 		}
 	}
 }

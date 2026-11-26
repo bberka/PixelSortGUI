@@ -619,9 +619,20 @@ export type BackupSettingsPayload = {
 
 **Selective import:**
 
+**Routing a `.zip`.** Before either import runs, the archive worker reads the ZIP central directory and `manifest.json` only (`readArchiveKind`, `src/storage/archive-kind.ts`). It writes nothing and decides where the file goes:
+
+| The `.zip` | Goes to |
+|---|---|
+| `manifest.kind === 'project'` | Project file import (section 8.3.5), which does the full validation |
+| `manifest.kind === 'backup'` | The `"Import backup"` dialog, which does the full validation below |
+| Not a readable ZIP (damaged, truncated, unsafe or encrypted entries, or a directory or manifest over its size cap) | Refused: `"Can't open <file name>: the file is damaged or not a valid ZIP archive."` |
+| A readable ZIP with no `manifest.json`, invalid JSON in it, or any other `kind` | Refused: `"Can't open <file name>: it is not a project file or a backup."` |
+
+A file picked through `"Import backup"` goes to the project import when its kind is `'project'` and to the dialog otherwise, so that the dialog shows its own message (section 8.4.4) for a file it cannot read. A file named `.glproj` is not routed: it is always a project file.
+
 Phase 1 reads its JSON documents through `BackupReader.read(path)` (`src/storage/backup-documents.ts`, section 11.1). The paths it accepts are the ZIP layout of section 8.4.1, so `T9.5` has to let the revision folder of the cloud layout through.
 
-1. User picks a `.zip` file via `"Import backup"` (or drops a backup `.zip` on the Library or Editor).
+1. User picks a `.zip` file via `"Import backup"` (or drops a backup `.zip` on the Library or Editor, or picks it with an import picker).
 2. **Phase 1 (Inspect and validate, zero DB writes):** In the worker, validate `manifest.json` (`kind === 'backup'`, `backupVersion` and `projectFormatVersion`), every `project.json`, `history.json`, `presets.json` and `settings.json`, and verify that every `sources/*` entry exists and matches its SHA-256 and `byteLength`. Then check the images as a project file import does (section 8.3.5): a source already in `sources` must have the stored width and height; a new one must decode, have no side over 16,384 px, and decode to its declared size. A thumbnail that is missing, does not decode or has a side over 512 px is left out.
 3. **Phase 2 (Selection dialog):** Before writing anything, show the `"Import backup"` preview dialog:
    - Mode selector: **`Merge with current library`** (default) or **`Replace all local data`**.

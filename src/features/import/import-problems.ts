@@ -7,7 +7,7 @@ import type {CodecError, RefusedFormat} from '@/codec/decode.ts';
  */
 export type ImportProblem = {
 	readonly fileName: string;
-	readonly kind: 'too-large' | 'unreadable' | 'project';
+	readonly kind: 'too-large' | 'unreadable' | 'project' | 'archive';
 	readonly message: string;
 };
 
@@ -87,11 +87,32 @@ export function problemForProjectFile(
 	return {fileName, kind: 'project', message};
 }
 
+// A `.zip` that goes to neither import, in the words of persistence.md section
+// 8.4.3.
+export function problemForArchive(
+	fileName: string,
+	reason: 'damaged' | 'unknown' | 'second-backup',
+): ImportProblem {
+	const detail = {
+		damaged: 'the file is damaged or not a valid ZIP archive.',
+		unknown: 'it is not a project file or a backup.',
+		'second-backup': 'import one backup at a time.',
+	}[reason];
+	return {
+		fileName,
+		kind: 'archive',
+		message: `Can't open ${fileName}: ${detail}`,
+	};
+}
+
 export function problemDialogTitle(problems: readonly ImportProblem[]): string {
 	const projects = problems.filter((problem) => problem.kind === 'project');
-	if (projects.length > 0) {
+	if (
+		projects.length > 0 ||
+		problems.some((problem) => problem.kind === 'archive')
+	) {
 		if (problems.length === 1) {
-			return "Can't open project";
+			return projects.length === 1 ? "Can't open project" : "Can't open file";
 		}
 
 		return projects.length === problems.length

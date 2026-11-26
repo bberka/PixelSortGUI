@@ -3,6 +3,7 @@ import {toast} from 'sonner';
 import {downscaleToPixelCap, type DownscaledSource} from './downscale.ts';
 import {
 	firstFrameNotice,
+	problemForArchive,
 	problemForCodecError,
 	problemForProjectFile,
 	problemForRefusedFormat,
@@ -10,7 +11,7 @@ import {
 	type ImportProblem,
 } from './import-problems.ts';
 import {isSvgFile, rasterizeSvg} from './rasterize-svg.ts';
-import {isProjectFileName} from './use-image-picker.ts';
+import {isProjectFileName, isZipFileName} from './use-image-picker.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {
@@ -21,6 +22,7 @@ import {
 	type CodecResult,
 	type ImageDimensions,
 } from '@/codec/decode.ts';
+import type {ArchiveKind} from '@/storage/archive-kind.ts';
 import {
 	isQuotaExceededError,
 	type CreateProjectInput,
@@ -49,9 +51,32 @@ export type ImportProgress = {
 	readonly fraction: number;
 };
 
+export type ImportReadKind = (
+	file: Blob,
+	options: {signal: AbortSignal},
+) => Promise<ArchiveKind>;
+
 export type ImageImportOptions = {
 	readonly probe?: ImportProbe;
 	readonly downscale?: ImportDownscale;
+	readonly readKind?: ImportReadKind;
+};
+
+/**
+ A backup waiting for its "Import backup" dialog.
+ */
+export type PendingBackup = {
+	readonly file: File;
+	/**
+	 What had the focus when the file was chosen.
+	 */
+	readonly origin: HTMLElement | null;
+};
+
+// Loaded on first use, like the rest of the archive code.
+const readKindInWorker: ImportReadKind = async (file, options) => {
+	const {openArchiveKind} = await import('@/storage/archive-client.ts');
+	return openArchiveKind(file, options);
 };
 
 export type ImageImport = {
@@ -59,7 +84,14 @@ export type ImageImport = {
 	readonly progress: ImportProgress | null;
 	readonly problems: readonly ImportProblem[];
 	readonly prompt: LargeImagePrompt | null;
+	readonly backup: PendingBackup | null;
 	start(files: readonly File[]): void;
+	/**
+	 The file chosen with "Import backup": a project file is opened, everything
+	 else goes to the backup dialog, which says what is wrong with it.
+	 */
+	startBackup(file: File, origin: HTMLElement | null): void;
+	closeBackup(): void;
 	decide(choice: LargeImageChoice): void;
 	dismissProblems(): void;
 };
@@ -78,7 +110,8 @@ type AcceptedImage = {
  The import flow: every chosen image is read and checked (size, decodability,
  pixel dimensions) before any of them is stored, then the accepted images are
  stored together (F1). Project files (F25) are opened one by one as they come.
- The first chosen file that opened becomes the open project.
+ The first chosen file that opened becomes the open project. A `.zip` goes by
+ its manifest; a backup (F17) is handed on once the other files are done.
  */
 export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const importImages = useAppStore((state) => state.importImages);
@@ -86,10 +119,13 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const openProject = useAppStore((state) => state.openProject);
 	const probe = options.probe ?? probeImageDimensions;
 	const downscale = options.downscale ?? downscaleToPixelCap;
+	const readKind = options.readKind ?? readKindInWorker;
 	const [progress, setProgress] = useState<ImportProgress | null>(null);
 	const [problems, setProblems] = useState<readonly ImportProblem[]>([]);
 	const [prompt, setPrompt] = useState<LargeImagePrompt | null>(null);
+	const [backup, setBackup] = useState<PendingBackup | null>(null);
 	const busyRef = useRef(false);
+	const backupRef = useRef<PendingBackup | null>(null);
 	const aliveRef = useRef(true);
 	const decisionRef = useRef<((choice: LargeImageChoice) => void) | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
@@ -259,8 +295,42 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		}
 	};
 
-	const start = (files: readonly File[]) => {
-		if (busyRef.current || files.length === 0) {
+	// What a `.zip` is, or why it cannot be told. `null` once the flow is gone.
+	const sortArchive = async (
+		file: File,
+		index: number,
+		total: number,
+	): Promise<ArchiveKind | ImportProblem | null> => {
+		update({
+			label: `Opening ${file.name} (${index + 1} of ${total})`,
+			fraction: index / total,
+		});
+		const controller = new AbortController();
+		abortRef.current = controller;
+		try {
+			return await readKind(file, {signal: controller.signal});
+		} catch (error) {
+			return controller.signal.aborted
+				? null
+				: problemForStorageError(file.name, error);
+		}
+	};
+
+	const closeBackup = () => {
+		backupRef.current = null;
+		if (aliveRef.current) {
+			setBackup(null);
+		}
+	};
+
+	const run = (
+		files: readonly File[],
+		// Set for a file chosen with "Import backup".
+		asBackup: boolean,
+		origin: HTMLElement | null,
+	) => {
+		// A backup dialog in progress must not be swapped for another file.
+		if (busyRef.current || backupRef.current || files.length === 0) {
 			return;
 		}
 
@@ -270,13 +340,42 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 			const found: ImportProblem[] = [];
 			// Set when a project file comes before every accepted image.
 			let firstProjectId: string | undefined;
+			let chosenBackup: PendingBackup | null = null;
 			try {
 				for (const [index, file] of files.entries()) {
 					if (!aliveRef.current) {
 						return;
 					}
 
-					if (isProjectFileName(file.name)) {
+					let isProject = isProjectFileName(file.name);
+					if (asBackup || isZipFileName(file.name)) {
+						const kind = await sortArchive(file, index, files.length);
+						if (kind === null) {
+							continue;
+						}
+
+						if (typeof kind === 'object') {
+							found.push(kind);
+							continue;
+						}
+
+						isProject = kind === 'project';
+						if (kind !== 'project') {
+							if (asBackup || kind === 'backup') {
+								if (chosenBackup) {
+									found.push(problemForArchive(file.name, 'second-backup'));
+								} else {
+									chosenBackup = {file, origin};
+								}
+							} else {
+								found.push(problemForArchive(file.name, kind));
+							}
+
+							continue;
+						}
+					}
+
+					if (isProject) {
 						const opened = await readProject(file, index, files.length);
 						if (opened && 'kind' in opened) {
 							found.push(opened);
@@ -345,9 +444,23 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 					if (found.length > 0) {
 						setProblems(found);
 					}
+
+					if (chosenBackup) {
+						backupRef.current = chosenBackup;
+						setBackup(chosenBackup);
+					}
 				}
 			}
 		})();
+	};
+
+	const start = (files: readonly File[]) => {
+		const focused = globalThis.document.activeElement;
+		run(files, false, focused instanceof HTMLElement ? focused : null);
+	};
+
+	const startBackup = (file: File, origin: HTMLElement | null) => {
+		run([file], true, origin);
 	};
 
 	const dismissProblems = () => {
@@ -361,7 +474,10 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		progress,
 		problems,
 		prompt,
+		backup,
 		start,
+		startBackup,
+		closeBackup,
 		decide,
 		dismissProblems,
 	};

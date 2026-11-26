@@ -8,9 +8,13 @@ import {useRef, type ChangeEvent, type RefObject} from 'react';
 export const IMPORT_ACCEPT =
 	'image/*,.avif,.bmp,.gif,.svg,.tif,.tiff,.glproj,.zip';
 
-// A `.zip` is read as a project file too (F25).
 export function isProjectFileName(name: string): boolean {
-	return /\.(?:glproj|zip)$/i.test(name);
+	return /\.glproj$/i.test(name);
+}
+
+// A project file or a backup; its manifest says which (F17).
+export function isZipFileName(name: string): boolean {
+	return /\.zip$/i.test(name);
 }
 
 /**

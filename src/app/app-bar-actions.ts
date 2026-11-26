@@ -1,4 +1,5 @@
 import type {ComponentType} from 'react';
+import {LibraryOverflowMenu} from '@/features/backup/library-overflow-menu.tsx';
 import {ExportAction} from '@/features/export/export-action.tsx';
 import {GuideButton} from '@/features/guide/guide-button.tsx';
 import {ImportImagesAction} from '@/features/import';
@@ -23,6 +24,7 @@ export const APP_BAR_ACTIONS: readonly AppBarAction[] = [
 	{id: 'import-images', screen: 'library', component: ImportImagesAction},
 	{id: 'guide-library', screen: 'library', component: GuideButton},
 	{id: 'settings-library', screen: 'library', component: SettingsButton},
+	{id: 'overflow-library', screen: 'library', component: LibraryOverflowMenu},
 	{id: 'export', screen: 'editor', component: ExportAction},
 	{id: 'guide-editor', screen: 'editor', component: GuideButton},
 	{id: 'settings-editor', screen: 'editor', component: SettingsButton},

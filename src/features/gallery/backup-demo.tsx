@@ -8,8 +8,8 @@ import {
 } from '@/features/backup/index.ts';
 
 /**
- Opens the backup dialogs, which have no entry point of their own yet (T8.6).
- The gallery has no app shell, so this mounts the shell parts they report to.
+ Opens the backup dialogs on their own. The gallery has no app shell, so this
+ mounts the shell parts they report to.
  */
 export function BackupDemo() {
 	const [exporting, setExporting] = useState(false);

@@ -24,6 +24,13 @@ export function ImportFlowProvider({children}: {readonly children: ReactNode}) {
 }
 
 /**
+ The shell's flow, where there is one.
+ */
+export function useSharedImportFlow(): ImageImport | null {
+	return use(ImportFlowContext);
+}
+
+/**
  The shell's flow, or the caller's own where no provider holds one (tests).
  `feedback` is what the caller has to render for it.
  */

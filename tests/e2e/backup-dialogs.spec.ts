@@ -1,6 +1,6 @@
 /**
  The backup dialogs (product.md F17, DESIGN.md section 7.2), opened from the
- dev gallery until they have entry points of their own.
+ dev gallery. Their app entry points are in backup-entry.spec.ts.
  */
 import {Buffer} from 'node:buffer';
 import {readFile} from 'node:fs/promises';

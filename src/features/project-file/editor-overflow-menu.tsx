@@ -2,6 +2,7 @@ import {useRef, useState} from 'react';
 import {ArchiveIcon, EllipsisVerticalIcon} from 'lucide-react';
 import {SAVE_PROJECT_LABEL, SaveProjectDialog} from './save-project-dialog.tsx';
 import {useAppStore} from '@/app/runtime-context.tsx';
+import {BackupMenuItems} from '@/features/backup/backup-menu-items.tsx';
 import {Button} from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -30,6 +31,9 @@ export function EditorOverflowMenu() {
 							type="button"
 							variant="ghost"
 							size="icon-sm"
+							// The trigger's slot name escapes the coarse-pointer rule in
+							// app.css.
+							className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 							disabled={!project}
 							aria-label="More actions"
 						>
@@ -38,6 +42,7 @@ export function EditorOverflowMenu() {
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end">
 						<DropdownMenuItem
+							className="pointer-coarse:min-h-11"
 							onSelect={() => {
 								setSaving(true);
 							}}
@@ -45,6 +50,7 @@ export function EditorOverflowMenu() {
 							<ArchiveIcon aria-hidden="true" />
 							{SAVE_PROJECT_LABEL}
 						</DropdownMenuItem>
+						<BackupMenuItems triggerRef={triggerRef} />
 					</DropdownMenuContent>
 				</DropdownMenu>
 			) : null}

@@ -27,6 +27,7 @@ import {
 } from '@/app/use-app-boot.ts';
 import {Toaster} from '@/components/ui/sonner';
 import {TooltipProvider} from '@/components/ui/tooltip';
+import {BackupProvider} from '@/features/backup/backup-provider.tsx';
 import {useGuideShortcut} from '@/features/guide/navigation.ts';
 import {ImportFlowProvider} from '@/features/import/import-flow.tsx';
 import {WindowFileDrop} from '@/features/import/window-file-drop.tsx';
@@ -118,14 +119,16 @@ function AppFrame({screens}: {readonly screens?: ScreenRegistry}) {
 	return (
 		<div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
 			<ImportFlowProvider>
-				<AppBar />
-				<StorageUnavailableBanner />
-				<DatabaseReloadBanner />
-				<main className="flex min-h-0 flex-1 flex-col">
-					<RouteHost route={route} screens={screens} />
-				</main>
-				<StorageFullDialog />
-				<WindowFileDrop />
+				<BackupProvider>
+					<AppBar />
+					<StorageUnavailableBanner />
+					<DatabaseReloadBanner />
+					<main className="flex min-h-0 flex-1 flex-col">
+						<RouteHost route={route} screens={screens} />
+					</main>
+					<StorageFullDialog />
+					<WindowFileDrop />
+				</BackupProvider>
 			</ImportFlowProvider>
 			<NoticeToasts />
 			<LiveRegion />

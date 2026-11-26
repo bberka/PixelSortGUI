@@ -9,20 +9,38 @@ import {
 } from './decode.ts';
 import {encodeTiff} from './tiff.ts';
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff';
 /**
-The formats the browser's canvas encodes; BMP and TIFF are written here.
+The formats the browser's canvas encodes. AVIF, BMP and TIFF are encoded by the
+app.
 */
 export type CanvasFormat = 'png' | 'jpeg' | 'webp';
 
-export function isLossyFormat(format: ExportFormat): format is 'jpeg' | 'webp' {
-	return format === 'jpeg' || format === 'webp';
+const LOSSY_FORMATS: ReadonlySet<ExportFormat> = new Set([
+	'jpeg',
+	'webp',
+	'avif',
+]);
+
+export function isLossyFormat(
+	format: ExportFormat,
+): format is 'jpeg' | 'webp' | 'avif' {
+	return LOSSY_FORMATS.has(format);
 }
+
+/**
+Encodes straight RGBA pixels to the bytes of an AVIF file at quality 0..100.
+*/
+export type AvifEncoder = (
+	image: RgbaImage,
+	quality: number,
+) => Promise<Uint8Array<ArrayBuffer>>;
 
 export const FORMAT_MIME_TYPES: Readonly<Record<ExportFormat, string>> = {
 	png: 'image/png',
 	jpeg: 'image/jpeg',
 	webp: 'image/webp',
+	avif: 'image/avif',
 	bmp: 'image/bmp',
 	tiff: 'image/tiff',
 };
@@ -45,6 +63,9 @@ export type EncodeOptions = {
 	// Straight RGB matte for transparent pixels when encoding JPEG. Default white.
 	readonly jpegBackground?: readonly [number, number, number];
 	readonly canvas?: EncodeCanvas;
+	// Required for AVIF. Only the export worker provides it, so the main thread
+	// never loads the Wasm encoder.
+	readonly encodeAvif?: AvifEncoder;
 	readonly isCancelled?: () => boolean;
 	readonly onProgress?: (fraction: number) => void;
 };
@@ -223,10 +244,22 @@ type QualitySearchResult =
 			lowestBlob: Blob;
 	  };
 
+type EncodeAtQuality = (quality: number) => Promise<CodecResult<Blob>>;
+
+/**
+ An image that can be encoded at its own size, or scaled down first. `scaled`
+ returns undefined when the image cannot be scaled.
+ */
+type EncodeSource = {
+	readonly encode: EncodeAtQuality;
+	readonly scaled: (
+		width: number,
+		height: number,
+	) => EncodeAtQuality | undefined;
+};
+
 async function searchLossyQuality(
-	targetCanvas: EncodeCanvas,
-	format: CanvasFormat,
-	expectedMime: string,
+	encodeAt: EncodeAtQuality,
 	maxBytes: number,
 	highQuality: number,
 	isCancelled?: () => boolean,
@@ -241,12 +274,7 @@ async function searchLossyQuality(
 
 	const lowFloor = Math.min(MIN_SIZE_LIMITED_QUALITY, highQuality);
 
-	const lowResult = await convertCanvasToBlob(
-		targetCanvas,
-		format,
-		expectedMime,
-		lowFloor,
-	);
+	const lowResult = await encodeAt(lowFloor);
 	if (!lowResult.ok) {
 		return lowResult;
 	}
@@ -270,12 +298,7 @@ async function searchLossyQuality(
 		}
 
 		const mid = Math.floor((lo + hi) / 2);
-		const attempt = await convertCanvasToBlob(
-			targetCanvas,
-			format,
-			expectedMime,
-			mid,
-		);
+		const attempt = await encodeAt(mid);
 		if (!attempt.ok) {
 			return attempt;
 		}
@@ -355,6 +378,207 @@ async function encodeUncompressed(
 	};
 }
 
+function avifSource(image: RgbaImage, encodeAvif: AvifEncoder): EncodeSource {
+	const encoderFor =
+		(pixels: RgbaImage): EncodeAtQuality =>
+		async (quality) => ({
+			ok: true,
+			value: new Blob([await encodeAvif(pixels, quality)], {
+				type: FORMAT_MIME_TYPES.avif,
+			}),
+		});
+	return {
+		encode: encoderFor(image),
+		scaled: (width, height) => encoderFor(boxDownscale(image, width, height)),
+	};
+}
+
+/**
+ Encodes once, then, while the output is over `maxBytes`, lowers the quality of
+ lossy formats and scales the image down.
+ */
+async function encodeLimited(
+	source: EncodeSource,
+	target: {
+		width: number;
+		height: number;
+		format: ExportFormat;
+		requestedQuality: number;
+		maxBytes: number | undefined;
+	},
+	options: EncodeOptions,
+): Promise<CodecResult<EncodedImage>> {
+	const {width, height, format, requestedQuality, maxBytes} = target;
+	const initial = await source.encode(requestedQuality);
+	if (!initial.ok) {
+		return initial;
+	}
+
+	if (maxBytes === undefined || initial.value.size <= maxBytes) {
+		return {
+			ok: true,
+			value: {
+				blob: initial.value,
+				width,
+				height,
+				mime: initial.value.type,
+				effectiveQuality: format === 'png' ? undefined : requestedQuality,
+				targetMet: true,
+			},
+		};
+	}
+
+	let bestBlob = initial.value;
+	let bestWidth = width;
+	let bestHeight = height;
+	let bestQuality: number | undefined =
+		format === 'png' ? undefined : requestedQuality;
+
+	if (format !== 'png') {
+		const qualitySearch = await searchLossyQuality(
+			source.encode,
+			maxBytes,
+			requestedQuality,
+			options.isCancelled,
+			(fraction) => {
+				options.onProgress?.(fraction * 0.45);
+			},
+		);
+		if (!qualitySearch.ok) {
+			return qualitySearch;
+		}
+
+		if (qualitySearch.bestFit) {
+			return {
+				ok: true,
+				value: {
+					blob: qualitySearch.bestFit.blob,
+					width,
+					height,
+					mime: qualitySearch.bestFit.blob.type,
+					effectiveQuality: qualitySearch.bestFit.quality,
+					targetMet: true,
+				},
+			};
+		}
+
+		bestBlob = qualitySearch.lowestBlob;
+		bestQuality = Math.min(MIN_SIZE_LIMITED_QUALITY, requestedQuality);
+	}
+
+	// Progressive dimension downscaling (PNG or lossy that still exceeds maxBytes at quality floor).
+	const minScale = Math.min(1, MIN_SIZE_LIMITED_SIDE / Math.min(width, height));
+	let scale = 1;
+	let currentW = width;
+	let currentH = height;
+
+	for (let step = 0; step < MAX_SCALE_STEPS; step++) {
+		if (scale <= minScale) {
+			break;
+		}
+
+		if (options.isCancelled?.()) {
+			return {
+				ok: false,
+				error: {code: 'encode-failed', message: 'Export cancelled.'},
+			};
+		}
+
+		const ratio = clampNumber(
+			Math.sqrt(maxBytes / Math.max(1, bestBlob.size)) * 0.92,
+			minScale / scale,
+			0.9,
+		);
+		let nextScale = Math.max(minScale, scale * ratio);
+		if (step === MAX_SCALE_STEPS - 1 && nextScale > minScale) {
+			nextScale = minScale;
+		}
+
+		scale = nextScale;
+		const nextW = Math.max(1, Math.round(width * scale));
+		const nextH = Math.max(1, Math.round(height * scale));
+		if (nextW === currentW && nextH === currentH) {
+			break;
+		}
+
+		currentW = nextW;
+		currentH = nextH;
+
+		const encodeScaled = source.scaled(nextW, nextH);
+		if (!encodeScaled) {
+			break;
+		}
+
+		const progressBase = 0.45 + (step / MAX_SCALE_STEPS) * 0.5;
+		options.onProgress?.(progressBase);
+
+		if (format === 'png') {
+			const attempt = await encodeScaled(requestedQuality);
+			if (!attempt.ok) {
+				return attempt;
+			}
+
+			bestBlob = attempt.value;
+			bestWidth = nextW;
+			bestHeight = nextH;
+			if (attempt.value.size <= maxBytes) {
+				return {
+					ok: true,
+					value: {
+						blob: attempt.value,
+						width: nextW,
+						height: nextH,
+						mime: attempt.value.type,
+						effectiveQuality: undefined,
+						targetMet: true,
+					},
+				};
+			}
+		} else {
+			const scaledSearch = await searchLossyQuality(
+				encodeScaled,
+				maxBytes,
+				requestedQuality,
+				options.isCancelled,
+			);
+			if (!scaledSearch.ok) {
+				return scaledSearch;
+			}
+
+			if (scaledSearch.bestFit) {
+				return {
+					ok: true,
+					value: {
+						blob: scaledSearch.bestFit.blob,
+						width: nextW,
+						height: nextH,
+						mime: scaledSearch.bestFit.blob.type,
+						effectiveQuality: scaledSearch.bestFit.quality,
+						targetMet: true,
+					},
+				};
+			}
+
+			bestBlob = scaledSearch.lowestBlob;
+			bestWidth = nextW;
+			bestHeight = nextH;
+			bestQuality = Math.min(MIN_SIZE_LIMITED_QUALITY, requestedQuality);
+		}
+	}
+
+	return {
+		ok: true,
+		value: {
+			blob: bestBlob,
+			width: bestWidth,
+			height: bestHeight,
+			mime: bestBlob.type,
+			effectiveQuality: bestQuality,
+			targetMet: bestBlob.size <= maxBytes,
+		},
+	};
+}
+
 export async function encodeImage(
 	image: RgbaImage,
 	options: EncodeOptions,
@@ -401,232 +625,83 @@ export async function encodeImage(
 	let scratchCanvas: EncodeCanvas | undefined;
 
 	try {
-		canvas = options.canvas ?? runtime.createCanvas(width, height);
-		canvas.width = width;
-		canvas.height = height;
-
-		const context = canvas.getContext('2d', {colorSpace: 'srgb'});
-		if (!context) {
-			return {
-				ok: false,
-				error: {
-					code: 'out-of-memory',
-					message: 'Failed to allocate a 2D canvas context for encoding.',
-				},
-			};
-		}
-
-		const pixels =
-			format === 'jpeg'
-				? flattenAlphaForJpeg(image, options.jpegBackground)
-				: toArrayBufferPixels(image.data);
-
-		const imageData = runtime.createImageData(pixels, width, height);
-		context.putImageData(imageData, 0, 0);
-
-		const initial = await convertCanvasToBlob(
-			canvas,
-			format,
-			expectedMime,
-			requestedQuality,
-		);
-		if (!initial.ok) {
-			return initial;
-		}
-
-		if (maxBytes === undefined || initial.value.size <= maxBytes) {
-			return {
-				ok: true,
-				value: {
-					blob: initial.value,
-					width,
-					height,
-					mime: initial.value.type,
-					effectiveQuality: format === 'png' ? undefined : requestedQuality,
-					targetMet: true,
-				},
-			};
-		}
-
-		let bestBlob = initial.value;
-		let bestWidth = width;
-		let bestHeight = height;
-		let bestQuality: number | undefined =
-			format === 'png' ? undefined : requestedQuality;
-
-		if (format !== 'png') {
-			const qualitySearch = await searchLossyQuality(
-				canvas,
-				format,
-				expectedMime,
-				maxBytes,
-				requestedQuality,
-				options.isCancelled,
-				(fraction) => {
-					options.onProgress?.(fraction * 0.45);
-				},
-			);
-			if (!qualitySearch.ok) {
-				return qualitySearch;
-			}
-
-			if (qualitySearch.bestFit) {
+		let source: EncodeSource;
+		if (format === 'avif') {
+			const {encodeAvif} = options;
+			if (!encodeAvif) {
 				return {
-					ok: true,
-					value: {
-						blob: qualitySearch.bestFit.blob,
-						width,
-						height,
-						mime: qualitySearch.bestFit.blob.type,
-						effectiveQuality: qualitySearch.bestFit.quality,
-						targetMet: true,
+					ok: false,
+					error: {
+						code: 'unsupported-format',
+						message: 'AVIF encoding is not available here.',
 					},
 				};
 			}
 
-			bestBlob = qualitySearch.lowestBlob;
-			bestQuality = Math.min(MIN_SIZE_LIMITED_QUALITY, requestedQuality);
-		}
+			source = avifSource(image, encodeAvif);
+		} else {
+			canvas = options.canvas ?? runtime.createCanvas(width, height);
+			canvas.width = width;
+			canvas.height = height;
 
-		// Progressive dimension downscaling (PNG or lossy that still exceeds maxBytes at quality floor).
-		const minScale = Math.min(
-			1,
-			MIN_SIZE_LIMITED_SIDE / Math.min(width, height),
-		);
-		let scale = 1;
-		let currentW = width;
-		let currentH = height;
-
-		for (let step = 0; step < MAX_SCALE_STEPS; step++) {
-			if (scale <= minScale) {
-				break;
-			}
-
-			if (options.isCancelled?.()) {
+			const context = canvas.getContext('2d', {colorSpace: 'srgb'});
+			if (!context) {
 				return {
 					ok: false,
-					error: {code: 'encode-failed', message: 'Export cancelled.'},
+					error: {
+						code: 'out-of-memory',
+						message: 'Failed to allocate a 2D canvas context for encoding.',
+					},
 				};
 			}
 
-			const ratio = clampNumber(
-				Math.sqrt(maxBytes / Math.max(1, bestBlob.size)) * 0.92,
-				minScale / scale,
-				0.9,
-			);
-			let nextScale = Math.max(minScale, scale * ratio);
-			if (step === MAX_SCALE_STEPS - 1 && nextScale > minScale) {
-				nextScale = minScale;
-			}
+			const pixels =
+				format === 'jpeg'
+					? flattenAlphaForJpeg(image, options.jpegBackground)
+					: toArrayBufferPixels(image.data);
 
-			scale = nextScale;
-			const nextW = Math.max(1, Math.round(width * scale));
-			const nextH = Math.max(1, Math.round(height * scale));
-			if (nextW === currentW && nextH === currentH) {
-				break;
-			}
+			const imageData = runtime.createImageData(pixels, width, height);
+			context.putImageData(imageData, 0, 0);
 
-			currentW = nextW;
-			currentH = nextH;
+			const mainCanvas = canvas;
+			source = {
+				encode: async (quality) =>
+					convertCanvasToBlob(mainCanvas, format, expectedMime, quality),
+				scaled(nextW, nextH) {
+					scratchCanvas ??= runtime.createScratchCanvas
+						? runtime.createScratchCanvas(nextW, nextH)
+						: new OffscreenCanvas(nextW, nextH);
+					scratchCanvas.width = nextW;
+					scratchCanvas.height = nextH;
 
-			scratchCanvas ??= runtime.createScratchCanvas
-				? runtime.createScratchCanvas(nextW, nextH)
-				: new OffscreenCanvas(nextW, nextH);
-			scratchCanvas.width = nextW;
-			scratchCanvas.height = nextH;
+					const scratchContext = scratchCanvas.getContext('2d', {
+						colorSpace: 'srgb',
+					});
+					if (!scratchContext?.drawImage) {
+						return undefined;
+					}
 
-			const scratchContext = scratchCanvas.getContext('2d', {
-				colorSpace: 'srgb',
-			});
-			if (!scratchContext?.drawImage) {
-				break;
-			}
-
-			scratchContext.imageSmoothingEnabled = true;
-			scratchContext.imageSmoothingQuality = 'high';
-			scratchContext.drawImage(
-				canvas as unknown as CanvasImageSource,
-				0,
-				0,
-				nextW,
-				nextH,
-			);
-
-			const progressBase = 0.45 + (step / MAX_SCALE_STEPS) * 0.5;
-			options.onProgress?.(progressBase);
-
-			if (format === 'png') {
-				const attempt = await convertCanvasToBlob(
-					scratchCanvas,
-					'png',
-					expectedMime,
-					requestedQuality,
-				);
-				if (!attempt.ok) {
-					return attempt;
-				}
-
-				bestBlob = attempt.value;
-				bestWidth = nextW;
-				bestHeight = nextH;
-				if (attempt.value.size <= maxBytes) {
-					return {
-						ok: true,
-						value: {
-							blob: attempt.value,
-							width: nextW,
-							height: nextH,
-							mime: attempt.value.type,
-							effectiveQuality: undefined,
-							targetMet: true,
-						},
-					};
-				}
-			} else {
-				const scaledSearch = await searchLossyQuality(
-					scratchCanvas,
-					format,
-					expectedMime,
-					maxBytes,
-					requestedQuality,
-					options.isCancelled,
-				);
-				if (!scaledSearch.ok) {
-					return scaledSearch;
-				}
-
-				if (scaledSearch.bestFit) {
-					return {
-						ok: true,
-						value: {
-							blob: scaledSearch.bestFit.blob,
-							width: nextW,
-							height: nextH,
-							mime: scaledSearch.bestFit.blob.type,
-							effectiveQuality: scaledSearch.bestFit.quality,
-							targetMet: true,
-						},
-					};
-				}
-
-				bestBlob = scaledSearch.lowestBlob;
-				bestWidth = nextW;
-				bestHeight = nextH;
-				bestQuality = Math.min(MIN_SIZE_LIMITED_QUALITY, requestedQuality);
-			}
+					scratchContext.imageSmoothingEnabled = true;
+					scratchContext.imageSmoothingQuality = 'high';
+					scratchContext.drawImage(
+						mainCanvas as unknown as CanvasImageSource,
+						0,
+						0,
+						nextW,
+						nextH,
+					);
+					const target = scratchCanvas;
+					return async (quality) =>
+						convertCanvasToBlob(target, format, expectedMime, quality);
+				},
+			};
 		}
 
-		return {
-			ok: true,
-			value: {
-				blob: bestBlob,
-				width: bestWidth,
-				height: bestHeight,
-				mime: bestBlob.type,
-				effectiveQuality: bestQuality,
-				targetMet: bestBlob.size <= maxBytes,
-			},
-		};
+		return await encodeLimited(
+			source,
+			{width, height, format, requestedQuality, maxBytes},
+			options,
+		);
 	} catch (error) {
 		return {ok: false, error: makeEncodeError(error)};
 	} finally {

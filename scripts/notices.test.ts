@@ -156,6 +156,23 @@ describe('collectPackageNotice', () => {
 		]);
 	});
 
+	it('adds the licences of the codecs compiled into the AVIF encoder', () => {
+		const dir = addPackage({
+			name: '@jsquash/avif',
+			license: 'Apache-2.0',
+			files: {LICENSE: 'Apache License'},
+		});
+		const notice = collectPackageNotice(dir);
+		expect(notice.licenseFiles).toHaveLength(5);
+		expect(notice.copyrightLines).toEqual(
+			expect.arrayContaining([
+				'Copyright 2019 Joe Drago. All rights reserved.',
+				'Copyright (c) 2016, Alliance for Open Media. All rights reserved.',
+				'Copyright (c) 2010, Google Inc. All rights reserved.',
+			]),
+		);
+	});
+
 	it('includes the NOTICE file of an Apache-2.0 package', () => {
 		const dir = addPackage({
 			name: 'apache',

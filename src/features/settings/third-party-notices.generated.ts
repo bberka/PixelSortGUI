@@ -34,6 +34,11 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 		url: 'https://floating-ui.com',
 	},
 	{
+		name: '@jsquash/avif',
+		version: '2.1.1',
+		license: 'Apache-2.0',
+	},
+	{
 		name: '@radix-ui/number',
 		version: '1.1.3',
 		license: 'MIT',

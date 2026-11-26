@@ -1,5 +1,5 @@
 import fc from 'fast-check';
-import {describe, expect, it} from 'vite-plus/test';
+import {describe, expect, it, vi} from 'vite-plus/test';
 import {boxDownscale} from '../../src/engine/resample.ts';
 import {
 	applyTransform,
@@ -799,5 +799,67 @@ describe('lanczos3', () => {
 			),
 			{numRuns: 200},
 		);
+	});
+});
+
+// Bytes of every typed array `run` allocates, which is an upper bound on its peak.
+function allocatedBytes(run: () => void): number {
+	let total = 0;
+	const counted = <T extends Int32ArrayConstructor | Float64ArrayConstructor>(
+		Type: T,
+	): T =>
+		new Proxy(Type, {
+			construct(Target, args: [number]) {
+				const array = new Target(...args);
+				total += array.byteLength;
+				return array;
+			},
+		});
+	vi.stubGlobal('Int32Array', counted(Int32Array));
+	vi.stubGlobal('Float64Array', counted(Float64Array));
+	try {
+		run();
+	} finally {
+		vi.unstubAllGlobals();
+	}
+
+	return total;
+}
+
+describe('lanczos3 working memory', () => {
+	// Engine.md section 16.3.
+	const LIMIT = 8 * 1024 * 1024;
+
+	// The widest output from the tallest source: a ring of every source row
+	// under one window would take 4 GiB here. A 1 px wide source keeps it fast.
+	it('stays under 8 MiB when 16,384 rows shrink onto a 16,384 px wide row', () => {
+		const rgba = [255, 1, 128, 255];
+		const source = image(1, 16_384, flat(1, 16_384, rgba));
+		let result: RgbaImage | undefined;
+		const used = allocatedBytes(() => {
+			result = resize(source, 16_384, 1, 'lanczos3');
+		});
+		// Two sum rows of 16,384 * 4 doubles prove the counter saw the resize.
+		expect(used).toBeGreaterThan(16_384 * 4 * 8);
+		expect(used).toBeLessThan(LIMIT);
+		expect(bytes(result!)).toEqual(flat(16_384, 1, rgba));
+	}, 60_000);
+
+	// Shrinking to 4 rows keeps several windows open at once.
+	it.each([
+		['shrinking', 64, 63],
+		['shrinking to few rows', 64, 4],
+		['growing', 3, 8],
+		['keeping', 8, 8],
+	])('stays under 8 MiB at the widest output, height %s', (_, from, to) => {
+		const used = allocatedBytes(() => {
+			resize(
+				image(2, from, flat(2, from, [9, 9, 9, 255])),
+				16_384,
+				to,
+				'lanczos3',
+			);
+		});
+		expect(used).toBeLessThan(LIMIT);
 	});
 });

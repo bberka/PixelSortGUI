@@ -60,12 +60,13 @@ type ViewState = {
 	editSide?: 'a' | 'b'; // side edited while the split view is on; absent means 'b'
 };
 
-type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
+type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff';
 type ExportSizeMode = 'full' | 'half' | 'quarter' | 'custom';
 
 type ExportSettings = {
 	format: ExportFormat; // default 'png'
 	quality: number; // integer 50..100, default 92 (used for jpeg and webp)
+	avifQuality?: number; // integer 50..100, default 80 when absent (used for avif); no DB version bump required
 	sizeMode: ExportSizeMode; // default 'full'
 	customLongestSide: number | null; // integer 1..max(width, height), null unless sizeMode === 'custom'
 	maxFileSizeKb?: number | null; // optional integer 10..102400 (10 KB..100 MB), null/undefined for unlimited; backwards-compatible, no DB version bump required
@@ -146,7 +147,7 @@ Field invariants enforced before every write:
 - `stackA` and `selectedInstanceIdA` are removed from a record when side A has no instances.
 - `viewState.splitOrientation` and `viewState.editSide`: any other value is removed.
 - `viewState.splitPosition`: clamped to `[0, 1]`.
-- `exportSettings.quality`: rounded integer clamped to `[50, 100]`.
+- `exportSettings.quality` and `exportSettings.avifQuality` (when present): rounded integer clamped to `[50, 100]`.
 - `history` window per project: at most **201** retained entries (`seq` count ≤ 201), consisting of 1 oldest reachable base state plus up to **200** undoable commits. This guarantees AC-F9.3 ("After 205 commits, 200 undos are possible and the 201st is not").
 
 ## 4. What is saved and when
@@ -260,7 +261,6 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
   - `transform: SourceTransform` (full snapshot of the project's geometry at that commit, alongside `stack`).
 - `ThumbnailRecord.stackSignature` becomes `canonicalJson({transform, stack})` (side B only) so any geometry commit invalidates and regenerates the project thumbnail.
 - `UserPresetRecord` is **unchanged**: presets store `EffectStack` only, so applying a preset never overwrites a project's crop, rotation, flip, or resize (AC-F20.6).
-- `ExportFormat` gains `'avif'` when AVIF export (`F21`) lands (no DB version bump required because `exportSettings.format` is a plain string validated on read).
 
 **Migration (`dbMigrations[1]` in `src/storage/db.ts`):**
 

@@ -1,0 +1,24 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "bd000001",
+				"type": "bayerDither",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"matrix": "4",
+					"levels": 2,
+					"monochrome": false,
+					"spread": 1,
+					"pixelScale": 4
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 0.5
+}

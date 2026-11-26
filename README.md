@@ -14,6 +14,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Slice shift effect: shift random bands of rows or columns sideways, with a band size range, a probability, a maximum offset, wrap or stretch at the edges, and a seed.
 - Block shuffle effect: swap a random share of square tiles with other tiles, with a tile size, an amount and a seed.
 - Posterize effect: reduce colour depth to a set number of levels per channel or by dropping low bits, with an optional monochrome output.
+- Bayer dither effect: ordered dithering with a 2×2, 4×4 or 8×8 pattern, 2 to 16 levels per channel, a spread amount, a pattern scale and an optional monochrome output.
 - Scanline wave effect: displace rows or columns along a sine, triangle, square or sawtooth wave, with amplitude, wavelength, phase, per-line jitter with a seed, and wrap or stretch at the edges.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. Each step is named after the change, for example "Angle 90°". History holds 200 steps and survives a reload.
 - History panel: a list of every step, newest first. Select one to jump to it. Later steps stay listed until you make a new change. It is a History tab on desktop and tablet, and a History button in the toolbar on phones.

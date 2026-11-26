@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New effect: Bayer dither.
+
 ## v0.2.0
 
 Adds geometry tools, five effects, more image formats, a history panel, a stack for each side of the split view and a built-in guide.

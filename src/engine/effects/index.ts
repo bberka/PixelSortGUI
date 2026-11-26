@@ -1,5 +1,6 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
+import {bayerDitherSpec, type BayerDitherParams} from './bayer-dither-spec.ts';
 import {
 	blockShuffleSpec,
 	type BlockShuffleParams,
@@ -73,6 +74,14 @@ const lazyScanlineWaveEffect: EffectDefinition<ScanlineWaveParams> = {
 	},
 };
 
+const lazyBayerDitherEffect: EffectDefinition<BayerDitherParams> = {
+	...bayerDitherSpec,
+	async render(input, output, params, ctx) {
+		const {bayerDitherEffect} = await import('./bayer-dither.ts');
+		return bayerDitherEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -87,6 +96,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyBlockShuffleEffect,
 	lazyPosterizeEffect,
 	lazyScanlineWaveEffect,
+	lazyBayerDitherEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

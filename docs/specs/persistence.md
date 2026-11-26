@@ -23,7 +23,7 @@ Origin Private File System (OPFS) and the File System Access API are not used as
 
 ## 2. Database and object stores
 
-Database name: `pixelsortgui`. Initial schema version: `1`.
+Database name: `pixelsortgui`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` in `v0.3.0` per section 8.5).
 
 | Store | Key path | Indexes | Contents and sizing notes |
 |---|---|---|---|
@@ -232,7 +232,7 @@ Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted
 - **Transaction failure fallback:** Catch `QuotaExceededError` on any IndexedDB write. Because imports and commits run inside atomic transactions, IndexedDB aborts the transaction cleanly, leaving zero partial projects and preserving the last committed state.
 - **User prompt:** Open the `"Storage is full"` dialog explaining that this device's browser storage does not have enough free space, with `"Manage library"` (closes dialog and navigates to Library).
 
-## 8. Next release (v0.2.0): geometry transforms and history jump
+## 8. Post-v0.1.0 schema extensions (v0.2.0 and v0.3.0)
 
 ### 8.1 Database version 2 (`SourceTransform`, F20)
 
@@ -535,7 +535,7 @@ When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies
 
 When `F26` (`imageBlend`) lands, a project can reference up to **8** additional `SourceRecord`s alongside its primary `sourceHash`, both in its current `stack` and in its retained `history` entries. Extra sources live in the existing `sources` store (zero new object stores) and share SHA-256 deduplication with primary sources.
 
-- **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`, after F20's v2):**
+- **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`, after F20's v2; or v2 / `dbMigrations[1]` if `F26` ships ahead of `F20`):**
   - Add `referencedSourceHashes: string[]` to `ProjectRecord`: a sorted, deduplicated array containing `project.sourceHash` plus every valid 64-char SHA-256 found in any `kind: 'image'` parameter of `project.stack` and all retained `history` entries for that project.
   - Create a `multiEntry: true` index `byReferencedSourceHash` on `projects` keyed on `referencedSourceHashes`.
   - Migration `dbMigrations[2]` iterates existing `projects` and sets `referencedSourceHashes = [project.sourceHash]` where missing, and updates `meta.schemaInfo.dbVersion = 3`.
@@ -555,7 +555,7 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
 
 1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('psg:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
 2. **Step 1 (Secure context gate):** Check `window.isSecureContext`. If `false`, render the secure-context error screen (DESIGN.md section 9) and stop (product.md section 4).
-3. **Step 2 (Open database):** Open IndexedDB `pixelsortgui` at `dbVersion = 1` (running `onupgradeneeded` migrations if upgrading from an older version).
+3. **Step 2 (Open database):** Open IndexedDB `pixelsortgui` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` in `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
    - If `VersionError` (stored DB is newer than app): render the blocking reload/update screen and stop.
    - If any other error: instantiate `MemoryStorageAdapter`, set `storageUnavailable = true`, and continue (AC-F16.4).
 4. **Step 3 (Fast metadata read):** Run one `readonly` transaction across `['meta', 'projects', 'presets']` to load:
@@ -597,6 +597,6 @@ tests/storage/
   restore.test.ts      Route resolution, deleted-project hash, fallback to MemoryStorageAdapter
 ```
 
-(`backup.ts` and `backup.test.ts` are added when F17 is scheduled.)
+(`project-file.ts`, `backup.ts`, and their tests are added in Milestone 8 for `F25` and `F17`.)
 
 Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev dependency). Real-browser persistence, quota exhaustion, private browsing, and offline PWA restore are verified in Spike S3 and the Playwright E2E suite ([roadmap.md](roadmap.md)).

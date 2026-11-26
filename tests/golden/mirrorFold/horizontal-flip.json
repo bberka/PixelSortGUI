@@ -1,0 +1,23 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "mf000001",
+				"type": "mirrorFold",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"mode": "horizontal",
+					"flipSource": true,
+					"centerX": 0.3,
+					"centerY": 0.5
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

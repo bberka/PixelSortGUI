@@ -193,7 +193,7 @@ The editor renders the stack at the `drag` level while a control moves and at th
 Every commit (parameter change, add, remove, reorder, enable or disable, preset apply, reset) creates one history entry with a label. Undo and redo move through the entries; a new commit after undo discards the redo entries. History is stored with the project and survives restarts; it holds up to 200 entries per project, dropping the oldest.
 
 - AC-F9.1: Ctrl+Z / Cmd+Z undoes and Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y redoes; the toolbar buttons do the same and are disabled when nothing can be undone or redone.
-- AC-F9.2: The undo button's tooltip and accessible name include the entry label, for example "Undo Change Angle".
+- AC-F9.2: The undo button's tooltip and accessible name include the entry label, for example "Undo Angle 90°" (label formats: [persistence.md section 8.2](persistence.md#82-history-jump-and-rich-action-labels-f23)).
 - AC-F9.3: After 205 commits, 200 undos are possible and the 201st is not.
 - AC-F9.4: Undo and redo do not change zoom, pan, selection of the library or theme.
 - AC-F9.5: Undo history is restored after a reload (see AC-F3.2).

@@ -93,13 +93,18 @@ export default defineConfig({
 			// The render coordinator is its own entry so its chunk (and the worker
 			// chunks it references) exists before any feature imports it. The
 			// end-to-end tests load it from `dist/assets/coordinator-*.js`, which
-			// needs its exports kept.
+			// needs its exports kept. The archive client is an entry for the same
+			// reason, and so the build holds the archive worker.
 			preserveEntrySignatures: 'exports-only',
 			input: {
 				index: path.resolve(import.meta.dirname, 'index.html'),
 				coordinator: path.resolve(
 					import.meta.dirname,
 					'src/render/coordinator.ts',
+				),
+				'archive-client': path.resolve(
+					import.meta.dirname,
+					'src/storage/archive-client.ts',
 				),
 			},
 		},

@@ -219,11 +219,11 @@ The Compare button toggles between the result and the source image (keyboard: `\
 
 ### F12. Export
 
-The export dialog offers format (PNG, JPEG, WebP only where the browser's native encoder produces WebP, BMP, and TIFF), quality for JPEG and WebP (50 to 100, default 92, divided by 100 for the encoder), size (Full, 1/2, 1/4, or a custom longest side, never larger than the source), an optional output file-size limit (Off by default, or a target maximum size in KB/MB with quick presets — 500 KB, 1 MB, 2 MB, 5 MB, 10 MB — plus a custom value clamped to 10 KB–100 MB), and the file name (default `<project name>-<YYYYMMDD-HHmmss>.<ext>`). Transparent pixels are flattened onto white for JPEG. A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of such images is later work.
+The export dialog offers format (PNG, JPEG, WebP only where the browser's native encoder produces WebP, AVIF, BMP, and TIFF), quality for JPEG and WebP (50 to 100, default 92, divided by 100 for the encoder) and for AVIF (50 to 100, default 80, remembered separately), size (Full, 1/2, 1/4, or a custom longest side, never larger than the source), an optional output file-size limit (Off by default, or a target maximum size in KB/MB with quick presets — 500 KB, 1 MB, 2 MB, 5 MB, 10 MB — plus a custom value clamped to 10 KB–100 MB), and the file name (default `<project name>-<YYYYMMDD-HHmmss>.<ext>`). Transparent pixels are flattened onto white for JPEG. A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of such images is later work.
 
 When a file-size limit is active:
-- For JPEG and WebP, the encoder first encodes at the requested dimensions and quality; if the output exceeds the target, it binary-searches quality down to a minimum of 10, and if still over the limit, progressively scales down dimensions until the output fits (or reaches the minimum side of 64 px).
-- For PNG, BMP and TIFF (lossless), the encoder scales down dimensions to fit, and the dialog shows a brief helper note explaining that the chosen format scales dimensions to fit and JPEG or WebP compress more tightly.
+- For JPEG, WebP and AVIF, the encoder first encodes at the requested dimensions and quality; if the output exceeds the target, it binary-searches quality down to a minimum of 10, and if still over the limit, progressively scales down dimensions until the output fits (or reaches the minimum side of 64 px).
+- For PNG, BMP and TIFF (lossless), the encoder scales down dimensions to fit, and the dialog shows a brief helper note explaining that the chosen format scales dimensions to fit and JPEG, WebP or AVIF compress more tightly.
 - When export finishes, the dialog displays the final exported file size along with any adjusted dimensions or quality (and a gentle notice if even the minimum size exceeded the target).
 - The file-size limit is persisted per project alongside the other export settings.
 
@@ -312,7 +312,7 @@ Acceptance criteria:
 
 ### F21. Extended image formats
 
-In `v0.1.0`, import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`). Since `v0.1.0`, the first-frame notice, the HEIC/HEIF and RAW refusals, and the explicit AVIF, BMP, and GIF picker entries and tests listed below, SVG import, and TIFF import with BMP and TIFF export, have been implemented; the rest of this section has not.
+In `v0.1.0`, import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`). Since `v0.1.0`, the first-frame notice, the HEIC/HEIF and RAW refusals, and the explicit AVIF, BMP, and GIF picker entries and tests listed below, SVG import, TIFF import, and AVIF, BMP and TIFF export, have been implemented.
 
 Next-release additions (all bundled offline with MIT-compatible licences, zero runtime network calls; full browser support matrix and sources in [engine.md section 16.4](engine.md#164-extended-format-support-f21)):
 
@@ -322,7 +322,7 @@ Next-release additions (all bundled offline with MIT-compatible licences, zero r
   - **AVIF (`.avif`), BMP (`.bmp`), GIF first frame (`.gif`):** Explicitly tested in CI and listed in the file picker `accept` attribute.
   - **Animated inputs (animated GIF, WebP, APNG, AVIF):** Import the first frame per the HTML `ImageBitmap` specification and show a non-blocking toast: `"Imported the first frame of <file name>. Animation is not supported yet."`
 - **Export additions:**
-  - **AVIF (`.avif`):** Encoded via lazy-loaded `@jsquash/avif` WebAssembly encoder (Apache-2.0, ~3.3 MB `.wasm` chunk loaded only when AVIF export is chosen), with quality 50 to 100 (default 80 for AVIF).
+  - **AVIF (`.avif`):** Encoded via lazy-loaded `@jsquash/avif` WebAssembly encoder (Apache-2.0, ~3.3 MB `.wasm` file loaded only when an AVIF export runs), with quality 50 to 100 (default 80 for AVIF).
   - **BMP (`.bmp`):** Encoded via our own pure-TypeScript 24-bit/32-bit uncompressed BMP writer (0 dependencies, ~1 KB). Useful for external databending workflows.
   - **TIFF (`.tif`):** Encoded as uncompressed 8-bit RGBA TIFF via `utif2` (MIT, lazy-loaded).
 - **Refused formats (explicitly unsupported with clear errors):**
@@ -336,7 +336,7 @@ Acceptance criteria:
 - AC-F21.3: Importing an animated GIF imports frame 0 and displays the first-frame notice toast.
 - AC-F21.4: Dropping a `.heic` file or a `.dng`/`.cr2` file creates no project and shows the format-specific message naming HEIC/HEIF or RAW.
 - AC-F21.5: Exporting to AVIF, BMP, and TIFF downloads valid files whose headers match the format (`ftypavif`, `BM`, `II*\0` or `MM\0*`), have exact target dimensions, and carry no EXIF or GPS metadata.
-- AC-F21.6: Initial app load does not fetch the AVIF Wasm chunk or `utif2` chunk until the user imports a TIFF or selects AVIF/TIFF export. The service worker's offline precache, which downloads the build in the background, may include the `utif2` chunk.
+- AC-F21.6: Initial app load does not fetch the AVIF Wasm chunk or `utif2` chunk until the user imports a TIFF or selects AVIF/TIFF export. The service worker's offline precache, which downloads the build in the background, includes both, so AVIF and TIFF export work offline.
 
 ### F22. Expanded glitch effect catalogue
 

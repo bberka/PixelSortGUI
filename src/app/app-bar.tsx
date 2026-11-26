@@ -57,6 +57,14 @@ export function AppBar() {
 				</Button>
 			) : null}
 			<div className="flex min-w-0 items-center gap-2">
+				<img
+					src="/icons/icon.svg"
+					alt=""
+					aria-hidden="true"
+					width={24}
+					height={24}
+					className="size-6 shrink-0"
+				/>
 				<h1 className="shrink-0 text-lg leading-6 font-semibold">Drift</h1>
 				{isEditor && projectName ? (
 					<span className="max-sm:hidden min-w-0 truncate text-sm text-muted-foreground">

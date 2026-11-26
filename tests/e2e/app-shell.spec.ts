@@ -165,6 +165,28 @@ test('the app bar goes back to the library from the editor', async ({page}) => {
 	expect(new URL(page.url()).hash).toBe('#/');
 });
 
+for (const theme of THEMES) {
+	for (const viewport of PROOF_VIEWPORTS) {
+		test(`the app bar icon loads without overflow in ${theme.name} at ${viewport.name} @a11y`, async ({
+			page,
+		}) => {
+			const consoleErrors = collectConsoleErrors(page);
+			await openInTheme(page, theme, '/', viewport);
+			await importSyntheticProject(page, 'A rather long project name');
+			await expect(
+				page.getByRole('region', {name: 'Canvas', exact: true}),
+			).toBeVisible();
+
+			const icon = page.locator('header img[src="/icons/icon.svg"]');
+			await expect(icon).toBeVisible();
+			await expect(icon).toHaveAttribute('alt', '');
+			await expect(icon).toHaveJSProperty('naturalWidth', 512);
+			expect(await icon.boundingBox()).toMatchObject({width: 24, height: 24});
+			await expectLayoutAndA11y(page, viewport, consoleErrors);
+		});
+	}
+}
+
 test('the Settings theme selector changes the theme and survives a reload', async ({
 	page,
 }) => {

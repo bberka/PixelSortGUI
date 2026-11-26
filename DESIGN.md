@@ -202,7 +202,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 ```
 
 - **Grid columns:** Phone (`390 × 844`): 2 columns, `12 px` gap, `12 px` page padding. Tablet (`820 × 1180`): 3 columns, `16 px` gap, `16 px` padding. Desktop (`1440 × 900`): `repeat(auto-fill, minmax(220px, 1fr))`, `16 px` gap, `24 px` padding.
-- **Drag and drop (desktop, AC-F1.2):** Dragging files over the window displays a high-contrast dashed overlay (`"Drop images to open"`).
+- **Drag and drop (desktop, AC-F1.2):** Dragging files over the window displays a high-contrast dashed overlay (`"Drop images or project files to open"`).
 - **Card interaction (AC-F2.7):** Card body is a focusable button (`Enter` / `Space` opens project); overflow `⋯` button sits in the card footer with `Open`, `Rename`, `Duplicate`, `Delete`.
 - **App bar (AC-F2.9):** `Import images`, `Guide` and `Settings` stay at the right end of the bar at every width, with or without projects.
 - **No projects:** the grid is replaced by the empty Library (section 7.3).
@@ -213,7 +213,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-----------------------------------------------------------------------------+
 | <- Drift project-name                     [Export] [Guide] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
-| [Undo][Redo] | [Presets] | [Compare][Split]            | + Add effect       |  40 px toolbar
+| [Undo][Redo] | [Compare][Split] | [Transform][Presets][Save]| + Add effect     |  40 px toolbar
 +--------------------------------------------------------+ [=] Pixel sort [on]|  <- Stack
 | [2 px render progress bar when > 300 ms]               | [=] Ch. shift [Off]|     (max 38% H,
 |                                                        |                    |      ScrollArea)
@@ -233,7 +233,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +---------------------------------------------------+
 | <- Drift project-name  [Export] [Settings] |  52 px
 +---------------------------------------------------+
-| [Undo][Redo] | [Presets] | [Compare][Split]       |  40 px toolbar
+| [Undo][Redo] | [Compare][Split] | [Transform][Presets][Save] |  40 px toolbar
 +---------------------------------------------------+
 | [2 px progress bar]                               |
 |                                                   |
@@ -278,7 +278,7 @@ One control (default)             All controls
 +-------------------------------+ +-------------------------------+  + safe-area-bottom
 ```
 
-- **App bar:** it starts with the Drift icon (`/icons/icon.svg`, `24 px`, decorative with `alt=""`) immediately left of the `"Drift"` heading on every screen, after the back button where there is one. It has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width.
+- **App bar:** it starts with the Drift icon (`/icons/icon.svg`, `24 px`, decorative with `alt=""`) immediately left of the `"Drift"` heading on every screen, after the back button where there is one. It has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width. In the phone editor an overflow button (`EllipsisVertical`, `aria-label="More actions"`) ends the bar and opens a menu with `"Save project file"` (section 7.2).
 - **Toolbar:** a `52 px` row directly **below** the canvas, within thumb reach, holding seven equal-width buttons, each an icon with an `11 px` text label: `Undo`, `Redo`, `Compare`, `Split`, `Transform`, `Presets`, `History`. Every one acts in one tap. The split orientation button lives in the split side switcher on phones (section 7).
 - **Effect strip:** a `52 px` row. A pinned `+` button adds an effect; with an empty stack it reads `"Add effect"` beside `"No effects yet"`. Each effect is a `44 px`-tall chip. Tapping a chip selects it and shows its controls. Only the selected chip carries the enabled switch and the `⋮` menu (Move left, Move right, Duplicate, Remove), so more effects fit; a disabled effect shows its `"Off"` badge on any chip. The strip scrolls the selected chip into view.
 - **Parameter panel, one control (default):** a `16 px` drag handle, then a row of tabs naming each visible parameter plus `Mix` and `Blend` (horizontal scroll, `aria-label="Parameters"`), ending in the `Show selection` toggle (when the effect has it), `Randomize` and `"Show all controls"`. Below, only the chosen parameter's control, in a fixed `144 px` area so the canvas never changes size when switching parameters. The chosen parameter is remembered per effect type. If it becomes hidden (`visibleWhen`), the first parameter is shown.
@@ -343,9 +343,9 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
 - **Project files (F25):**
   - **Library card menu (`src/features/library/project-card.tsx`):** Add `"Save project file"` (`Download` or `Archive` icon) below `"Duplicate"` and above the separator before `"Delete"`.
-  - **Editor (`src/features/toolbar/editor-toolbar.tsx` / phone overflow):** Add `"Save project file"` action reachable from the editor toolbar (desktop/tablet) and phone top-bar overflow (`⋮`).
-  - **Save project file dialog:** Compact `Dialog` (desktop/tablet) / `Sheet` (phone) with project name summary, `"Include undo history"` checkbox (default checked), `"Save"` primary button, and during assembly a `Progress` bar with `"Cancel"`.
-  - **Open project file (`src/features/import/`):** `"Open images"` file picker (`use-image-picker.ts`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) updates the drop overlay copy (`drop-overlay.tsx`) to `"Drop images or project files to open"`. Error messages use the existing `ImportProblemDialog`.
+  - **Editor (`src/features/toolbar/editor-toolbar.tsx` / phone overflow):** on desktop and tablet a ghost icon button (`Archive`, `aria-label` and tooltip `"Save project file"`) follows Presets in the editor toolbar. On a phone, portrait and landscape, the seven toolbar buttons stay as they are and the action is the menu item in the app bar overflow (`⋮`, section 6.4). The action has no keyboard shortcut.
+  - **Save project file dialog:** Compact `Dialog` (desktop/tablet) / bottom `Sheet` (phone) titled `"Save project file"`, with the project name and `W × H px`, an `"Include undo history"` checkbox (checked each time the dialog opens), a `"Save"` primary button, and during assembly a `Progress` bar with the percentage and `"Cancel"`. It shows no size estimate. `"Cancel"` stops the save, downloads nothing and returns to the form; closing the dialog while saving does the same. A finished save starts the download, closes the dialog and announces `"Saved <file name>"`. A save error (persistence.md section 8.3.5) shows inline in the dialog with `role="alert"`. Closing returns focus to the control that opened the dialog.
+  - **Open project file (`src/features/import/`):** every import picker (`use-image-picker.ts`: `"Import images"` and `"Open images"`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) uses the drop overlay copy (`drop-overlay.tsx`) `"Drop images or project files to open"`. A file named `.glproj` or `.zip` (any letter case) is opened as a project file, every other file as an image. The progress card reads `"Opening <file name> (<n> of <total>)"`. When several files are chosen at once, the first of them, in the order chosen, that opened becomes the open project. Errors use the existing `ImportProblemDialog`, titled `"Can't open project"`, `"Can't open <N> projects"`, or `"Can't open <N> files"` when images were refused too; it stays up when another file of the same batch opened and changed the screen.
 - **Full backup and restore (F17):**
   - **Settings -> Storage (`src/features/settings/settings-content.tsx`):** Add a `"Backup & restore"` row below the persistence controls with `"Export backup"` and `"Import backup"` outline buttons.
   - **Library app bar (`src/app/app-bar-actions.ts`):** Add a compact overflow menu button (`⋮`, `aria-label="Library actions"`) next to Settings with `"Export backup"` and `"Import backup"`.

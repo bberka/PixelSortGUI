@@ -87,7 +87,7 @@ Each feature has an ID (`F1` to `F16`, `F18`, `F19`; `F17` is moved to section 6
 
 The user adds images through a file picker (multiple selection allowed) or by dropping files on the library or editor. Each accepted file becomes a new project named after the file without its extension. If the same file bytes were imported before (same SHA-256), the new project reuses the stored source image instead of storing a second copy.
 
-- AC-F1.1: Activating "Open images" opens the system file picker filtered to images; choosing 3 JPEG files creates 3 projects in the library, and the editor opens the first chosen file.
+- AC-F1.1: Activating "Open images" opens the system file picker filtered to images and project files (F25); choosing 3 JPEG files creates 3 projects in the library, and the editor opens the first chosen file.
 - AC-F1.2: Dropping a PNG file on the library screen (desktop) creates one project and opens it.
 - AC-F1.3: A file the browser cannot decode (for example a `.txt` renamed to `.jpg`) creates no project and shows the error "Can't open <file name>: the browser can't read this image format."
 - AC-F1.4: A 20,000 × 1,000 px image is rejected with "Image too large: the longest side is 20,000 px; the limit is 16,384 px."

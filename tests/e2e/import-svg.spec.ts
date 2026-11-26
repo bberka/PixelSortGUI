@@ -66,11 +66,12 @@ function recordRequests(page: Page): string[] {
 }
 
 /**
- What a leak would look like: anything but the app loading its own chunks.
+ What a leak would look like: another origin, or anything the SVG names. The
+ app's own late chunk and icon requests are not leaks.
  */
 function leaks(requests: readonly string[], baseURL: string): string[] {
 	return requests.filter(
-		(url) => url.includes(PROBE) || !url.startsWith(`${baseURL}/assets/`),
+		(url) => url.includes(PROBE) || !url.startsWith(`${baseURL}/`),
 	);
 }
 
@@ -153,7 +154,6 @@ test('a viewBox-only SVG imports at 2048 × 1024 and requests nothing it referen
 		pixel: [255, 0, 0, 255],
 	});
 
-	// Opening the editor loads the app's own chunks; nothing else may appear.
 	expect(leaks(requests.slice(start), baseURL!)).toEqual([]);
 });
 

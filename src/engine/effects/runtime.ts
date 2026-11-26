@@ -8,6 +8,7 @@ import {mirrorFoldEffect} from './mirror-fold.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 import {sliceShiftEffect} from './slice-shift.ts';
 import {posterizeEffect} from './posterize.ts';
+import {rgbNoiseEffect} from './rgb-noise.ts';
 import {scanlineWaveEffect} from './scanline-wave.ts';
 import {thresholdInvertEffect} from './threshold-invert.ts';
 
@@ -25,6 +26,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	scanlineWaveEffect,
 	mirrorFoldEffect,
 	bayerDitherEffect,
+	rgbNoiseEffect,
 	thresholdInvertEffect,
 ];
 

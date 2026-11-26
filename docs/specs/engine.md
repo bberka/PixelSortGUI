@@ -393,7 +393,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`sliceShift`, `channelSwap`, `blockShuffle`, `posterize`, `bayerDither`, `mirrorFold` and `thresholdInvert` (all version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`sliceShift`, `channelSwap`, `blockShuffle`, `posterize`, `bayerDither`, `rgbNoise`, `mirrorFold` and `thresholdInvert` (all version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -675,6 +675,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/slice-shift.ts
   effects/block-shuffle.ts
   effects/scanline-wave.ts
+  effects/rgb-noise.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
@@ -688,7 +689,7 @@ scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-upda
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented (as have `bayerDither`, `mirrorFold` and `thresholdInvert`, ranks 6, 9 and 10), as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. Projects and history store the transform ([persistence.md section 8.1](persistence.md#81-database-version-2-sourcetransform-f20)); no UI control changes one yet.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented (as have `bayerDither`, `rgbNoise`, `mirrorFold` and `thresholdInvert`, ranks 6, 7, 9 and 10), as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. Projects and history store the transform ([persistence.md section 8.1](persistence.md#81-database-version-2-sourcetransform-f20)); no UI control changes one yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -829,6 +830,7 @@ Adds counter-hashed film/sensor grain or per-channel RGB static, plus optional d
 - **Behavior:** For render pixel `(x, y)`, cell coordinates in source space are `gx = floorDiv(ctx.toSource(x), grainSize)` and `gy = floorDiv(ctx.toSource(y), grainSize)`. If `dropout > 0` and `unit(seed, 4, gx, gy) < dropout`, set RGB to `(255, 255, 255)` if `unit(seed, 5, gx, gy) >= 0.5`, else `(0, 0, 0)` (alpha unchanged). Otherwise, let `amp = Math.round(amount * 255)`. If `monochrome`: `delta = intIn(-amp, amp, seed, 1, gx, gy)`, add `delta` to R, G, and B and clamp to `0..255`. If colour: compute independent `deltaR`, `deltaG`, `deltaB` with purpose codes `1, 2, 3` and clamp each to `0..255`.
 - **Determinism & locality:** Deterministic via `hash32` with purpose codes `1..5`. Pure per-pixel. Cost class: Low. Debug views: none.
 - **Provenance:** Standard counter-based procedural noise. Clean-room own implementation.
+- **Tests:** pixels match the hashed cell draws in both colour modes, with alpha unchanged; `amount` 0 with `dropout` 0 is the identity; dead and hot pixels are pure black or white; a scaled render keys cells to source coordinates; the output repeats for a seed and changes with it; input is never written; 1 × 1, 1 × N and N × 1 images and both ends of every range; parameters survive a saved-stack round trip and out-of-range values are repaired; golden cases for defaults, non-default settings and scale 0.5.
 
 #### 8. `pixelSmear` (version 1, `glitch`): "Smear selected pixels along a direction with decay trails."
 

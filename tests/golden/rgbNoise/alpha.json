@@ -1,0 +1,24 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "rn000001",
+				"type": "rgbNoise",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"amount": 0.5,
+					"monochrome": false,
+					"dropout": 0.1,
+					"grainSize": 1,
+					"seed": 1234
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

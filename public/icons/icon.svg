@@ -1,13 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="96" fill="#000000"/>
-  <rect x="88" y="104" width="216" height="44" rx="8" fill="#fafafa"/>
-  <rect x="320" y="104" width="104" height="44" rx="8" fill="#52525b"/>
-  <rect x="88" y="168" width="112" height="44" rx="8" fill="#a1a1aa"/>
-  <rect x="216" y="168" width="208" height="44" rx="8" fill="#3b82f6"/>
-  <rect x="88" y="232" width="288" height="44" rx="8" fill="#fafafa"/>
-  <rect x="392" y="232" width="32" height="44" rx="8" fill="#52525b"/>
-  <rect x="88" y="296" width="152" height="44" rx="8" fill="#52525b"/>
-  <rect x="256" y="296" width="168" height="44" rx="8" fill="#fafafa"/>
-  <rect x="88" y="360" width="248" height="44" rx="8" fill="#a1a1aa"/>
-  <rect x="352" y="360" width="72" height="44" rx="8" fill="#3b82f6"/>
+  <rect width="512" height="512" rx="112" fill="#000000"/>
+  <!-- Stylized geometric "D" formed from pixel-sorted horizontal drift bars -->
+  <!-- Row 1: Top bar of D -->
+  <rect x="104" y="100" width="184" height="48" rx="10" fill="#fafafa"/>
+  <rect x="304" y="100" width="52" height="48" rx="10" fill="#52525b"/>
+  <!-- Row 2: Upper-mid curve with electric-blue drift accent -->
+  <rect x="104" y="166" width="60" height="48" rx="10" fill="#fafafa"/>
+  <rect x="180" y="166" width="84" height="48" rx="10" fill="#a1a1aa"/>
+  <rect x="280" y="166" width="128" height="48" rx="10" fill="#3b82f6"/>
+  <!-- Row 3: Center widest span -->
+  <rect x="104" y="232" width="60" height="48" rx="10" fill="#fafafa"/>
+  <rect x="180" y="232" width="144" height="48" rx="10" fill="#fafafa"/>
+  <rect x="340" y="232" width="76" height="48" rx="10" fill="#60a5fa"/>
+  <!-- Row 4: Lower-mid curve -->
+  <rect x="104" y="298" width="60" height="48" rx="10" fill="#fafafa"/>
+  <rect x="180" y="298" width="112" height="48" rx="10" fill="#52525b"/>
+  <rect x="308" y="298" width="96" height="48" rx="10" fill="#fafafa"/>
+  <!-- Row 5: Bottom bar of D -->
+  <rect x="104" y="364" width="184" height="48" rx="10" fill="#fafafa"/>
+  <rect x="304" y="364" width="64" height="48" rx="10" fill="#3b82f6"/>
 </svg>

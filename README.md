@@ -1,4 +1,4 @@
-# Drift
+<h1><img src="public/icons/icon.svg" alt="Drift icon" width="32" height="32" align="center" /> Drift</h1>
 
 Drift is an editor for glitch art and pixel sorting of still photos. It runs entirely in your browser, works offline, and needs no account. Your photos never leave your device. Projects are saved in browser storage.
 
@@ -68,7 +68,7 @@ AI agents do the development under the rules in [AGENTS.md](AGENTS.md). Every pu
 
 ## Contributing and reporting problems
 
-Report bugs and ideas in the [issue tracker](https://github.com/bberka/PixelSortGUI/issues).
+Report bugs and ideas in the [issue tracker](https://github.com/bberka/drift/issues).
 
 ## Credits
 

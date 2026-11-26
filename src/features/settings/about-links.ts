@@ -1,4 +1,4 @@
-export const REPOSITORY_URL = 'https://github.com/bberka/PixelSortGUI';
+export const REPOSITORY_URL = 'https://github.com/bberka/drift';
 
 export type AboutExternalLink = {
 	readonly label: string;

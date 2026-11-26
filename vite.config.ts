@@ -26,6 +26,11 @@ export default defineConfig({
 		vitePwa({
 			registerType: 'prompt',
 			injectRegister: false,
+			includeAssets: [
+				'favicon.ico',
+				'icons/apple-touch-icon.png',
+				'icons/icon.svg',
+			],
 			/* eslint-disable @typescript-eslint/naming-convention -- Web App Manifest specification requires snake_case keys */
 			manifest: {
 				name: 'Drift',

@@ -576,8 +576,7 @@ test.describe('v0.2.0 E2E acceptance suite (T7.17)', () => {
 			const labels = Object.values<ParamSpec>(definition.params)
 				.filter((spec) => isParamVisible(spec, defaults))
 				.map((spec) => spec.label);
-			// Mix and Blend belong to every instance, after the effect's own.
-			// A row's header holds its label; a control may label its own parts too.
+			// Only each row's own label, then Mix and Blend, which every instance has.
 			await expect(
 				panel.locator(
 					'[data-param-row] > label:first-child, [data-param-row] > div:first-child > label',

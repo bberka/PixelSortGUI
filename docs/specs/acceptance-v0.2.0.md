@@ -1,6 +1,6 @@
 # Drift `v0.2.0` Acceptance Traceability (`T7.17`)
 
-Maps every acceptance criterion added since `v0.1.0` in [product.md](product.md) to its automated tests: the next-release features `F20`–`F24`, the side-by-side effect stacks and horizontal split (`AC-F11.5`–`AC-F11.14`, `AC-F12.10`), the export file-size limit (`AC-F12.8`, `AC-F12.9`) and the in-app guide (`F27`). Features present in `v0.1.0` stay mapped in [acceptance-v0.1.0.md](acceptance-v0.1.0.md).
+Maps every acceptance criterion added since `v0.1.0` in [product.md](product.md) to its automated tests: the next-release features `F20` to `F24`, the side-by-side effect stacks and horizontal split (`AC-F11.5` to `AC-F11.14`, `AC-F12.10`), the export file-size limit (`AC-F12.8`, `AC-F12.9`) and the in-app guide (`F27`). Features present in `v0.1.0` stay mapped in [acceptance-v0.1.0.md](acceptance-v0.1.0.md).
 
 Each test is written as its file, then its title in quotes. Titles with `%s` or `%i` are table-driven tests. The `M` numbers point to the [manual desktop checklist](#manual-desktop-checklist), which covers what a test machine cannot judge. Run the automated tests with `vp run check` (unit and component), `vp run test:e2e` (Playwright, Chromium and Firefox) and `vp run test:perf` (speed budgets).
 

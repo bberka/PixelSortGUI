@@ -106,6 +106,17 @@ describe('route host', () => {
 		).toContain('Open images');
 	});
 
+	it('shows the decorative app icon immediately before the title', async () => {
+		const {runtime} = createReadyRuntime();
+		const screen = mount(<App runtime={runtime} />);
+		await flush();
+
+		const icon = screen.querySelector('h1')?.previousElementSibling;
+		expect(icon?.getAttribute('src')).toBe('/icons/icon.svg');
+		expect(icon?.getAttribute('alt')).toBe('');
+		expect(icon?.getAttribute('aria-hidden')).toBe('true');
+	});
+
 	it('lays out the four editor regions in reading order for the editor route', async () => {
 		const {runtime} = createReadyRuntime({
 			route: {screen: 'editor', projectId: 'project-1'},

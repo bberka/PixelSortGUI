@@ -4,13 +4,14 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 
 ## What works today
 
-- Import photos with a file picker or by dragging files onto the window. Several files can be imported at once. Any format your browser can decode works, such as JPEG, PNG, WebP, GIF, BMP and AVIF. An animated GIF, WebP, APNG or AVIF imports its first frame and shows a notice. HEIC/HEIF and camera RAW files are refused with a message saying what to convert them to. Images over 16,384 pixels on the longest side or over 200 MB are refused. Images over 50 megapixels offer a choice to import at 50 megapixels or import anyway.
+- Import photos with a file picker or by dragging files onto the window. Several files can be imported at once. Any format your browser can decode works, such as JPEG, PNG, WebP, GIF, BMP and AVIF. An SVG is converted to a still image at its stated pixel size, or 2,048 pixels on its longest side if it states none; links to outside files in it are not loaded. An animated GIF, WebP, APNG or AVIF imports its first frame and shows a notice. HEIC/HEIF and camera RAW files are refused with a message saying what to convert them to. Images over 16,384 pixels on the longest side or over 200 MB are refused. Images over 50 megapixels offer a choice to import at 50 megapixels or import anyway.
 - Library of saved projects with thumbnails. Open, rename, duplicate and delete a project.
 - Effect stack: add effects, turn each one on or off, reorder, duplicate and remove them.
 - Pixel sort effect: sort direction by angle, selection by threshold range, edges or whole line, interval length with jitter and skip chance, sort key (luma, lightness, value, saturation, hue, red, green, blue), order (ascending, descending, shuffle, random direction), and fill (sort, average, gradient).
 - Channel shift effect: move the red, green and blue channels by separate offsets, with stretch or wrap at the edges.
 - Channel swap effect: reassign the red, green and blue channels in any of the six orders.
 - Slice shift effect: shift random bands of rows or columns sideways, with a band size range, a probability, a maximum offset, wrap or stretch at the edges, and a seed.
+- Posterize effect: reduce colour depth to a set number of levels per channel or by dropping low bits, with an optional monochrome output.
 - Scanline wave effect: displace rows or columns along a sine, triangle, square or sawtooth wave, with amplitude, wavelength, phase, per-line jitter with a seed, and wrap or stretch at the edges.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. Each step is named after the change, for example "Angle 90°". History holds 200 steps and survives a reload.
 - Presets: six built-in ones, and your own saved from the current stack. Apply one, add one to the stack, rename or delete your own.

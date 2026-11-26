@@ -4,6 +4,7 @@ import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 import {sliceShiftEffect} from './slice-shift.ts';
+import {posterizeEffect} from './posterize.ts';
 import {scanlineWaveEffect} from './scanline-wave.ts';
 
 /**
@@ -15,6 +16,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	channelShiftEffect,
 	channelSwapEffect,
 	sliceShiftEffect,
+	posterizeEffect,
 	scanlineWaveEffect,
 ];
 

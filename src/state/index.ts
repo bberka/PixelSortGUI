@@ -3,6 +3,7 @@ import {restoreStartup, type RestoreResult} from '../storage/restore.ts';
 
 export * from './app-store.ts';
 export * from './effect-utils.ts';
+export * from './geometry.ts';
 export * from './pwa.ts';
 export * from './router.ts';
 export * from './split-sides.ts';

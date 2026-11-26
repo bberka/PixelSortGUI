@@ -13,10 +13,12 @@ import {
 	PanelRightOpenIcon,
 } from 'lucide-react';
 import {EditorSlot} from './editor-slots.tsx';
+import {useAppRuntime, useTransientStore} from '@/app/runtime-context.tsx';
 import {SplitSideSwitcher} from '@/features/stack/split-side-switcher.tsx';
 import {Button} from '@/components/ui/button';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
 import {HistoryPanel} from '@/features/history/history-panel.tsx';
+import {geometryController} from '@/features/transform/geometry-controller.ts';
 import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 
@@ -145,6 +147,28 @@ export function EditorScreen() {
 	const [phoneDetent, setPhoneDetent] = useState<PhoneSheetDetent>('half');
 	const [landscapeDrawerOpen, setLandscapeDrawerOpen] = useState(true);
 	const [panelTab, setPanelTab] = useState('stack');
+	const {bundle} = useAppRuntime();
+	const geometryOpen = useTransientStore((state) => state.geometry.open);
+	const [geometryRevealed, setGeometryRevealed] = useState(geometryOpen);
+	// Opening the Geometry panel brings it into view.
+	if (geometryRevealed !== geometryOpen) {
+		setGeometryRevealed(geometryOpen);
+		if (geometryOpen) {
+			setPanelTab('stack');
+			setTabletCollapsed(false);
+			setLandscapeDrawerOpen(true);
+			setPhoneDetent((detent) => (detent === 'collapsed' ? 'half' : detent));
+		}
+	}
+
+	// Leaving the editor drops an unsaved crop.
+	useEffect(
+		() => () => {
+			geometryController(bundle).close();
+		},
+		[bundle],
+	);
+
 	// Phones open the history from the toolbar instead.
 	const showPanelTabs = isDesktop || isTablet;
 	const historyActive = showPanelTabs && panelTab === 'history';
@@ -465,7 +489,13 @@ export function EditorScreen() {
 							'hidden',
 					)}
 					value={historyActive ? 'history' : 'stack'}
-					onValueChange={setPanelTab}
+					onValueChange={(tab) => {
+						setPanelTab(tab);
+						// The desktop history view hides the crop controls.
+						if (isDesktop && tab === 'history') {
+							geometryController(bundle).cancelCrop();
+						}
+					}}
 				>
 					{showPanelTabs ? (
 						<div
@@ -551,7 +581,7 @@ export function EditorScreen() {
 								onPointerCancel={handleSheetPointerUp}
 							>
 								<span className="text-[11px] font-semibold tracking-[0.05em] text-muted-foreground uppercase">
-									Parameters
+									{geometryOpen ? 'Transform' : 'Parameters'}
 								</span>
 								<Button
 									type="button"

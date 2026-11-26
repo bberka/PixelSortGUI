@@ -453,6 +453,8 @@ The main-thread render coordinator (`src/render/coordinator.ts`) owns the previe
 
 Export of either side goes through `exportImage` on the main coordinator, which takes the stack as an argument.
 
+**Crop preview** (product.md F20). Crop mode shows the whole oriented image without effects. While it is on, the app runs one more coordinator from the same factory (`src/state/crop-preview.ts`) that loads the source with only the rotation and flips and is never given a stack, and the canvas draws its `original` bitmap. A rotation or flip in crop mode sends it a new transform. It is disposed when crop mode ends or the project closes. The main coordinator keeps the committed transform throughout, so an export during crop mode uses the saved crop.
+
 ### 8.4 Cancellation
 
 A worker cannot read new messages while a synchronous loop runs, and `SharedArrayBuffer` flags need cross-origin isolation, which the app does not require (decision D6). So:

@@ -213,7 +213,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-----------------------------------------------------------------------------+
 | <- Drift project-name                     [Export] [Guide] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
-| [Undo][Redo] | [Compare][Split] | [Transform][Presets][Save]| + Add effect     |  40 px toolbar
+| [Undo][Redo]|[Compare][Split]|[Transform][Presets][Save]| + Add effect       |  40 px toolbar
 +--------------------------------------------------------+ [=] Pixel sort [on]|  <- Stack
 | [2 px render progress bar when > 300 ms]               | [=] Ch. shift [Off]|     (max 38% H,
 |                                                        |                    |      ScrollArea)
@@ -233,7 +233,8 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +---------------------------------------------------+
 | <- Drift project-name  [Export] [Settings] |  52 px
 +---------------------------------------------------+
-| [Undo][Redo] | [Compare][Split] | [Transform][Presets][Save] |  40 px toolbar
+| [Undo][Redo] | [Compare][Split] |                 |  40 px toolbar (one
+| [Transform][Presets][Save]                        |  row in the app)
 +---------------------------------------------------+
 | [2 px progress bar]                               |
 |                                                   |

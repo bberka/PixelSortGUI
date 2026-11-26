@@ -12,6 +12,7 @@ import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
+import {rgbNoiseSpec, type RgbNoiseParams} from './rgb-noise-spec.ts';
 import {
 	scanlineWaveSpec,
 	type ScanlineWaveParams,
@@ -73,6 +74,14 @@ const lazyScanlineWaveEffect: EffectDefinition<ScanlineWaveParams> = {
 	},
 };
 
+const lazyRgbNoiseEffect: EffectDefinition<RgbNoiseParams> = {
+	...rgbNoiseSpec,
+	async render(input, output, params, ctx) {
+		const {rgbNoiseEffect} = await import('./rgb-noise.ts');
+		return rgbNoiseEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -87,6 +96,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyBlockShuffleEffect,
 	lazyPosterizeEffect,
 	lazyScanlineWaveEffect,
+	lazyRgbNoiseEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

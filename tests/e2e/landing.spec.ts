@@ -191,7 +191,8 @@ for (const {name, effects} of TILES) {
 test('every action works from the keyboard (AC-F2.12)', async ({page}) => {
 	await gotoLanding(page);
 	await previewsRendered(page);
-	await page.getByRole('button', {name: 'Settings'}).focus();
+	// The last control of the app bar.
+	await page.getByRole('button', {name: 'Library actions'}).focus();
 
 	for (const target of [
 		page.getByRole('button', {name: 'Open images'}),

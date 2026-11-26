@@ -1153,7 +1153,8 @@ test('the panel shows no selection, an unsupported instance and a disabled one',
 			.getByText('Unsupported effect (futureEffect v7)'),
 	).toBeVisible();
 	await expect(page.getByRole('slider')).toHaveCount(0);
-	expect(await page.locator('input').count()).toBe(0);
+	// The shell keeps a hidden file picker for "Import backup".
+	expect(await page.locator('input:not([type="file"])').count()).toBe(0);
 });
 
 for (const theme of THEMES) {

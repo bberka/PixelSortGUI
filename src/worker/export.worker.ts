@@ -1,5 +1,5 @@
 import {decodeImage, isMemoryError, renderSize} from '../codec/decode.ts';
-import {encodeImage} from '../codec/encode.ts';
+import {encodeImage, type AvifEncoder} from '../codec/encode.ts';
 import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
 import {renderStack} from '../engine/pipeline.ts';
 import {
@@ -49,6 +49,12 @@ type Job = {
 	scale: number;
 	transform?: SourceTransform;
 } & StackRequest;
+
+// Imported on first use: the AVIF encoder is a 3.4 MB Wasm file.
+const encodeAvif: AvifEncoder = async (image, quality) => {
+	const avif = await import('../codec/avif.ts');
+	return avif.encodeAvif(image, quality);
+};
 
 function postProgress(jobId: number, stage: ExportStage, fraction: number) {
 	scope.postMessage({type: 'progress', jobId, stage, fraction});
@@ -186,6 +192,7 @@ async function handle(message: ExportRequest): Promise<void> {
 			format: message.format,
 			quality: message.quality,
 			maxBytes,
+			encodeAvif,
 			onProgress(fraction) {
 				postProgress(jobId, 'encode', fraction);
 			},

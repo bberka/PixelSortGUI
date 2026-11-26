@@ -73,7 +73,10 @@ export default defineConfig({
 			},
 			/* eslint-enable @typescript-eslint/naming-convention */
 			workbox: {
-				globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,txt}'],
+				globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,txt,wasm}'],
+				// The AVIF encoder is about 3.4 MB; it is precached so AVIF export
+				// works offline (engine.md section 16.4).
+				maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
 				navigateFallback: '/index.html',
 				cleanupOutdatedCaches: true,
 				clientsClaim: false,
@@ -107,6 +110,11 @@ export default defineConfig({
 			// `utif2` inflates Deflate TIFFs through pako; see src/codec/inflate.ts.
 			pako: path.resolve(import.meta.dirname, './src/codec/inflate.ts'),
 		},
+	},
+	optimizeDeps: {
+		// Pre-bundling would move the encoder away from the Wasm file it loads by
+		// relative URL.
+		exclude: ['@jsquash/avif'],
 	},
 	server: {
 		host: 'localhost',

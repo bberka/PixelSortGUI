@@ -546,7 +546,7 @@ type PreviewResponse =
 	| {type: 'error'; jobId?: number; requestId?: number; code: EngineErrorCode; message: string};
 
 type ExportRequest =
-	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp'; quality: number; transform?: SourceTransform} & StackRequest)
+	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number; transform?: SourceTransform} & StackRequest)
 	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number; transform?: SourceTransform} & StackRequest);
 
 type ExportResponse =
@@ -586,7 +586,7 @@ The first release targets desktop browsers and uses native browser canvas APIs f
 - `createImageBitmap(blob, {imageOrientation: 'from-image', colorSpaceConversion: 'default'})` (with `resizeWidth` / `resizeHeight` when scaling down for 1/2, 1/4, or custom export sizes), draw onto a reused `OffscreenCanvas`, read with `getImageData`, release the bitmap with `close()`, and shrink the canvas to `1 × 1` afterwards.
 - `ImageDecoder` (WebCodecs) is not used.
 
-**Encode** (native canvas encoders only):
+**Encode** (the canvas formats; AVIF, BMP and TIFF are in section 16.4):
 
 | Format | Encoder |
 |---|---|
@@ -608,7 +608,7 @@ Limits and codec details:
 When `maxFileSizeKb` is unset or `null`, encoding runs once at the requested dimensions and quality with no extra work. When `maxFileSizeKb` is set (`maxBytes = maxFileSizeKb * 1024`):
 
 1. Encode once at the requested dimensions and quality. If `blob.size <= maxBytes`, return immediately with `targetMet: true`.
-2. For lossy formats (`jpeg`, `webp`), binary-search integer quality in `[10, requestedQuality]` (quality floor `10`, i.e. `0.10`; up to 7 iterations) to find the highest quality where `blob.size <= maxBytes`.
+2. For lossy formats (`jpeg`, `webp`, `avif`), binary-search integer quality in `[10, requestedQuality]` (quality floor `10`, i.e. `0.10`; up to 7 iterations) to find the highest quality where `blob.size <= maxBytes`.
 3. If still `> maxBytes` (or for lossless `png`), iteratively downscale the rendered image uniformly on an `OffscreenCanvas` (bounded to at most 6 scaling iterations; uniform floor scale `minScale = Math.min(1, 64 / Math.min(width, height))` so aspect ratio is always preserved and sources with a side `<= 64` px are not downscaled; per-step multiplier `clamp(Math.sqrt(maxBytes / blob.size) * 0.92, minScale / scale, 0.9)`, jumping directly to `minScale` on the final iteration if not yet reached, with `nextWidth = Math.max(1, Math.round(width * scale))` and `nextHeight = Math.max(1, Math.round(height * scale))`) and re-encode. For lossy formats at a downscaled size, test at the quality floor first and refine quality upward with binary search if it fits.
 4. Check cancellation (via an optional `isCancelled` callback or worker termination) and report encode progress between iterations so cancellation still completes within 1 s.
 5. Return the final `blob` together with metadata: `actualWidth` (the encoded `width`), `actualHeight` (the encoded `height`), `effectiveQuality` (integer `10..100` for JPEG/WebP, `undefined` for PNG), and `targetMet` (`blob.size <= maxBytes`).
@@ -686,7 +686,7 @@ scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-upda
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. No storage or UI code writes a transform yet.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. No storage or UI code writes a transform yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -1052,7 +1052,7 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
   - **Size:** `width` and `height` on the root element count when they are positive absolute lengths (unitless, `px`, `pt`, `pc`, `in`, `cm`, `mm`, `Q`, converted at 96 px per inch). With both, they are the pixel size. With one and a `viewBox`, the other follows the `viewBox` aspect ratio. With neither, the `viewBox` is scaled (up or down) to a longest side of 2,048 px. Without a `viewBox`, a missing side takes the browser's default viewport (300 wide, 150 high), which also stands in for the `viewBox`.
   - **Cap:** a size over 16,384 px per side or 50 MP is scaled down to fit both, keeping the aspect ratio to the nearest whole pixel (an added `viewBox` stretches to fill it), so the large-image dialog never appears for an SVG.
   - **Rasterise:** the file is parsed with `DOMParser` (an inert document), the target size and a missing `viewBox` are written onto the root element, and the result is loaded into an `<img>` from a `data:` URL (Chromium taints the canvas for a `blob:` URL SVG holding a `foreignObject`). The browser's SVG-as-image mode runs no script and loads no external resource, so an SVG that references one renders without it. The file is never inserted into the page. A file that is not well-formed SVG gets the unreadable-format error.
-- `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.
+- `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread; `encodeImage` receives the encoder as an option). All three carry zero EXIF/GPS/ICC metadata.
 
 #### TIFF and BMP details
 
@@ -1064,6 +1064,15 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
 - **TIFF export:** one uncompressed 8-bit RGBA strip, unassociated alpha.
 - **File-size limit:** BMP and TIFF sizes follow from the dimensions, so a limit scales the image once with `boxDownscale` to the largest size that fits, never below a shortest side of 64 px.
 - **Offline:** the `utif2` chunk is precached by the service worker with the rest of the build, so TIFF works offline. The app itself does not load it until a TIFF is imported or exported.
+
+#### AVIF export details
+
+- **AVIF code (`src/codec/avif.ts`):** the only importer of `@jsquash/avif`. It loads the single-threaded encoder (`codec/enc/avif_enc.js` and `avif_enc.wasm`, libavif 1.0.1 with libaom 3.7.0). The multi-threaded build needs cross-origin isolation, which GitHub Pages cannot send, so the package's `encode` entry, which chooses between the two, is not used and the second Wasm file is not shipped.
+- **Settings:** 8 bit, 4:2:0, alpha kept, no EXIF, XMP or ICC data. libaom speed is 8: on a 3 MP test image it took about a third of the time of the default 6, with a file 0.5% larger and 0.02 dB lower PSNR.
+- **Quality:** 50 to 100, default 80, stored as `exportSettings.avifQuality` apart from the JPEG and WebP quality.
+- **File-size limit:** the lossy search of section 13, with quality floor 10. Downscale steps use `boxDownscale`. Each attempt is a full encode, so a tight limit on a large image takes several times as long as one export. Cancel terminates the worker.
+- **Wasm and precache:** the Wasm file (3,485,872 bytes, about 1.1 MB gzipped) and its loader are separate build assets that the app requests only during an AVIF export. The service worker precaches both so AVIF export works offline: `wasm` is in the Workbox glob patterns and `maximumFileSizeToCacheInBytes` is 4 MiB (the Workbox default of 2 MiB would leave the file out). This raises the precache to about 4.8 MiB, of which the encoder is 3.3 MiB, downloaded in the background on the first visit and again only when the file changes.
+- **Notices:** the licences of the code compiled into the Wasm file (libavif, libaom with its patent licence, libsharpyuv) are kept in `scripts/embedded-licenses/` and added to the package's entry by the notices generator.
 
 ### 16.5 Multi-image blending (`imageBlend`, F26)
 

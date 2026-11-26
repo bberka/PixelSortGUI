@@ -10,6 +10,7 @@ import {
 	type SupportedEncodeFormats,
 } from '@/codec/encode.ts';
 import {
+	DEFAULT_AVIF_QUALITY,
 	DEFAULT_EXPORT_QUALITY,
 	MAX_EXPORT_MAX_FILE_SIZE_KB,
 	MAX_EXPORT_QUALITY,
@@ -39,7 +40,7 @@ export function getSupportedEncodeFormats(): Promise<SupportedEncodeFormats> {
 
 export function extensionForFormat(
 	format: ExportFormat,
-): 'png' | 'jpg' | 'webp' | 'bmp' | 'tif' {
+): 'png' | 'jpg' | 'webp' | 'avif' | 'bmp' | 'tif' {
 	switch (format) {
 		case 'png': {
 			return 'png';
@@ -51,6 +52,10 @@ export function extensionForFormat(
 
 		case 'webp': {
 			return 'webp';
+		}
+
+		case 'avif': {
+			return 'avif';
 		}
 
 		case 'bmp': {
@@ -114,7 +119,7 @@ export function buildDefaultFilename(
 	return `${sanitizeFilenameStem(projectName)}-${formatTimestamp(date)}.${extensionForFormat(format)}`;
 }
 
-const IMAGE_EXTENSION_RE = /\.(?:png|jpe?g|webp|bmp|tiff?)$/i;
+const IMAGE_EXTENSION_RE = /\.(?:png|jpe?g|webp|avif|bmp|tiff?)$/i;
 
 export function replaceFilenameExtension(
 	filename: string,
@@ -232,9 +237,40 @@ export function parseCustomFileSizeToKb(
 	return clampMaxFileSizeKb(kb);
 }
 
-export function clampQuality(value: number): number {
+export function defaultQualityFor(format: ExportFormat): number {
+	return format === 'avif' ? DEFAULT_AVIF_QUALITY : DEFAULT_EXPORT_QUALITY;
+}
+
+/**
+The stored quality that applies to a format.
+*/
+export function qualityFor(
+	settings: ExportSettings,
+	format: ExportFormat,
+): number {
+	return clampQuality(
+		(format === 'avif' ? settings.avifQuality : settings.quality) ??
+			defaultQualityFor(format),
+		defaultQualityFor(format),
+	);
+}
+
+export function withQuality(
+	settings: ExportSettings,
+	format: ExportFormat,
+	quality: number,
+): ExportSettings {
+	return format === 'avif'
+		? {...settings, avifQuality: quality}
+		: {...settings, quality};
+}
+
+export function clampQuality(
+	value: number,
+	fallback = DEFAULT_EXPORT_QUALITY,
+): number {
 	if (!Number.isFinite(value)) {
-		return DEFAULT_EXPORT_QUALITY;
+		return fallback;
 	}
 
 	return Math.min(

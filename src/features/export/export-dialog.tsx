@@ -17,6 +17,7 @@ import {
 	clampQuality,
 	computeOutputDimensions,
 	computeOverallProgress,
+	defaultQualityFor,
 	DEFAULT_SUPPORTED_FORMATS,
 	downloadBlob,
 	effectiveFormatFor,
@@ -27,10 +28,12 @@ import {
 	formatFileSizeLimitLabel,
 	getSupportedEncodeFormats,
 	parseCustomFileSizeToKb,
+	qualityFor,
 	replaceFilenameExtension,
 	resolveDownloadFilename,
 	stageLabel,
 	toExportScale,
+	withQuality,
 	type ExportErrorView,
 	type FileSizeLimitMode,
 	type FileSizeUnit,
@@ -90,6 +93,7 @@ const FORMAT_LABELS: Readonly<Record<ExportFormat, string>> = {
 	png: 'PNG',
 	jpeg: 'JPEG',
 	webp: 'WebP',
+	avif: 'AVIF',
 	bmp: 'BMP',
 	tiff: 'TIFF',
 };
@@ -256,13 +260,17 @@ export function ExportDialog({
 			return null;
 		}
 
-		return {
+		const stored: ExportSettings = {
 			format: effectiveFormat,
-			quality: qualityPreview ?? clampQuality(rawSettings.quality),
+			quality: clampQuality(rawSettings.quality),
+			avifQuality: qualityFor(rawSettings, 'avif'),
 			sizeMode: rawSettings.sizeMode,
 			customLongestSide: rawSettings.customLongestSide,
 			maxFileSizeKb: rawSettings.maxFileSizeKb ?? null,
 		};
+		return qualityPreview === null
+			? stored
+			: withQuality(stored, effectiveFormat, qualityPreview);
 	}, [rawSettings, effectiveFormat, qualityPreview]);
 
 	const wasOpenRef = useRef(false);
@@ -274,7 +282,7 @@ export function ExportDialog({
 		}
 
 		const format = effectiveFormatFor(rawSettings.format, supportedFormats);
-		const quality = clampQuality(rawSettings.quality);
+		const quality = qualityFor(rawSettings, format);
 		const longestSide = clampCustomLongestSide(
 			rawSettings.customLongestSide ?? maxImageSide,
 			imageWidth,
@@ -372,32 +380,34 @@ export function ExportDialog({
 				? replaceFilenameExtension(previous, value)
 				: buildDefaultFilename(activeProject.name, value, now()),
 		);
+		setQualityPreview(null);
+		setQualityDraft(String(qualityFor(liveSettings, value)));
 		persistSettings({...liveSettings, format: value});
 	};
 
+	const activeQuality = qualityFor(liveSettings, effectiveFormat);
+
 	const handleQualitySliderChange = (values: number[]) => {
-		const next = clampQuality(values[0] ?? liveSettings.quality);
+		const next = clampQuality(values[0] ?? activeQuality);
 		setQualityPreview(next);
 		setQualityDraft(String(next));
 		setError(null);
 	};
 
 	const handleQualitySliderCommit = (values: number[]) => {
-		const next = clampQuality(values[0] ?? liveSettings.quality);
+		const next = clampQuality(values[0] ?? activeQuality);
 		setQualityPreview(null);
 		setQualityDraft(String(next));
-		persistSettings({...liveSettings, quality: next});
+		persistSettings(withQuality(liveSettings, effectiveFormat, next));
 	};
 
 	const commitQualityInput = () => {
 		const parsed = Number(qualityDraft);
-		const next = clampQuality(
-			Number.isFinite(parsed) ? parsed : liveSettings.quality,
-		);
+		const next = clampQuality(Number.isFinite(parsed) ? parsed : activeQuality);
 		setQualityPreview(null);
 		setQualityDraft(String(next));
-		if (next !== activeProject.exportSettings.quality) {
-			persistSettings({...liveSettings, quality: next});
+		if (next !== qualityFor(activeProject.exportSettings, effectiveFormat)) {
+			persistSettings(withQuality(liveSettings, effectiveFormat, next));
 		}
 	};
 
@@ -549,7 +559,7 @@ export function ExportDialog({
 
 		const parsedQuality = Number(qualityDraft);
 		const finalQuality = clampQuality(
-			Number.isFinite(parsedQuality) ? parsedQuality : liveSettings.quality,
+			Number.isFinite(parsedQuality) ? parsedQuality : activeQuality,
 		);
 		const parsedLongest = Number(longestSideDraft);
 		const finalLongest =
@@ -570,13 +580,16 @@ export function ExportDialog({
 							liveSettings.maxFileSizeKb ?? 1024,
 						)
 					: clampMaxFileSizeKb(Number(sizeLimitMode));
-		const finalSettings: ExportSettings = {
-			format: effectiveFormat,
-			quality: finalQuality,
-			sizeMode: liveSettings.sizeMode,
-			customLongestSide: finalLongest,
-			maxFileSizeKb: finalMaxFileSizeKb,
-		};
+		const finalSettings: ExportSettings = withQuality(
+			{
+				...liveSettings,
+				format: effectiveFormat,
+				customLongestSide: finalLongest,
+				maxFileSizeKb: finalMaxFileSizeKb,
+			},
+			effectiveFormat,
+			finalQuality,
+		);
 
 		setQualityPreview(null);
 		setQualityDraft(String(finalQuality));
@@ -808,12 +821,12 @@ export function ExportDialog({
 						/>
 					</div>
 					<Slider
-						defaultMark={92}
+						defaultMark={defaultQualityFor(effectiveFormat)}
 						min={MIN_EXPORT_QUALITY}
 						max={MAX_EXPORT_QUALITY}
 						step={1}
 						disabled={exporting}
-						value={[liveSettings.quality]}
+						value={[activeQuality]}
 						thumbLabels={['Quality']}
 						onValueChange={handleQualitySliderChange}
 						onValueCommit={handleQualitySliderCommit}
@@ -1011,7 +1024,7 @@ export function ExportDialog({
 						className="text-xs leading-4 text-muted-foreground"
 					>
 						{FORMAT_LABELS[effectiveFormat]} is lossless and scales dimensions
-						to fit. Choose JPEG or WebP for smaller files.
+						to fit. Choose JPEG, WebP or AVIF for smaller files.
 					</p>
 				) : null}
 			</div>

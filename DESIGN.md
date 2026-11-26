@@ -277,8 +277,8 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 - **Selection debug view (F6):** While `"Show selection"` is on for a `pixelSort` instance, show a top-left pill `"Selection preview (not exported)"`.
 - **Effect stack row (F4):** Shows drag grip (`GripVertical`), effect label, enabled `Switch`, and when off displays BOTH an `EyeOff` icon and the text `"Off"` (AC-F4.2). An unknown or newer-version instance renders with a dashed border, label `"Unsupported effect (<type> v<version>)"`, no parameter controls, and only Move up / Move down / Remove menu items (AC-F4.6).
 - **Export dialog (F12):**
-  - Format: `ToggleGroup` showing `PNG`, `JPEG`, `WebP` (omitted when startup `convertToBlob` probe fails, AC-F12.2), `BMP`, and `TIFF`.
-  - Quality: `Slider` + `Input` (`50` to `100`, default `92`), shown only for `JPEG` and `WebP`.
+  - Format: `ToggleGroup` showing `PNG`, `JPEG`, `WebP` (omitted when startup `convertToBlob` probe fails, AC-F12.2), `AVIF`, `BMP`, and `TIFF`.
+  - Quality: `Slider` + `Input` (`50` to `100`), shown only for `JPEG`, `WebP` (default `92`) and `AVIF` (default `80`, its own value).
   - Size: `ToggleGroup` (`Full`, `1/2`, `1/4`, `Custom`). Choosing `Custom` reveals a `"Longest side (px)"` numeric input capped at `max(sourceWidth, sourceHeight)`. Below the control, display exact output dimensions computed by `renderSize` (e.g. `"2000 × 1500 px"`).
   - Side: shown first, only when side A has effects: `ToggleGroup` with the same two labels as the split side switcher, B selected on every open.
   - Filename: text `Input` prefilled `<project name>-<YYYYMMDD-HHmmss>.<ext>`.

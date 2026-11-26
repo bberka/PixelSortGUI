@@ -56,5 +56,6 @@ describe('src/engine stays self-contained (engine.md section 1)', () => {
 		expect(staticImports).not.toContain('./rgb-noise.ts');
 		expect(staticImports).not.toContain('./threshold-invert.ts');
 		expect(staticImports).not.toContain('./pixel-smear.ts');
+		expect(staticImports).not.toContain('./jpeg-crush.ts');
 	});
 });

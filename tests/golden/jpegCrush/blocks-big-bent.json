@@ -1,0 +1,25 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "jc000001",
+				"type": "jpegCrush",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"blockSize": 13,
+					"quality": 30,
+					"chromaSubsample": true,
+					"corruptRate": 0.4,
+					"corruptShift": 1,
+					"seed": 20261126
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

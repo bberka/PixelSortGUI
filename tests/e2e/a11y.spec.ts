@@ -138,20 +138,40 @@ function parseDurationListSeconds(raw: string): number[] {
 		});
 }
 
-async function assertNoRunningAnimationsAfterFrame(page: Page): Promise<void> {
-	// Wait two frames (~32 ms) so 0.01 ms reduced-motion transitions settle,
-	// while any real (>= 150 ms) transition or animation would still be running.
-	const count = await page.evaluate(
+/**
+ Samples animations now and over the next two frames, and fails on any that
+ lasts longer than 1 ms. Counting every animation is wrong here: the
+ reduced-motion rule gives all elements a 0.01 ms transition, so a late style
+ change (such as the canvas resizing after a render) can start one in any frame.
+ */
+async function assertNoMotionOverFrames(page: Page): Promise<void> {
+	const motion = await page.evaluate(
 		async () =>
-			new Promise<number>((resolve) => {
+			new Promise<string[]>((resolve) => {
+				const found = new Set<string>();
+				const sample = () => {
+					for (const animation of globalThis.document.getAnimations()) {
+						const end = Number(animation.effect?.getComputedTiming().endTime);
+						if (end <= 1) {
+							continue;
+						}
+
+						const {target} = animation.effect as KeyframeEffect;
+						found.add(`${target?.outerHTML.slice(0, 120)}: ${end} ms`);
+					}
+				};
+
+				sample();
 				globalThis.requestAnimationFrame(() => {
+					sample();
 					globalThis.requestAnimationFrame(() => {
-						resolve(globalThis.document.getAnimations().length);
+						sample();
+						resolve([...found]);
 					});
 				});
 			}),
 	);
-	expect(count).toBe(0);
+	expect(motion).toEqual([]);
 }
 
 async function assertDialogFocusContainment(page: Page): Promise<void> {
@@ -557,13 +577,13 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 			'data-controls',
 			'all',
 		);
-		await assertNoRunningAnimationsAfterFrame(page);
+		await assertNoMotionOverFrames(page);
 
 		// Verify opening a dialog produces no running CSS animations under reduced motion
 		await page.getByRole('button', {name: 'Export'}).click();
 		const exportDialog = page.getByRole('dialog', {name: 'Export'});
 		await expect(exportDialog).toBeVisible();
-		await assertNoRunningAnimationsAfterFrame(page);
+		await assertNoMotionOverFrames(page);
 		await page.keyboard.press('Escape');
 		await expect(exportDialog).toBeHidden();
 

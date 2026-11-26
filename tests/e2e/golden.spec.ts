@@ -61,6 +61,7 @@ test.describe('golden cases match in real browsers', () => {
 			const effectsUrl = '/__golden-test/src/engine/effects/index.js';
 			const resampleUrl = '/__golden-test/src/engine/resample.js';
 			const fixturesUrl = '/__golden-test/tests/fixtures/synthetic.js';
+			const transformUrl = '/__golden-test/src/engine/transform.js';
 
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
 			const {renderStack} = await import(pipelineUrl);
@@ -70,6 +71,8 @@ test.describe('golden cases match in real browsers', () => {
 			const {boxDownscale} = await import(resampleUrl);
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
 			const {getSyntheticFixture} = await import(fixturesUrl);
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
+			const {applyTransform} = await import(transformUrl);
 
 			async function digestHex(
 				data: Uint8ClampedArray<ArrayBuffer>,
@@ -88,12 +91,18 @@ test.describe('golden cases match in real browsers', () => {
 			}> = [];
 
 			for (const entry of inputCases) {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
-				const source = getSyntheticFixture(entry.spec.input) as {
+				type Image = {
 					width: number;
 					height: number;
 					data: Uint8ClampedArray<ArrayBuffer>;
 				};
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
+				const fixture = getSyntheticFixture(entry.spec.input) as Image;
+				// Same order as renderGoldenCase: transform, then scale, then the stack.
+				const source = entry.spec.transform
+					? // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
+						(applyTransform(fixture, entry.spec.transform) as Image)
+					: fixture;
 				const targetWidth = Math.max(
 					1,
 					Math.floor(source.width * entry.spec.scale),

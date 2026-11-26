@@ -98,7 +98,7 @@ type ThumbnailRecord = {
 type HistoryEntryRecord = {
 	projectId: string;
 	seq: number; // strictly increasing integer starting at 0 ('Initial')
-	label: string; // human-readable commit label, e.g. 'Change Angle', 'Add Pixel sort'
+	label: string; // human-readable commit label, e.g. 'Angle 90°', 'Add Pixel sort' (section 8.2)
 	stack: EffectStack; // full snapshot at this commit; keeps original instance versions
 	selectedInstanceId: string | null;
 	createdAt: number; // Unix epoch ms
@@ -149,6 +149,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Drag slider / dial / divider | none | Never during drag | Transient value updates worker preview only. |
 | Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
 | Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `historyHeadSeq`, `updatedAt`). Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
+| Jump to history entry (F23) | `projects` | Immediate (0 ms debounce) | Read the `HistoryEntryRecord` at the chosen `seq` and update `ProjectRecord` as undo does; later entries stay until the next commit (section 8.2). |
 | Zoom, pan, split position, select instance (F3, F11, F13) | `projects` | Debounced 200 ms; flushed on `visibilitychange` (`hidden`) and `pagehide` | Updates `viewState` and `selectedInstanceId` on `ProjectRecord`. Restores zoom and centre within 1 source px (AC-F3.3) and split position (AC-F11.3). |
 | Open project / Return to library (F2, F3) | `projects`, `meta` | Immediate | Opening a project sets `projects.openedAt = Date.now()` and `meta.appState.activeProjectId = id`, updating URL hash to `#/p/<id>`. Returning to library sets `activeProjectId = null` and hash to `#/` (AC-F3.4). |
 | Change export settings (F12) | `projects` | Immediate on export start or dialog close | Saves `exportSettings` on `ProjectRecord` (AC-F12.7). |
@@ -263,7 +264,21 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
   1. Verify `project.historyMinSeq <= seq <= project.historyMaxSeq` and read `history.get([projectId, seq])`.
   2. Update `ProjectRecord` (`stack`, `transform` once F20 lands, `selectedInstanceId`, `historyHeadSeq: seq`, `updatedAt`).
   3. Never delete entries with `seq > historyHeadSeq` during a jump (those remain as the redo branch until a new commit overwrites them). Never alter `viewState`, `theme`, or library selection.
-- **Action label conventions:** Commit labels include the parameter or action detail so the History panel is scannable, for example `"Threshold range 0.25 to 0.80"`, `"Angle 90°"`, `"Add Pixel sort"`, `"Remove Channel shift"`, `"Reorder Pixel sort"`, `"Apply preset ASDF classic"`, `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"`.
+- **Return value:** `null`, with nothing written, when `seq` is not an integer, lies outside the retained window, or has no stored entry. An unknown project throws `StorageNotFoundError`, as undo does. Jumping to the current entry is allowed.
+- **App store:** `jumpToHistory(projectId: string, seq: number): Promise<boolean>` flushes a pending keyboard commit first, then updates the active project and the preview exactly as undo and redo do. It returns `false` and changes nothing when `projectId` is not the active project or the repository returns `null`. The loaded history list keeps the redo entries.
+- **Action label conventions:** Commit labels include the parameter or action detail so the History panel is scannable:
+
+| Commit | Label |
+|---|---|
+| Parameter change | `"<parameter label> <value>"`, per the value formats below |
+| Mix, blend | `"Mix 50%"`, `"Blend Lighten"` |
+| Add, remove, duplicate, reorder | `"Add Pixel sort"`, `"Remove Channel shift"`, `"Duplicate Pixel sort"`, `"Reorder Pixel sort"` |
+| Turn an effect on or off | `"Enable Pixel sort"`, `"Disable Pixel sort"` |
+| Reset one parameter, reset all, randomize | `"Reset Angle"`, `"Reset Pixel sort"`, `"Randomize Pixel sort"` |
+| Apply a preset, add a preset to the stack | `"Apply preset ASDF classic"`, `"Add Bright streaks"` |
+| Geometry actions (F20) | `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"` |
+
+  Value formats: range `"Threshold range 0.25 to 0.80"`; angle `"Angle 90°"` (at most one decimal); a fractional-step number shows at least two decimals and keeps any further significant ones up to the step (`0.80`, `0.253`); percent numbers `"45%"`; pixel integers `"120 px"`; choices use the option label (`"Order Descending"`); switches `"Invert on"` / `"Invert off"`; seeds show the number. Labels are stored with the entry, so entries written by earlier releases keep their old text.
 - **Memory footprint:** Each `HistoryEntryRecord` is plain JSON (`EffectStack` + `SourceTransform`, ~0.5 to 4 KB). At the 201-entry cap, a project's entire history stays under ~1 MB in RAM and IndexedDB, with zero pixel buffers stored.
 
 ### 8.3 Project file format (F25)

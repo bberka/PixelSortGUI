@@ -63,14 +63,18 @@ export class MemoryStorageAdapter implements StorageRepository {
 		};
 	}
 
-	#stepHistory(projectId: string, delta: -1 | 1): HistoryStepResult | null {
+	#moveHistoryHead(
+		projectId: string,
+		resolveSeq: (project: ProjectRecord) => number,
+	): HistoryStepResult | null {
 		const existing = this.#projects.get(projectId);
 		if (!existing) {
 			throw new StorageNotFoundError(`Project "${projectId}" not found`);
 		}
 
-		const targetSeq = existing.historyHeadSeq + delta;
+		const targetSeq = resolveSeq(existing);
 		if (
+			!Number.isSafeInteger(targetSeq) ||
 			targetSeq < existing.historyMinSeq ||
 			targetSeq > existing.historyMaxSeq
 		) {
@@ -401,11 +405,24 @@ export class MemoryStorageAdapter implements StorageRepository {
 	}
 
 	async undo(projectId: string): Promise<HistoryStepResult | null> {
-		return this.#stepHistory(projectId, -1);
+		return this.#moveHistoryHead(
+			projectId,
+			(project) => project.historyHeadSeq - 1,
+		);
 	}
 
 	async redo(projectId: string): Promise<HistoryStepResult | null> {
-		return this.#stepHistory(projectId, 1);
+		return this.#moveHistoryHead(
+			projectId,
+			(project) => project.historyHeadSeq + 1,
+		);
+	}
+
+	async jumpToHistory(
+		projectId: string,
+		seq: number,
+	): Promise<HistoryStepResult | null> {
+		return this.#moveHistoryHead(projectId, () => seq);
 	}
 
 	async getHistory(projectId: string): Promise<HistoryEntryRecord[]> {

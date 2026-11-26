@@ -304,6 +304,95 @@ for (const adapter of adapters) {
 			}
 		});
 
+		it('jumps to any retained entry, keeping later entries and viewState until a new commit overwrites them', async () => {
+			const repo = await adapter.create();
+
+			try {
+				const {project} = await repo.createProject({
+					name: 'Jump',
+					blob: makeBlob(13),
+					width: 500,
+					height: 400,
+				});
+				for (const angle of [10, 20, 30, 40]) {
+					await repo.commitStack({
+						projectId: project.id,
+						stack: makeStack([makeInstance('j0000001', {params: {angle}})]),
+						selectedInstanceId: 'j0000001',
+						label: `Angle ${angle}°`,
+					});
+				}
+
+				const customView = {
+					fitMode: 'custom' as const,
+					zoom: 2,
+					centerX: 250,
+					centerY: 200,
+					splitPosition: 0.3,
+				};
+				await repo.updateViewState(project.id, customView);
+
+				const back = await repo.jumpToHistory(project.id, 1);
+				expect(back?.entry.label).toBe('Angle 10°');
+				expect(back?.project).toMatchObject({
+					historyHeadSeq: 1,
+					historyMinSeq: 0,
+					historyMaxSeq: 4,
+					selectedInstanceId: 'j0000001',
+					viewState: customView,
+				});
+				expect(back?.project.stack.instances[0]?.params.angle).toBe(10);
+				expect(await repo.getProject(project.id)).toEqual(back?.project);
+				expect(await repo.getHistory(project.id)).toHaveLength(5);
+
+				const forward = await repo.jumpToHistory(project.id, 3);
+				expect(forward?.project.stack.instances[0]?.params.angle).toBe(30);
+
+				await repo.jumpToHistory(project.id, 2);
+				await repo.commitStack({
+					projectId: project.id,
+					stack: makeStack([makeInstance('j0000001', {params: {angle: 99}})]),
+					selectedInstanceId: 'j0000001',
+					label: 'Angle 99°',
+				});
+				const entries = await repo.getHistory(project.id);
+				expect(entries.map((entry) => entry.label)).toEqual([
+					'Initial',
+					'Angle 10°',
+					'Angle 20°',
+					'Angle 99°',
+				]);
+				expect((await repo.getProject(project.id))?.historyMaxSeq).toBe(3);
+				expect(await repo.jumpToHistory(project.id, 4)).toBeNull();
+			} finally {
+				repo.close();
+			}
+		});
+
+		it('returns null without writing for a seq outside the window and throws for an unknown project', async () => {
+			const repo = await adapter.create();
+
+			try {
+				const {project} = await repo.createProject({
+					name: 'JumpBounds',
+					blob: makeBlob(14),
+					width: 500,
+					height: 400,
+				});
+
+				for (const seq of [-1, 1, 0.5, NaN]) {
+					expect(await repo.jumpToHistory(project.id, seq)).toBeNull();
+				}
+
+				expect(await repo.getProject(project.id)).toEqual(project);
+				await expect(repo.jumpToHistory('missing', 0)).rejects.toThrow(
+					StorageNotFoundError,
+				);
+			} finally {
+				repo.close();
+			}
+		});
+
 		it('supports undo, redo, discarding redo branch, and leaves viewState intact', async () => {
 			const repo = await adapter.create();
 
@@ -523,6 +612,47 @@ describe('IndexedDbRepository durability and failure paths', () => {
 			const undoneTwice2 = await repo2.undo(project.id);
 			expect(undoneTwice2?.entry.seq).toBe(0);
 			expect(undoneTwice2?.project.stack.instances).toEqual([]);
+		} finally {
+			repo2.close();
+		}
+	});
+
+	it('persists a history jump and its redo entries across close and reopen', async () => {
+		const idb = new IDBFactory();
+		const repo1 = new IndexedDbRepository(
+			await openDatabase({indexedDB: idb}),
+			{keyRange: FakeKeyRange},
+		);
+		const {project} = await repo1.createProject({
+			name: 'JumpRestart.png',
+			blob: makeBlob(98),
+			width: 600,
+			height: 400,
+		});
+		for (const angle of [15, 30, 45]) {
+			await repo1.commitStack({
+				projectId: project.id,
+				stack: makeStack([makeInstance('r0000002', {params: {angle}})]),
+				selectedInstanceId: 'r0000002',
+				label: `Angle ${angle}°`,
+			});
+		}
+
+		await repo1.jumpToHistory(project.id, 1);
+		repo1.close();
+
+		const repo2 = new IndexedDbRepository(
+			await openDatabase({indexedDB: idb}),
+			{keyRange: FakeKeyRange},
+		);
+		try {
+			const restored = await repo2.getProject(project.id);
+			expect(restored?.historyHeadSeq).toBe(1);
+			expect(restored?.historyMaxSeq).toBe(3);
+			expect(restored?.stack.instances[0]?.params.angle).toBe(15);
+			expect(await repo2.getHistory(project.id)).toHaveLength(4);
+			const last = await repo2.jumpToHistory(project.id, 3);
+			expect(last?.project.stack.instances[0]?.params.angle).toBe(45);
 		} finally {
 			repo2.close();
 		}

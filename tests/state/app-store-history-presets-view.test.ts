@@ -40,7 +40,7 @@ describe('app store — undo/redo, presets, and view-state persistence', () => {
 
 		expect(selectCanUndo(store.getState())).toBe(true);
 		expect(selectCanRedo(store.getState())).toBe(false);
-		expect(selectUndoLabel(store.getState())).toBe('Change Angle');
+		expect(selectUndoLabel(store.getState())).toBe('Angle 90°');
 		expect(selectRedoLabel(store.getState())).toBeNull();
 
 		coordinator.calls.length = 0;
@@ -60,7 +60,7 @@ describe('app store — undo/redo, presets, and view-state persistence', () => {
 		});
 		expect(selectUndoLabel(store.getState())).toBe('Add Channel shift');
 		expect(selectCanRedo(store.getState())).toBe(true);
-		expect(selectRedoLabel(store.getState())).toBe('Change Angle');
+		expect(selectRedoLabel(store.getState())).toBe('Angle 90°');
 
 		// Persisted head and selection match
 		const persistedAfterUndo = await repository.getProject(project.id);
@@ -191,13 +191,72 @@ describe('app store — undo/redo, presets, and view-state persistence', () => {
 			store.getState().activeProject?.stack.instances[0].params.angle,
 		).toBe(45);
 		expect(selectCanRedo(store.getState())).toBe(true);
-		expect(selectRedoLabel(store.getState())).toBe('Change Angle');
+		expect(selectRedoLabel(store.getState())).toBe('Angle 60°');
 		// Redo returns to the flushed nudge value 60
 		expect(await store.getState().redo()).toBe(true);
 		expect(
 			(await repository.getProject(project.id))?.stack.instances[0].params
 				.angle,
 		).toBe(60);
+	});
+
+	it('jumpToHistory restores an earlier entry, tells the coordinator, keeps redo entries, and lets a new commit replace them', async () => {
+		const {store, repository, coordinator, project} = await setupWithProject();
+		const inst = await store.getState().addEffect('pixelSort');
+		await store.getState().commitParam(inst.id, 'angle', 45);
+		await store.getState().commitParam(inst.id, 'angle', 90);
+		store.getState().setViewState({fitMode: 'custom', zoom: 2.5});
+		coordinator.calls.length = 0;
+
+		expect(await store.getState().jumpToHistory(project.id, 1)).toBe(true);
+
+		const state = store.getState();
+		expect(state.activeProject?.historyHeadSeq).toBe(1);
+		expect(state.activeProject?.stack.instances[0].params.angle).toBe(0);
+		expect(state.activeProject?.viewState.zoom).toBe(2.5);
+		expect(state.history).toHaveLength(4);
+		expect(selectRedoLabel(state)).toBe('Angle 45°');
+		expect(coordinator.calls).toHaveLength(1);
+		expect(coordinator.calls[0].type).toBe('setStack');
+
+		await store.getState().commitParam(inst.id, 'angle', 135);
+
+		const labels = ['Initial', 'Add Pixel sort', 'Angle 135°'];
+		expect(store.getState().history.map((entry) => entry.label)).toEqual(
+			labels,
+		);
+		expect(
+			(await repository.getHistory(project.id)).map((entry) => entry.label),
+		).toEqual(labels);
+	});
+
+	it('jumpToHistory flushes a pending keyboard commit first', async () => {
+		const {store, repository, project} = await setupWithProject();
+		const inst = await store.getState().addEffect('pixelSort');
+		store.getState().nudgeParam(inst.id, 'angle', 60);
+
+		expect(await store.getState().jumpToHistory(project.id, 1)).toBe(true);
+
+		expect(
+			store.getState().activeProject?.stack.instances[0].params.angle,
+		).toBe(0);
+		expect((await repository.getHistory(project.id)).at(-1)?.label).toBe(
+			'Angle 60°',
+		);
+		expect(selectRedoLabel(store.getState())).toBe('Angle 60°');
+	});
+
+	it('jumpToHistory returns false and changes nothing for another project or a missing seq', async () => {
+		const {store, coordinator, project} = await setupWithProject();
+		await store.getState().addEffect('pixelSort');
+		const before = store.getState().activeProject;
+		coordinator.calls.length = 0;
+
+		expect(await store.getState().jumpToHistory('other', 0)).toBe(false);
+		expect(await store.getState().jumpToHistory(project.id, 9)).toBe(false);
+
+		expect(store.getState().activeProject).toBe(before);
+		expect(coordinator.calls).toEqual([]);
 	});
 
 	it('applyPreset replaces the stack with fresh ids, selects first instance, persists, and tells coordinator', async () => {
@@ -221,7 +280,7 @@ describe('app store — undo/redo, presets, and view-state persistence', () => {
 			instances.map((i) => i.id),
 		);
 		expect((await repository.getHistory(project.id)).at(-1)?.label).toBe(
-			'Apply ASDF classic',
+			'Apply preset ASDF classic',
 		);
 		expect(coordinator.calls).toHaveLength(1);
 	});

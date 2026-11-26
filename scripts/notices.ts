@@ -1,7 +1,22 @@
 import fs from 'node:fs';
+import {createRequire} from 'node:module';
 import path from 'node:path';
 
 export const NOTICES_FILE_NAME = 'THIRD-PARTY-NOTICES.txt';
+
+/**
+ Workbox runtime packages bundled into the generated service worker
+ (`dist/workbox-*.js`) by `vite-plugin-pwa` / `workbox-build`. These are
+ emitted in `closeBundle` outside Vite's main module graph, so we resolve
+ their package directories from `workbox-build` explicitly without pulling in
+ `workbox-build`'s Node-only CLI dependencies.
+ */
+export const WORKBOX_SW_RUNTIME_PACKAGES: readonly string[] = [
+	'workbox-core',
+	'workbox-precaching',
+	'workbox-routing',
+	'workbox-strategies',
+];
 
 // Docs/agents/licensing.md allows MIT, ISC, BSD and Apache-2.0. 0BSD (tslib)
 // is the same text as ISC without the condition to keep the notice.
@@ -292,15 +307,46 @@ function packageNameOfSpecifier(specifier: string): string | undefined {
 }
 
 /**
+ Resolves the package directories of the Workbox runtime packages bundled into
+ the generated service worker when `vite-plugin-pwa` is installed in `rootDir`.
+ */
+export function resolveWorkboxRuntimePackageDirs(
+	rootDir: string,
+	packages: readonly string[] = WORKBOX_SW_RUNTIME_PACKAGES,
+): string[] {
+	const pwaManifest = path.join(
+		rootDir,
+		'node_modules',
+		'vite-plugin-pwa',
+		'package.json',
+	);
+	if (!fs.existsSync(pwaManifest)) {
+		return [];
+	}
+
+	const pwaRequire = createRequire(fs.realpathSync(pwaManifest));
+	const workboxBuildManifest = pwaRequire.resolve('workbox-build/package.json');
+	const workboxBuildRequire = createRequire(
+		fs.realpathSync(workboxBuildManifest),
+	);
+
+	return packages.map((pkg) => {
+		const pkgManifest = workboxBuildRequire.resolve(`${pkg}/package.json`);
+		return fs.realpathSync(path.dirname(pkgManifest));
+	});
+}
+
+/**
  Packages whose code reaches dist/: every package behind a bundled module,
- plus packages that a project stylesheet imports by bare name (the CSS
- pipeline inlines them without listing them as JS modules).
+ packages that a project stylesheet imports by bare name (the CSS pipeline
+ inlines them without listing them as JS modules), and the Workbox runtime
+ packages bundled into the generated service worker.
  */
 export function findBundledPackageDirs(
 	moduleIds: Iterable<string>,
 	rootDir: string,
 ): string[] {
-	const dirs = new Set<string>();
+	const dirs = new Set<string>(resolveWorkboxRuntimePackageDirs(rootDir));
 	for (const id of moduleIds) {
 		const dir = packageDirOfModule(id);
 		if (dir) {

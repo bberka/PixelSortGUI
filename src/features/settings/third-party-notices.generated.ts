@@ -375,6 +375,30 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 		url: 'https://github.com/theKashey/use-sidecar',
 	},
 	{
+		name: 'workbox-core',
+		version: '7.4.1',
+		license: 'MIT',
+		url: 'https://github.com/GoogleChrome/workbox',
+	},
+	{
+		name: 'workbox-precaching',
+		version: '7.4.1',
+		license: 'MIT',
+		url: 'https://github.com/GoogleChrome/workbox',
+	},
+	{
+		name: 'workbox-routing',
+		version: '7.4.1',
+		license: 'MIT',
+		url: 'https://github.com/GoogleChrome/workbox',
+	},
+	{
+		name: 'workbox-strategies',
+		version: '7.4.1',
+		license: 'MIT',
+		url: 'https://github.com/GoogleChrome/workbox',
+	},
+	{
 		name: 'workbox-window',
 		version: '7.4.1',
 		license: 'MIT',

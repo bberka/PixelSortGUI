@@ -4,9 +4,14 @@ import http from 'node:http';
 import type {AddressInfo} from 'node:net';
 import path from 'node:path';
 import {expect, test, type Page} from '@playwright/test';
+import type {AppRuntime} from '../../src/state/index.ts';
 import {assertNoA11yViolations} from './axe.ts';
 import {importSyntheticProject} from './seed.ts';
 import {DESKTOP_VIEWPORT} from './viewports.ts';
+
+type RuntimeGlobal = {
+	__psgRuntime?: AppRuntime;
+};
 
 const MIME_TYPES: Record<string, string> = {
 	'.html': 'text/html; charset=utf-8',
@@ -89,6 +94,33 @@ async function startDistServer(): Promise<{
 	};
 }
 
+async function readPersistedProject(
+	page: Page,
+	projectId: string,
+): Promise<{name: string; effectTypes: string[]} | null> {
+	return page.evaluate(async (id) => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		if (!runtime) {
+			return null;
+		}
+
+		const booted = await runtime.ready;
+		if (booted.status !== 'ready') {
+			return null;
+		}
+
+		const record = await booted.bundle.repository.getProject(id);
+		if (!record) {
+			return null;
+		}
+
+		return {
+			name: record.name,
+			effectTypes: record.stack.instances.map((effect) => effect.type),
+		};
+	}, projectId);
+}
+
 async function waitForServiceWorkerControl(page: Page): Promise<void> {
 	await page.evaluate(async () => {
 		await navigator.serviceWorker.ready;
@@ -114,17 +146,20 @@ async function waitForServiceWorkerControl(page: Page): Promise<void> {
 test.describe('PWA offline, manifest, update toast, and install UI (F15)', () => {
 	test('AC-F15.2: serves valid local manifest and icons with zero external-origin requests across the core loop', async ({
 		page,
+		context,
 	}) => {
+		const capturedRequests: string[] = [];
 		const externalRequests: string[] = [];
 		let appOrigin = '';
 
-		page.on('request', (request) => {
+		context.on('request', (request) => {
 			const url = request.url();
 			if (url.startsWith('data:') || url.startsWith('blob:')) {
 				return;
 			}
 
 			appOrigin ||= new URL(url).origin;
+			capturedRequests.push(url);
 
 			if (new URL(url).origin !== appOrigin) {
 				externalRequests.push(url);
@@ -134,6 +169,28 @@ test.describe('PWA offline, manifest, update toast, and install UI (F15)', () =>
 		await page.setViewportSize(DESKTOP_VIEWPORT);
 		await page.goto('/');
 		appOrigin = new URL(page.url()).origin;
+		await waitForServiceWorkerControl(page);
+
+		// Verify built service worker precache manifest entries are all same-origin
+		const swUrl = new URL('/sw.js', page.url());
+		const swResponse = await page.request.get(swUrl.href);
+		expect(swResponse.status()).toBe(200);
+		const swSource = await swResponse.text();
+		const precacheBlockMatch = /precacheAndRoute\(\[([\s\S]*?)\]/.exec(
+			swSource,
+		);
+		expect(precacheBlockMatch).not.toBeNull();
+		const precacheUrls = [
+			...(precacheBlockMatch?.[1] ?? '').matchAll(/url:"([^"]+)"/g),
+		].map((match) => match[1] ?? '');
+		expect(precacheUrls.length).toBeGreaterThan(0);
+		for (const entryUrl of precacheUrls) {
+			const resolved = new URL(entryUrl, appOrigin);
+			expect(
+				resolved.origin,
+				`Precache entry ${entryUrl} should be same-origin`,
+			).toBe(appOrigin);
+		}
 
 		// Verify web app manifest and all declared local icons
 		const manifestLink = page.locator('link[rel="manifest"]');
@@ -187,6 +244,7 @@ test.describe('PWA offline, manifest, update toast, and install UI (F15)', () =>
 		]);
 		expect(download.suggestedFilename()).toMatch(/\.png$/);
 
+		expect(capturedRequests.length).toBeGreaterThan(0);
 		expect(externalRequests).toEqual([]);
 	});
 
@@ -198,21 +256,30 @@ test.describe('PWA offline, manifest, update toast, and install UI (F15)', () =>
 		await page.goto('/');
 		await waitForServiceWorkerControl(page);
 
-		await importSyntheticProject(page, 'Offline project');
+		const projectId = await importSyntheticProject(page, 'Offline project');
 		await page.getByRole('button', {name: 'Add effect'}).click();
 		await page.getByRole('button', {name: /pixel sort/i}).click();
 		await expect(page.getByRole('heading', {name: 'Pixel sort'})).toBeVisible();
 
-		// Wait briefly for state persistence before going offline
-		await page.waitForTimeout(300);
+		// Wait until the persisted project and effect are committed in IndexedDB
+		await expect
+			.poll(async () => readPersistedProject(page, projectId))
+			.toEqual({
+				name: 'Offline project',
+				effectTypes: ['pixelSort'],
+			});
 
 		await context.setOffline(true);
 		try {
 			await page.reload({waitUntil: 'load'});
 
-			// Project and effect stack restored offline
+			// Specific persisted project and effect stack restored offline
+			await expect(page).toHaveURL(new RegExp(`#/p/${projectId}$`));
 			await expect(
 				page.getByRole('button', {name: 'Back to library'}),
+			).toBeVisible();
+			await expect(
+				page.locator('header').getByText('Offline project', {exact: true}),
 			).toBeVisible();
 			await expect(
 				page.getByRole('heading', {name: 'Pixel sort'}),
@@ -289,7 +356,13 @@ test.describe('PWA offline, manifest, update toast, and install UI (F15)', () =>
 
 			await assertNoA11yViolations(page);
 
-			// Clicking "Reload to update" reloads the page cleanly
+			// Clicking "Reload to update" triggers exactly one reload and activates
+			// the updated service worker controller.
+			let reloadCount = 0;
+			page.on('load', () => {
+				reloadCount += 1;
+			});
+
 			await Promise.all([page.waitForEvent('load'), reloadButton.click()]);
 			const sentinelAfterReload = await page.evaluate(
 				() => globalThis.document.documentElement.dataset.psgNoReloadSentinel,
@@ -298,6 +371,64 @@ test.describe('PWA offline, manifest, update toast, and install UI (F15)', () =>
 			await expect(
 				page.getByRole('button', {name: 'Back to library'}),
 			).toBeVisible();
+
+			const swState = await page.evaluate(async () => {
+				const registration = await navigator.serviceWorker.ready;
+				return {
+					controllerScriptUrl:
+						navigator.serviceWorker.controller?.scriptURL ?? null,
+					hasWaiting: registration.waiting !== null,
+				};
+			});
+			expect(swState.controllerScriptUrl).toBe(`${server.url}/sw.js`);
+			expect(swState.hasWaiting).toBe(false);
+			expect(reloadCount).toBe(1);
+		} finally {
+			await server.close();
+		}
+	});
+
+	test('AC-F15.3 (Later): dismisses update toast cleanly without reloading', async ({
+		page,
+	}) => {
+		const server = await startDistServer();
+		try {
+			await page.setViewportSize(DESKTOP_VIEWPORT);
+			await page.goto(server.url);
+			await waitForServiceWorkerControl(page);
+
+			await importSyntheticProject(page, 'Keep editing');
+			await expect(
+				page.getByRole('button', {name: 'Back to library'}),
+			).toBeVisible();
+
+			await page.evaluate(() => {
+				globalThis.document.documentElement.dataset.psgNoReloadSentinel =
+					'alive';
+			});
+
+			let reloadCount = 0;
+			page.on('load', () => {
+				reloadCount += 1;
+			});
+
+			server.setSwVersion(2);
+			await page.evaluate(() => {
+				globalThis.dispatchEvent(new Event('focus'));
+			});
+
+			const toastText = page.getByText('A new version is ready.');
+			await expect(toastText).toBeVisible({timeout: 10_000});
+
+			await page.getByRole('button', {name: 'Later'}).click();
+			await expect(toastText).toBeHidden();
+
+			await page.waitForTimeout(300);
+			const sentinel = await page.evaluate(
+				() => globalThis.document.documentElement.dataset.psgNoReloadSentinel,
+			);
+			expect(sentinel).toBe('alive');
+			expect(reloadCount).toBe(0);
 		} finally {
 			await server.close();
 		}

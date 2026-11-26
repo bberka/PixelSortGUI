@@ -412,6 +412,36 @@ describe('database upgrade from version 2 to 3 (persistence.md section 8.5)', ()
 		repository.close();
 	});
 
+	it('starts a migration only when the one before has rewritten its records', async () => {
+		const order: string[] = [];
+
+		const database = await openDatabase({
+			indexedDB: new IDBFactory(),
+			name: NAME,
+			version: 3,
+			migrations: {
+				0: dbMigrations[0],
+				1: (_database, transaction) => (done) => {
+					const request = transaction.objectStore('meta').count();
+					request.addEventListener('success', () => {
+						order.push('first finished');
+						done();
+					});
+				},
+				2() {
+					order.push('second started');
+					return undefined;
+				},
+			},
+		});
+
+		expect(order).toStrictEqual(['first finished', 'second started']);
+		expect(await allRecords(database, 'meta')).toMatchObject([
+			{key: 'schemaInfo', dbVersion: 3},
+		]);
+		database.close();
+	});
+
 	it('creates a fresh database with the reference index', async () => {
 		const idb = new IDBFactory();
 		const opened = await openStorage({indexedDB: idb});

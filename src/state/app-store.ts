@@ -971,7 +971,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 				if (!get().welcomeDismissed) {
 					// A first import ends the first launch, saved or not.
-					void get()
+					await get()
 						.dismissWelcome()
 						.catch(() => {});
 				}

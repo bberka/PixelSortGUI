@@ -164,7 +164,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			},
 			{
 				kind: 'paragraph',
-				text: 'Drift opens JPEG, PNG, WebP, GIF (first frame), BMP and AVIF files, as far as your browser can decode them. Files over 200 MB or over 16,384 px on the longest side are refused. Above 50 megapixels you can import at 50 megapixels or import the full size.',
+				text: 'Drift opens JPEG, PNG, WebP, GIF, BMP and AVIF files, as far as your browser can decode them. An animated image imports its first frame. HEIC/HEIF and camera RAW files are not supported: convert them first. Files over 200 MB or over 16,384 px on the longest side are refused. Above 50 megapixels you can import at 50 megapixels or import the full size.',
 			},
 		],
 	},
@@ -268,7 +268,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 		blocks: [
 			{
 				kind: 'paragraph',
-				text: 'Every finished change, such as releasing a slider or adding an effect, is one step. Use the Undo and Redo buttons or their keyboard shortcuts. Making a new change after undoing drops the steps you undid.',
+				text: 'Every finished change, such as releasing a slider or adding an effect, is one step, named after what changed. Use the Undo and Redo buttons or their keyboard shortcuts. Making a new change after undoing drops the steps you undid.',
 			},
 			{
 				kind: 'paragraph',

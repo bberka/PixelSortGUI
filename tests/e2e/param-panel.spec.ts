@@ -368,7 +368,7 @@ async function seedInTheme(
 ): Promise<void> {
 	await page.emulateMedia({colorScheme: theme.media});
 	await page.addInitScript((stored) => {
-		globalThis.localStorage.setItem('psg:theme', stored);
+		globalThis.localStorage.setItem('drift:theme', stored);
 	}, theme.stored);
 	await page.setViewportSize({width: viewport.width, height: viewport.height});
 	await seedProject(page, ['pixelSort']);

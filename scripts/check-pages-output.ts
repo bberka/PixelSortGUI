@@ -4,7 +4,7 @@ import process from 'node:process';
 import {pathToFileURL} from 'node:url';
 import {NOTICES_FILE_NAME} from './notices.ts';
 
-export const expectedCname = 'glitch.bbay.dev';
+export const expectedCname = 'drift.bbay.dev';
 
 export function findPagesOutputProblems(distDirectory: string): string[] {
 	const problems: string[] = [];

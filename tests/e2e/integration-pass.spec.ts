@@ -10,10 +10,10 @@ test.describe('integration pass: database reload banner and Settings/About links
 			page.getByRole('heading', {name: 'No projects yet'}),
 		).toBeVisible();
 
-		// Trigger a real browser `versionchange` event on the open `pixelsortgui` database.
+		// Trigger a real browser `versionchange` event on the open `drift` database.
 		await page.evaluate(async () => {
 			await new Promise<void>((resolve) => {
-				const request = globalThis.indexedDB.open('pixelsortgui', 99);
+				const request = globalThis.indexedDB.open('drift', 99);
 				request.addEventListener('upgradeneeded', () => {
 					request.transaction?.abort();
 				});

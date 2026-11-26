@@ -37,9 +37,7 @@ export function AppBar() {
 				</Button>
 			) : null}
 			<div className="flex min-w-0 items-center gap-2">
-				<h1 className="shrink-0 text-lg leading-6 font-semibold">
-					PixelSortGUI
-				</h1>
+				<h1 className="shrink-0 text-lg leading-6 font-semibold">Drift</h1>
 				{isEditor && projectName ? (
 					<span className="max-sm:hidden min-w-0 truncate text-sm text-muted-foreground">
 						{projectName}

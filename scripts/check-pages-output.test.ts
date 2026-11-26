@@ -81,8 +81,8 @@ describe('findPagesOutputProblems', () => {
 			'//cdn.example/app.js is not a path from the domain root',
 		],
 		[
-			'/PixelSortGUI/assets/app.js',
-			'/PixelSortGUI/assets/app.js does not exist in the build output',
+			'/drift/assets/app.js',
+			'/drift/assets/app.js does not exist in the build output',
 		],
 	])('rejects the asset reference %s', (script, problem) => {
 		writeBuild({cname: expectedCname, script});

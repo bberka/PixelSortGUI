@@ -38,7 +38,7 @@ async function openInTheme(
 ): Promise<void> {
 	await page.emulateMedia({colorScheme: theme.media});
 	await page.addInitScript((value) => {
-		globalThis.localStorage.setItem('psg:theme', value);
+		globalThis.localStorage.setItem('drift:theme', value);
 	}, theme.stored);
 
 	if (viewport) {
@@ -107,7 +107,7 @@ test('the app opens on the library screen with the empty state', async ({
 	await page.goto('/');
 
 	await expect(
-		page.getByRole('heading', {level: 1, name: 'PixelSortGUI'}),
+		page.getByRole('heading', {level: 1, name: 'Drift'}),
 	).toBeVisible();
 	await expect(
 		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
@@ -172,7 +172,7 @@ test('the Settings theme selector changes the theme and survives a reload', asyn
 
 	const readTheme = () =>
 		page.evaluate(() => ({
-			stored: globalThis.localStorage.getItem('psg:theme'),
+			stored: globalThis.localStorage.getItem('drift:theme'),
 			attr: globalThis.document.documentElement.dataset.theme,
 			background: globalThis.getComputedStyle(
 				globalThis.document.documentElement,
@@ -230,7 +230,7 @@ test('keyboard: the first Tab reaches a visible control and focus follows the vi
 	await page.goto('/');
 	await importSyntheticProject(page);
 	await expect(
-		page.getByRole('heading', {level: 1, name: 'PixelSortGUI'}),
+		page.getByRole('heading', {level: 1, name: 'Drift'}),
 	).toBeVisible();
 
 	await page.keyboard.press('Tab');
@@ -288,7 +288,7 @@ test('the component gallery is still reachable at its dev route', async ({
 	await page.goto('/#/dev/gallery');
 
 	await expect(
-		page.getByRole('heading', {level: 1, name: 'PixelSortGUI'}),
+		page.getByRole('heading', {level: 1, name: 'Drift'}),
 	).toBeVisible();
 	await expect(
 		page.getByRole('radiogroup', {name: 'Theme'}).first(),

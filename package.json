@@ -1,5 +1,5 @@
 {
-	"name": "pixelsortgui",
+	"name": "drift",
 	"private": true,
 	"description": "Web GUI editor for glitch art and pixel sorting of still photos.",
 	"license": "MIT",
@@ -7,7 +7,7 @@
 		"type": "git",
 		"url": "https://github.com/bberka/PixelSortGUI"
 	},
-	"homepage": "https://glitch.bbay.dev",
+	"homepage": "https://drift.bbay.dev",
 	"bugs": {
 		"url": "https://github.com/bberka/PixelSortGUI/issues"
 	},

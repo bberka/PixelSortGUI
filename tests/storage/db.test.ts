@@ -28,7 +28,7 @@ describe('openDatabase versionchange handling', () => {
 
 		const dbV1 = await openDatabase({
 			indexedDB: idb,
-			name: 'pixelsortgui-vc-upgrade',
+			name: 'drift-vc-upgrade',
 			version: 1,
 			onVersionChange(event) {
 				events.push({
@@ -40,7 +40,7 @@ describe('openDatabase versionchange handling', () => {
 
 		const dbV2 = await openDatabase({
 			indexedDB: idb,
-			name: 'pixelsortgui-vc-upgrade',
+			name: 'drift-vc-upgrade',
 			version: 2,
 			migrations: {
 				...dbMigrations,
@@ -63,7 +63,7 @@ describe('openDatabase versionchange handling', () => {
 
 		const opened = await openStorage({
 			indexedDB: idb,
-			name: 'pixelsortgui-vc-delete',
+			name: 'drift-vc-delete',
 			version: 1,
 			onVersionChange(event) {
 				events.push({
@@ -74,7 +74,7 @@ describe('openDatabase versionchange handling', () => {
 		});
 		expect(opened.persistence).toBe('indexeddb');
 
-		await deleteDatabase(idb, 'pixelsortgui-vc-delete');
+		await deleteDatabase(idb, 'drift-vc-delete');
 
 		expect(events).toEqual([{oldVersion: 1, newVersion: null}]);
 		await expect(opened.repository.listProjects()).rejects.toThrow();

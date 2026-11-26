@@ -25,7 +25,7 @@ for (const viewport of PROOF_VIEWPORTS) {
 		await page.goto('/');
 
 		await expect(
-			page.getByRole('heading', {level: 1, name: 'PixelSortGUI'}),
+			page.getByRole('heading', {level: 1, name: 'Drift'}),
 		).toBeVisible();
 
 		const dimensions = await page.evaluate(() => ({

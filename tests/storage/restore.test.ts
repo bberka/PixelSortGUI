@@ -98,7 +98,7 @@ describe('startup restore sequence (persistence.md section 9)', () => {
 		result.bundle.dispose();
 	});
 
-	it('step 3: mirrors appState.theme when localStorage lacks psg:theme, and skips mirroring when already set', async () => {
+	it('step 3: mirrors appState.theme when localStorage lacks drift:theme, and skips mirroring when already set', async () => {
 		const repository = new MemoryStorageAdapter();
 		await repository.updateAppState({theme: 'light'});
 

@@ -260,7 +260,7 @@ async function captureViewport(
 	try {
 		const themeJson = JSON.stringify(theme);
 		await context.addInitScript(
-			`localStorage.setItem('psg:theme', ${themeJson}); document.documentElement.dataset.theme = ${themeJson};`,
+			`localStorage.setItem('drift:theme', ${themeJson}); document.documentElement.dataset.theme = ${themeJson};`,
 		);
 		const page = await context.newPage();
 		await page.goto(targetUrl, {waitUntil: 'networkidle'});
@@ -347,7 +347,7 @@ async function renderContactSheet(
 	const sizes = await Promise.all(shots.map(({path}) => pngSize(path)));
 	const sheet = layoutSheet(sizes);
 	await mkdir(dirname(out), {recursive: true});
-	const folder = await mkdtemp(join(tmpdir(), 'pixelsortgui-proof-sheet-'));
+	const folder = await mkdtemp(join(tmpdir(), 'drift-proof-sheet-'));
 	try {
 		const page = await browser.newPage({
 			viewport: {width: sheet.width, height: sheet.height},

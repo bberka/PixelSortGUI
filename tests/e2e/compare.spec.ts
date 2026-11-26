@@ -1,6 +1,7 @@
 import {expect, test, type Page} from '@playwright/test';
 import type {AppRuntime} from '../../src/state/index.ts';
 import {assertNoA11yViolations} from './axe.ts';
+import {waitForSettleRender} from './settle.ts';
 import {PROOF_VIEWPORTS} from './viewports.ts';
 
 type RuntimeGlobal = {
@@ -94,21 +95,7 @@ async function seedCompareProject(page: Page): Promise<string> {
 
 	await expect(page.getByLabel('Image canvas')).toBeVisible();
 	// Wait until the settle frame is delivered and drawn.
-	await page.waitForFunction(async () => {
-		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
-		const booted = await runtime?.ready;
-		if (!booted || booted.status !== 'ready') {
-			return false;
-		}
-
-		const {render} = booted.bundle.store.getState();
-		return (
-			render.source !== undefined &&
-			render.frame?.level === 'settle' &&
-			!render.busy.settle &&
-			!render.busy.drag
-		);
-	});
+	await waitForSettleRender(page);
 	await page.evaluate(
 		() =>
 			new Promise<void>((resolve) => {

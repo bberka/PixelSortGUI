@@ -924,6 +924,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		const currentDebug = store.getState().debugView;
 		const nextDebugView = keepDebugView(currentDebug, nextProject);
+		const wasDragging = transientStore.getState().activeDrag !== null;
 		const notice = geometryNotice(active, result.entry.transform);
 
 		transientStore.setState({activeDrag: null});
@@ -941,8 +942,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		}
 
 		if (
+			wasDragging ||
 			nextDebugView !== currentDebug ||
-			canonicalStackJson(nextProject.stack) !== canonicalStackJson(active.stack)
+			// Compare with the stack in state now, not the one captured before the
+			// await: an overlapping undo may already have sent another stack.
+			canonicalStackJson(nextProject.stack) !== canonicalStackJson(base.stack)
 		) {
 			dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
 		}

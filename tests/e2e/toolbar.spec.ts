@@ -604,3 +604,48 @@ for (const theme of THEMES) {
 		});
 	}
 }
+
+test('coarse pointer toolbar buttons meet 44x44 px without horizontal scroll', async ({
+	browser,
+	browserName,
+}) => {
+	test.skip(
+		browserName !== 'chromium',
+		'Playwright isMobile (pointer: coarse) emulation is Chromium-only',
+	);
+
+	for (const viewport of PROOF_VIEWPORTS) {
+		const context = await browser.newContext({
+			viewport: {width: viewport.width, height: viewport.height},
+			hasTouch: true,
+			isMobile: true,
+		});
+		const page = await context.newPage();
+		try {
+			await seedProjectWithEffects(page, ['pixelSort']);
+			const toolbar = page.getByRole('toolbar', {name: 'Editor actions'});
+			for (const name of ['Compare', 'Split']) {
+				await expect(
+					toolbar.getByRole('button', {name, exact: true}),
+				).toBeVisible();
+			}
+
+			const buttons = await toolbar.getByRole('button').all();
+			for (const button of buttons) {
+				const name = await button.getAttribute('aria-label');
+				const box = (await button.boundingBox())!;
+				const where = `${name ?? 'Presets'} at ${viewport.name}`;
+				expect(box.width, where).toBeGreaterThanOrEqual(44);
+				expect(box.height, where).toBeGreaterThanOrEqual(44);
+				expect(box.x + box.width, where).toBeLessThanOrEqual(viewport.width);
+			}
+
+			const scrollWidth = await page.evaluate(
+				() => globalThis.document.documentElement.scrollWidth,
+			);
+			expect(scrollWidth).toBeLessThanOrEqual(viewport.width);
+		} finally {
+			await context.close();
+		}
+	}
+});

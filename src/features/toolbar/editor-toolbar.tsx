@@ -30,6 +30,7 @@ import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {HistorySheetButton} from '@/features/history/history-sheet-button.tsx';
 import {createCompareHoldController} from '@/features/canvas/compare-logic.ts';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
+import {cn} from '@/lib/utils';
 import {
 	selectCanRedo,
 	selectCanUndo,
@@ -246,6 +247,12 @@ export function EditorToolbar() {
 	const undoTooltip = formatUndoTooltip(undoLabel, shortcuts.undo);
 	const redoTooltip = formatRedoTooltip(redoLabel, shortcuts.redo);
 	const splitActive = compareMode === 'split' && !showingOriginal;
+	// Seven 44 px targets only fit a phone with tighter spacing.
+	const groupClass = cn(
+		'flex shrink-0 items-center gap-1',
+		compact && 'pointer-coarse:gap-0',
+	);
+	const separatorClass = cn('mx-0.5 h-5', compact && 'pointer-coarse:mx-0');
 	const SplitIcon = orientation === 'vertical' ? Columns2Icon : Rows2Icon;
 	const orientationLabel =
 		orientation === 'vertical'
@@ -310,12 +317,17 @@ export function EditorToolbar() {
 	};
 
 	return (
+		// A button used as a trigger takes the trigger's `data-slot`, so the
+		// coarse-pointer rule in app.css misses it.
 		<div
 			role="toolbar"
 			aria-label="Editor actions"
-			className="flex h-full w-full min-w-0 items-center gap-1.5 px-2 lg:px-3"
+			className={cn(
+				'flex h-full w-full min-w-0 items-center gap-1.5 px-2 lg:px-3 pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11',
+				compact && 'pointer-coarse:gap-0.5 pointer-coarse:px-1',
+			)}
 		>
-			<div className="flex shrink-0 items-center gap-1">
+			<div className={groupClass}>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<span className="inline-flex">
@@ -355,8 +367,8 @@ export function EditorToolbar() {
 					<TooltipContent>{redoTooltip}</TooltipContent>
 				</Tooltip>
 			</div>
-			<Separator orientation="vertical" className="mx-0.5 h-5" />
-			<div className="flex shrink-0 items-center gap-1">
+			<Separator orientation="vertical" className={separatorClass} />
+			<div className={groupClass}>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
@@ -411,7 +423,7 @@ export function EditorToolbar() {
 					<TooltipContent>{orientationLabel} (Shift+S)</TooltipContent>
 				</Tooltip>
 			</div>
-			<Separator orientation="vertical" className="mx-0.5 h-5" />
+			<Separator orientation="vertical" className={separatorClass} />
 			<PresetsControl />
 			{compact ? <HistorySheetButton /> : null}
 		</div>

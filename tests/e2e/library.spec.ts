@@ -1,6 +1,7 @@
 import {expect, test, type Page} from '@playwright/test';
 import type {AppRuntime} from '../../src/state/index.ts';
 import {assertNoA11yViolations} from './axe.ts';
+import {startDistServer, waitForServiceWorkerControl} from './dist-server.ts';
 import {seedLibraryProjects, seedProjectWithHistory} from './library-seed.ts';
 import {PROOF_VIEWPORTS, type ProofViewport} from './viewports.ts';
 
@@ -63,8 +64,15 @@ async function expectNoHorizontalScroll(
 	).toBeLessThanOrEqual(metrics.innerWidth);
 }
 
+// Toasts are list items too, so count only the items that open a project.
+function libraryCards(page: Page) {
+	return page.getByRole('listitem').filter({
+		has: page.locator('button[aria-label^="Open "]'),
+	});
+}
+
 function cardNames(page: Page) {
-	return page.getByRole('listitem').locator('button[aria-label^="Open "]');
+	return libraryCards(page).locator('button[aria-label^="Open "]');
 }
 
 function columnCount(page: Page): Promise<number> {
@@ -100,7 +108,7 @@ test('the empty library shows the heading, the note and the import action', asyn
 	).toBeVisible();
 	await expect(page.getByText('Images stay on this device.')).toBeVisible();
 	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();
-	await expect(page.getByRole('listitem')).toHaveCount(0);
+	await expect(libraryCards(page)).toHaveCount(0);
 	expect(consoleErrors, 'Console errors').toEqual([]);
 });
 
@@ -113,10 +121,10 @@ test('cards show the result thumbnail, name, dimensions and opened date, newest 
 	// the stored thumbnails, as returning from the editor does.
 	await page.reload();
 
-	await expect(page.getByRole('listitem')).toHaveCount(3);
+	await expect(libraryCards(page)).toHaveCount(3);
 	await expect(cardNames(page)).toHaveText(['Gamma', 'Beta', 'Alpha']);
 
-	const first = page.getByRole('listitem').first();
+	const first = libraryCards(page).first();
 	await expect(first).toContainText('64 × 48 px');
 	await expect(first).toContainText('Today');
 	const thumbnail = first.locator('img');
@@ -140,6 +148,30 @@ test('cards show the result thumbnail, name, dimensions and opened date, newest 
 	}, ids[0]);
 
 	await expect(cardNames(page)).toHaveText(['Alpha', 'Gamma', 'Beta']);
+});
+
+test('the update toast is not counted as a library card', async ({page}) => {
+	const server = await startDistServer();
+	try {
+		await page.goto(server.url);
+		await waitForServiceWorkerControl(page);
+		await seedLibraryProjects(page, ['Alpha', 'Beta']);
+		await expect(libraryCards(page)).toHaveCount(2);
+
+		server.setSwVersion(2);
+		await page.evaluate(() => {
+			globalThis.dispatchEvent(new Event('focus'));
+		});
+		await expect(
+			page.getByRole('button', {name: 'Reload to update'}),
+		).toBeVisible({timeout: 10_000});
+
+		await expect(page.getByRole('listitem')).toHaveCount(3);
+		await expect(libraryCards(page)).toHaveCount(2);
+		await expect(cardNames(page)).toHaveText(['Beta', 'Alpha']);
+	} finally {
+		await server.close();
+	}
 });
 
 test('clicking a card opens the project in the editor', async ({page}) => {
@@ -406,7 +438,7 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 		});
 	});
 	await page.reload();
-	await expect(page.getByRole('listitem')).toHaveCount(100);
+	await expect(libraryCards(page)).toHaveCount(100);
 
 	const measure = () =>
 		page.evaluate(() => {
@@ -434,9 +466,9 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 	const before = await measure();
 	expect(before.imagesInDom).toBeLessThan(40);
 	expect(before.revoked).toBe(0);
-	await expect(page.getByRole('listitem').last().locator('img')).toHaveCount(0);
+	await expect(libraryCards(page).last().locator('img')).toHaveCount(0);
 
-	const lastCardThumbnail = page.getByRole('listitem').last().locator('img');
+	const lastCardThumbnail = libraryCards(page).last().locator('img');
 
 	const scrollStats = await page.evaluate(async () => {
 		const scroller = globalThis.document
@@ -491,12 +523,13 @@ test('100 projects scroll smoothly and decode thumbnails only in view', async ({
 	expect(nearBottom).toBeLessThanOrEqual(2);
 
 	await page.evaluate(() => {
-		const cards = globalThis.document.querySelectorAll('li');
+		const cards = globalThis.document.querySelectorAll('ul > li');
 		cards[0]?.scrollIntoView();
 	});
-	await expect(
-		page.getByRole('listitem').first().locator('img'),
-	).toHaveAttribute('src', /^blob:/);
+	await expect(libraryCards(page).first().locator('img')).toHaveAttribute(
+		'src',
+		/^blob:/,
+	);
 
 	const report = [
 		`browser: ${browserName}`,
@@ -519,7 +552,7 @@ for (const theme of THEMES) {
 			const consoleErrors = collectConsoleErrors(page);
 			await openInTheme(page, theme, viewport);
 			await seedLibraryProjects(page, ['One', 'Two', 'Three', 'Four', 'Five']);
-			await expect(page.getByRole('listitem')).toHaveCount(5);
+			await expect(libraryCards(page)).toHaveCount(5);
 
 			await expectNoHorizontalScroll(page, viewport);
 			await assertNoA11yViolations(page);

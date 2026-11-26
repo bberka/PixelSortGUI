@@ -4,6 +4,7 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and multi-image source reference counting (F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with split orientation and side A fields by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift persistence spec
 
@@ -54,7 +55,9 @@ type ViewState = {
 	zoom: number; // ratio of CSS px per source px (1.0 = 100%); clamped to [0.01, 32]
 	centerX: number; // viewport center in source px
 	centerY: number; // viewport center in source px
-	splitPosition: number; // 0..1, fraction from left edge; default 0.5
+	splitPosition: number; // 0..1, side A's share from the left edge (vertical) or top edge (horizontal); default 0.5
+	splitOrientation?: 'vertical' | 'horizontal'; // absent means 'vertical'
+	editSide?: 'a' | 'b'; // side edited while the split view is on; absent means 'b'
 };
 
 type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff';
@@ -75,8 +78,10 @@ type ProjectRecord = {
 	sourceHash: string; // foreign key to sources.sha256
 	sourceWidth: number; // copied from SourceRecord for fast library card rendering
 	sourceHeight: number; // copied from SourceRecord for fast library card rendering
-	stack: EffectStack; // exact serialised form from engine.md section 2.2
+	stack: EffectStack; // main stack (split side B), exact serialised form from engine.md section 2.2
 	selectedInstanceId: string | null; // id of selected EffectInstance in stack, or null
+	stackA?: EffectStack; // split side A; absent when empty
+	selectedInstanceIdA?: string | null; // selection in stackA; present only with stackA
 	historyHeadSeq: number; // seq of the currently active HistoryEntryRecord
 	historyMinSeq: number; // oldest retained seq for this project
 	historyMaxSeq: number; // newest retained seq for this project (equals historyHeadSeq unless undone)
@@ -102,6 +107,8 @@ type HistoryEntryRecord = {
 	label: string; // human-readable commit label, e.g. 'Angle 90°', 'Add Pixel sort' (section 8.2)
 	stack: EffectStack; // full snapshot at this commit; keeps original instance versions
 	selectedInstanceId: string | null;
+	stackA?: EffectStack; // side A snapshot at this commit; absent means empty
+	selectedInstanceIdA?: string | null;
 	createdAt: number; // Unix epoch ms
 };
 
@@ -136,7 +143,9 @@ Field invariants enforced before every write:
 
 - `ProjectRecord.name`: trimmed of leading and trailing whitespace; must be 1 to 120 characters. On import, strip the last file extension (if any); if the remaining stem is empty, default to `"Untitled"`, and truncate to 120 characters.
 - `UserPresetRecord.name`: trimmed, 1 to 80 characters.
-- `stack.instances.length`: at most 32 (product.md F4, engine.md 2.2).
+- `stack.instances.length` and `stackA.instances.length`: at most 32 each (product.md F4, engine.md 2.2).
+- `stackA` and `selectedInstanceIdA` are removed from a record when side A has no instances.
+- `viewState.splitOrientation` and `viewState.editSide`: any other value is removed.
 - `viewState.splitPosition`: clamped to `[0, 1]`.
 - `exportSettings.quality` and `exportSettings.avifQuality` (when present): rounded integer clamped to `[50, 100]`.
 - `history` window per project: at most **201** retained entries (`seq` count ≤ 201), consisting of 1 oldest reachable base state plus up to **200** undoable commits. This guarantees AC-F9.3 ("After 205 commits, 200 undos are possible and the 201st is not").
@@ -149,15 +158,15 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 |---|---|---|---|
 | Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack`, `historyHeadSeq: 0`, and default `viewState` (`fitMode: 'fit'`, `zoom: 1`, centred at `(width / 2, height / 2)`, `splitPosition: 0.5`); insert `history` entry `(projectId, 0)` with label `"Initial"`; in a multi-file import, set `meta.appState.activeProjectId` to the first imported project. |
 | Drag slider / dial / divider | none | Never during drag | Transient value updates worker preview only. |
-| Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
-| Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `historyHeadSeq`, `updatedAt`). Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
+| Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Every entry snapshots both sides, so one history covers both. Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
+| Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq`, `updatedAt`); an entry without `stackA` empties side A. Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
 | Jump to history entry (F23) | `projects` | Immediate (0 ms debounce) | Read the `HistoryEntryRecord` at the chosen `seq` and update `ProjectRecord` as undo does; later entries stay until the next commit (section 8.2). |
-| Zoom, pan, split position, select instance (F3, F11, F13) | `projects` | Debounced 200 ms; flushed on `visibilitychange` (`hidden`) and `pagehide` | Updates `viewState` and `selectedInstanceId` on `ProjectRecord`. Restores zoom and centre within 1 source px (AC-F3.3) and split position (AC-F11.3). |
+| Zoom, pan, split position and orientation, side being edited, select instance (F3, F11, F13) | `projects` | Debounced 200 ms; flushed on `visibilitychange` (`hidden`) and `pagehide` | Updates `viewState`, `selectedInstanceId` and `selectedInstanceIdA` on `ProjectRecord`. Restores zoom and centre within 1 source px (AC-F3.3) and split position (AC-F11.3). |
 | Open project / Return to library (F2, F3) | `projects`, `meta` | Immediate | Opening a project sets `projects.openedAt = Date.now()` and `meta.appState.activeProjectId = id`, updating URL hash to `#/p/<id>`. Returning to library sets `activeProjectId = null` and hash to `#/` (AC-F3.4). |
 | Change export settings (F12) | `projects` | Immediate on export start or dialog close | Saves `exportSettings` on `ProjectRecord` (AC-F12.7). |
 | Generate result thumbnail (F2) | `thumbnails` | Within 500 ms after `settle` render of a commit or initial import | Worker or OffscreenCanvas scales the `settle` bitmap to longest side ≤ 512 px, encodes WebP (or JPEG q=0.80 where WebP encoding is unavailable), writes `ThumbnailRecord`. Must finish within 5 s of commit (AC-F2.2). |
 | Rename project (F2) | `projects` | Immediate | Validates 1..120 chars trimmed, updates `name` and `updatedAt` (AC-F2.3). |
-| Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState`, same `stack` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
+| Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState`, same `stack`, `stackA` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
@@ -199,13 +208,15 @@ Three independent version numbers govern stored data:
    - Upgrades never discard user projects, source blobs, or presets.
    - If the stored database has a version **higher** than the running app's `dbVersion` (for example, after a deployment rollback), `indexedDB.open` fails with `VersionError`. The app must **never** delete or downgrade the database; it shows a blocking message asking the user to reload to the latest version.
 
+   - Adding an optional field that older builds can ignore (such as `exportSettings.maxFileSizeKb`, `stackA`, or `viewState.splitOrientation`) needs no version bump and no migration: records without the field read as the default. An older build keeps `stackA` on the project record when it rewrites it, but its new history entries omit side A.
+
 2. **Effect stack schema version (`EffectStack.schemaVersion`, currently `1`):**
    - Defined in [engine.md section 2.2](engine.md#22-effect-stack). Increments only when the envelope shape of `EffectStack` or `EffectInstance` changes (for example, `schemaVersion: 2` when optional `maskId` arrives in later work per [engine.md section 5.6](engine.md#56-masks-later-semantics-fixed-now)).
    - On load, `migrateStackEnvelope(stack)` upgrades older envelopes sequentially in memory. Stacks with `schemaVersion` newer than supported are preserved untouched and warn the user.
 
 3. **Per-effect parameter version (`EffectInstance.version`, starts at `1`):**
    - Defined in [engine.md section 4.4](engine.md#44-versions-and-migration).
-   - **Current project stack:** When a project opens, any instance whose `version` is lower than its registered `EffectDefinition.version` is migrated sequentially through `def.migrations` and validated with `validateParams`. The migrated instance is marked for write-back and saved with the new `version` on the next save of that project (never creating a synthetic undo entry on open).
+   - **Current project stacks:** When a project opens (`stack` and `stackA`), any instance whose `version` is lower than its registered `EffectDefinition.version` is migrated sequentially through `def.migrations` and validated with `validateParams`. The migrated instance is marked for write-back and saved with the new `version` on the next save of that project (never creating a synthetic undo entry on open).
    - **Stored history entries:** Entries in the `history` store keep their original `version` on disk. When the user steps to an older entry via Undo or Redo, its instances are migrated lazily in memory before rendering.
    - **Unknown types and newer versions (AC-F4.6):** Any `EffectInstance` whose `type` is not in the registry or whose `version > def.version` is kept byte-for-byte unchanged in memory, skipped during rendering, and written back verbatim on every save.
 
@@ -248,7 +259,7 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
   - `effectiveWidth: number` and `effectiveHeight: number` (derived from `sourceWidth`, `sourceHeight`, and `transform`; cached on `ProjectRecord` so Library cards show cropped/rotated/resized dimensions without loading `sources`).
 - `HistoryEntryRecord` adds:
   - `transform: SourceTransform` (full snapshot of the project's geometry at that commit, alongside `stack`).
-- `ThumbnailRecord.stackSignature` becomes `canonicalJson({transform, stack})` so any geometry commit invalidates and regenerates the project thumbnail.
+- `ThumbnailRecord.stackSignature` becomes `canonicalJson({transform, stack})` (side B only) so any geometry commit invalidates and regenerates the project thumbnail.
 - `UserPresetRecord` is **unchanged**: presets store `EffectStack` only, so applying a preset never overwrites a project's crop, rotation, flip, or resize (AC-F20.6).
 
 **Migration (`dbMigrations[1]` in `src/storage/db.ts`):**
@@ -264,7 +275,7 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
 
 - **Repository method:** Add `jumpToHistory(projectId: string, seq: number): Promise<HistoryStepResult | null>` to `StorageRepository` (`src/storage/types.ts`). Inside one `readwrite` transaction:
   1. Verify `project.historyMinSeq <= seq <= project.historyMaxSeq` and read `history.get([projectId, seq])`.
-  2. Update `ProjectRecord` (`stack`, `transform` once F20 lands, `selectedInstanceId`, `historyHeadSeq: seq`, `updatedAt`).
+  2. Update `ProjectRecord` (`stack`, `transform` once F20 lands, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq: seq`, `updatedAt`).
   3. Never delete entries with `seq > historyHeadSeq` during a jump (those remain as the redo branch until a new commit overwrites them). Never alter `viewState`, `theme`, or library selection.
 - **Return value:** `null`, with nothing written, when `seq` is not an integer, lies outside the retained window, or has no stored entry. An unknown project throws `StorageNotFoundError`, as undo does. Jumping to the current entry is allowed.
 - **App store:** `jumpToHistory(projectId: string, seq: number): Promise<boolean>` flushes a pending keyboard commit first, then updates the active project and the preview exactly as undo and redo do. It returns `false` and changes nothing when `projectId` is not the active project or the repository returns `null`. The loaded history list keeps the redo entries.
@@ -278,9 +289,10 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
 | Turn an effect on or off | `"Enable Pixel sort"`, `"Disable Pixel sort"` |
 | Reset one parameter, reset all, randomize | `"Reset Angle"`, `"Reset Pixel sort"`, `"Randomize Pixel sort"` |
 | Apply a preset, add a preset to the stack | `"Apply preset ASDF classic"`, `"Add Bright streaks"` |
+| Copy one split side over the other, swap them (F11) | `"Copy A to B"`, `"Swap sides"` |
 | Geometry actions (F20) | `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"` |
 
-  Value formats: range `"Threshold range 0.25 to 0.80"`; angle `"Angle 90°"` (at most one decimal); a fractional-step number shows at least two decimals and keeps any further significant ones up to the step (`0.80`, `0.253`); percent numbers `"45%"`; pixel integers `"120 px"`; choices use the option label (`"Order Descending"`); switches `"Invert on"` / `"Invert off"`; seeds show the number. Labels are stored with the entry, so entries written by earlier releases keep their old text.
+  A label for an edit to split side A, or for any edit made while the split view is on, ends in `" (side A)"` or `" (side B)"` (product.md F11). Value formats: range `"Threshold range 0.25 to 0.80"`; angle `"Angle 90°"` (at most one decimal); a fractional-step number shows at least two decimals and keeps any further significant ones up to the step (`0.80`, `0.253`); percent numbers `"45%"`; pixel integers `"120 px"`; choices use the option label (`"Order Descending"`); switches `"Invert on"` / `"Invert off"`; seeds show the number. Labels are stored with the entry, so entries written by earlier releases keep their old text.
 - **Memory footprint:** Each `HistoryEntryRecord` is plain JSON (`EffectStack` + `SourceTransform`, ~0.5 to 4 KB). At the 201-entry cap, a project's entire history stays under ~1 MB in RAM and IndexedDB, with zero pixel buffers stored.
 
 ### 8.3 Project file format (F25)
@@ -354,6 +366,8 @@ export type ProjectFilePayload = {
 	transform?: SourceTransform; // F20 geometry transform; omitted or IDENTITY_TRANSFORM before F20
 	stack: EffectStack; // exact serialised form from engine.md section 2.2
 	selectedInstanceId: string | null;
+	stackA?: EffectStack; // split side A; omitted when empty
+	selectedInstanceIdA?: string | null;
 	viewState: ViewState;
 	exportSettings: ExportSettings;
 	historyHeadSeq: number; // 0 when includesHistory is false
@@ -370,7 +384,7 @@ export type ProjectHistoryPayload = {
 };
 ```
 
-`metadata` covered by a project file: project `name`, `id`, `createdAt`, `updatedAt`, `openedAt`, `sourceWidth`, `sourceHeight`, source `mimeType`, `byteLength`, `sha256`, `transform` (`SourceTransform`), `stack` (`EffectStack`), `selectedInstanceId`, `viewState`, `exportSettings`, `appVersion`, and `exportedAt`.
+`metadata` covered by a project file: project `name`, `id`, `createdAt`, `updatedAt`, `openedAt`, `sourceWidth`, `sourceHeight`, source `mimeType`, `byteLength`, `sha256`, `transform` (`SourceTransform`), `stack` and `stackA` (`EffectStack`), `selectedInstanceId`, `selectedInstanceIdA`, `viewState`, `exportSettings`, `appVersion`, and `exportedAt`.
 
 #### 8.3.3 Format versions and migrations
 
@@ -536,7 +550,7 @@ Import writes in four strict phases so the library can **never** end up with a p
 3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['projects', 'history', 'thumbnails', 'presets', 'meta']` (pure JSON + optional small thumbnails):
    - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings (also syncing `localStorage` `drift:theme` if settings were imported).
    - **Merge mode:**
-     - For each checked project: if `project.id` is absent, insert as-is. If `project.id` exists and matches `(sourceHash, name, updatedAt, canonicalJson({transform, stack}))`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (deduplicated as in section 8.3.5, max 120 chars), remap history/thumbnail `projectId`, and insert without overwriting the local project.
+     - For each checked project: if `project.id` is absent, insert as-is. If `project.id` exists and matches `(sourceHash, name, updatedAt, canonicalJson({transform, stack, stackA}))`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (deduplicated as in section 8.3.5, max 120 chars), remap history/thumbnail `projectId`, and insert without overwriting the local project.
      - For each preset (when checked): skip if same `id` or same `nameLower` and `canonicalStackJson(stack)`; assign a new `'user:' + crypto.randomUUID()` on `id` clash with different content; otherwise insert as-is.
      - If settings checked: update `meta.appState.theme` and `compareMode` and sync `localStorage` `drift:theme`.
    - If this transaction aborts for any reason (including `QuotaExceededError`), IndexedDB rolls back the entire metadata commit cleanly; then delete `insertedHashes` in a cleanup pass and show `"Storage is full"`.
@@ -551,21 +565,21 @@ When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies
 
 ### 8.5 Multi-image source reference counting and GC (F26)
 
-When `F26` (`imageBlend`) lands, a project can reference up to **8** additional `SourceRecord`s alongside its primary `sourceHash`, both in its current `stack` and in its retained `history` entries. Extra sources live in the existing `sources` store (zero new object stores) and share SHA-256 deduplication with primary sources.
+When `F26` (`imageBlend`) lands, a project can reference up to **8** additional `SourceRecord`s alongside its primary `sourceHash`, both in its current `stack` and `stackA` and in its retained `history` entries. Extra sources live in the existing `sources` store (zero new object stores) and share SHA-256 deduplication with primary sources.
 
 - **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`, after F20's v2; or v2 / `dbMigrations[1]` if `F26` ships ahead of `F20`):**
-  - Add `referencedSourceHashes: string[]` to `ProjectRecord`: a sorted, deduplicated array containing `project.sourceHash` plus every valid 64-char SHA-256 found in any `kind: 'image'` parameter of `project.stack` and all retained `history` entries for that project.
+  - Add `referencedSourceHashes: string[]` to `ProjectRecord`: a sorted, deduplicated array containing `project.sourceHash` plus every valid 64-char SHA-256 found in any `kind: 'image'` parameter of `project.stack`, `project.stackA` and all retained `history` entries for that project.
   - Create a `multiEntry: true` index `byReferencedSourceHash` on `projects` keyed on `referencedSourceHashes`.
   - Migration `dbMigrations[2]` iterates existing `projects` and sets `referencedSourceHashes = [project.sourceHash]` where missing, and updates `meta.schemaInfo.dbVersion = 3`.
 - **Maintaining `referencedSourceHashes`:**
   - `createProject`, `duplicateProject`, `commitStack`, and project/backup import compute `referencedSourceHashes` inside the same `readwrite` transaction. Because a project holds at most 201 lightweight JSON history entries, scanning them takes under 1 ms.
-  - Adding an extra image to a project checks the 8-distinct-extra-source cap (counting distinct non-empty `image` hashes in `project.stack` excluding `project.sourceHash`). If exceeded, reject with `"A project can use at most 8 extra blend images."`
+  - Adding an extra image to a project checks the 8-distinct-extra-source cap (counting distinct non-empty `image` hashes in `project.stack` and `project.stackA` excluding `project.sourceHash`). If exceeded, reject with `"A project can use at most 8 extra blend images."`
 - **Reference-counted deletion and orphan GC:**
   - `deleteProject(id)` deletes the project, its history, and its thumbnail, then for every hash `h` in `existing.referencedSourceHashes`, checks `projectsStore.index('byReferencedSourceHash').count(h)` and deletes `sourcesStore.delete(h)` whenever count is `0`.
   - `cleanupOrphanedSources()` checks `byReferencedSourceHash` instead of `bySourceHash` so secondary images referenced only by `imageBlend` or undo history are never evicted.
   - When a `commitStack` prunes old history entries that held the last reference to an extra source, `cleanupOrphanedSources()` frees that blob on idle startup (or immediately if `referencedSourceHashes` shrank and count dropped to `0`).
 - **User presets:** `createPreset` strips any `kind: 'image'` parameter value to `''` before saving so presets never pin source blobs or carry broken hashes across devices.
-- **Project files (`F25`) and backups (`F17`):** Exporting a project collects all hashes in `project.sourceHash` + `project.stack` (+ `history` entries when `includesHistory` is true) and writes each unique source once into `sources/<sha256>.<ext>` and `manifest.sources`.
+- **Project files (`F25`) and backups (`F17`):** Exporting a project collects all hashes in `project.sourceHash` + `project.stack` + `project.stackA` (+ `history` entries when `includesHistory` is true) and writes each unique source once into `sources/<sha256>.<ext>` and `manifest.sources`.
 
 ## 9. Restore sequence on startup
 
@@ -589,11 +603,11 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
      - Otherwise: target screen = Library (AC-F3.4).
 6. **Step 5 (First meaningful paint):**
    - **Library target:** Render the Library screen immediately with all project cards (metadata + aspect-ratio placeholders). An `IntersectionObserver` fetches and decodes each card's `ThumbnailRecord` blob from `thumbnails` only as it enters the viewport (AC-F2.6).
-   - **Editor target:** Render the Editor shell immediately with the project's restored `stack`, `selectedInstanceId`, `viewState` (zoom, pan, split position), `compareMode`, and the project's cached thumbnail (read in a single key lookup from `thumbnails`) as a crisp placeholder while the source image loads (AC-F3.7).
+   - **Editor target:** Render the Editor shell immediately with the project's restored `stack`, `stackA`, both selections, `viewState` (zoom, pan, split position and orientation, edited side), `compareMode`, and the project's cached thumbnail (read in a single key lookup from `thumbnails`) as a crisp placeholder while the source image loads (AC-F3.7).
 7. **Step 6 (Async editor hydration, Editor target only):**
    - Read `sources[project.sourceHash]` and all `history` entries for `project.id` via `history.index('byProjectId')`.
-   - Migrate any outdated `EffectInstance.version` in `project.stack` in memory (marked for write-back on next save, section 6).
-   - Post `loadSource` to `preview.worker` ([engine.md section 11](engine.md#11-worker-protocol)), then dispatch a `settle` render of the restored `stack`.
+   - Migrate any outdated `EffectInstance.version` in `project.stack` and `project.stackA` in memory (marked for write-back on next save, section 6).
+   - Post `loadSource` to `preview.worker` ([engine.md section 11](engine.md#11-worker-protocol)), then dispatch a `settle` render of the restored `stack`. If the split view is on and `stackA` is not empty, the side A coordinator renders it too ([engine.md section 8.3](engine.md#83-scheduling)).
    - If restored `viewState` zooms past 1.25 device px per `settle` proxy pixel and proxy scale < 1, schedule the background `full` render per [engine.md section 8.3](engine.md#83-scheduling).
 8. **Step 7 (Idle housekeeping):**
    - Call `navigator.storage.estimate()` and `navigator.storage.persisted()` to populate Settings state.

@@ -7,6 +7,7 @@ Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low)
 Updated with post-v0.1.0 specs (F20 geometry, F21 formats, F22 effect catalogue) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with multi-image blending (`imageBlend`, F26) spec by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with exact geometry rounding and resampling rules (section 16.3) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
+Updated with split side rendering by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift engine spec
 
@@ -447,6 +448,10 @@ The main-thread render coordinator (`src/render/coordinator.ts`) owns the previe
 - When the control is released, or 150 ms pass without a change: send a `settle` render of the newest stack.
 - On a `settle` result, if the view shows the image at more than 1.25 device pixels per `settle` proxy pixel and the proxy scale is below 1, wait 500 ms without changes, then request a `full` render (8.6).
 - Results whose `generation` is older than the newest result already displayed are dropped. A `settle` result replaces a `drag` result of the same or older generation; a `drag` result never replaces a newer `settle` result.
+
+**Split side A** (product.md F11). One coordinator renders one stack. While the split view is on and the project's `stackA` is not empty, the app runs a second coordinator for side A (`src/state/side-renderer.ts`), with its own preview worker, `generation`, `drag` cap, stage cache and `full` render, so the scheduling and cancellation rules above apply to each side separately and a change to one side never re-renders the other. Both coordinators load the same source and receive the same view scale. The side A coordinator is created on demand and disposed as soon as the split view is off, `stackA` is empty or the project closes; side A is then drawn from side B's `original` bitmap. With both sides active the preview uses about twice the memory and two workers.
+
+Export of either side goes through `exportImage` on the main coordinator, which takes the stack as an argument.
 
 ### 8.4 Cancellation
 

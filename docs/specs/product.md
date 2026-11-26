@@ -4,6 +4,7 @@ Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium)
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with split orientation and per-side effect stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift product spec
 
@@ -29,18 +30,19 @@ These names are used in all six spec files and should be used in code, UI copy a
 | Term | Meaning |
 |---|---|
 | Library | The list of all projects stored in this browser profile. |
-| Project | One source image plus its effect stack, history, view state and export settings. |
+| Project | One source image plus its effect stacks (the main stack and the split view's side A stack), history, view state and export settings. |
 | Source image | The original file bytes as imported. Never modified. |
 | Effect type | A registered effect definition, for example `pixelSort`. Identified by a stable string `type` and an integer `version`. |
 | Effect instance | One entry in a project's effect stack: an effect type with its own parameter values, enabled flag, mix and blend mode. |
-| Effect stack | The ordered list of effect instances applied top to bottom to the source image. |
+| Effect stack | The ordered list of effect instances applied top to bottom to the source image. A project has a main stack (split side B) and may have a side A stack. Unless a text says otherwise, "the stack" means the stack of the side being edited. |
+| Side | One half of the split view: side A (left or top) or side B (right or bottom). Side B is the main stack. |
 | Parameter | One typed, named value of an effect instance, declared by the effect type's parameter schema. |
 | Preset | A named, saved list of effect instances. Built-in presets ship with the app and are read-only; user presets are stored. |
 | Commit | A completed change to the effect stack that creates one history entry (for example releasing a slider). |
 | History | The per-project list of committed effect stack snapshots used for undo and redo. |
 | Render level | The resolution at which the pipeline runs: `drag` (while a control is moving), `settle` (after it stops), `full` (source resolution). |
 | Proxy | The downscaled copy of the source image used for the `drag` and `settle` levels. |
-| Compare | Showing the source image instead of, or beside, the result. Two modes: toggle (with hold) and split. |
+| Compare | Showing the source image instead of the result (toggle, with hold), or showing two sides beside each other (split). |
 | Export | Writing the result at a chosen size and format to a file the user keeps. |
 | Line, run, interval | Pixel sort terms defined in [engine.md](engine.md#5-pixel-sort-effect-pixelsort). |
 
@@ -49,7 +51,7 @@ These names are used in all six spec files and should be used in code, UI copy a
 1. **Open.** The user picks one or more image files (file picker or drag and drop). Each file becomes a project in the library, and the editor opens the first one.
 2. **Pick effects.** The user applies a preset or adds effect instances to the stack. A new project starts with an empty stack and shows the source image.
 3. **Tune.** The user selects an instance and moves its parameter controls. The preview updates while dragging (`drag` level) and sharpens when the control stops (`settle` level). Undo and redo step through commits.
-4. **Compare.** The user toggles or holds Compare, or turns on the split view, to see the source beside the result.
+4. **Compare.** The user toggles or holds Compare to see the source, or turns on the split view to see the source (or a second effect stack) beside the result.
 5. **Export.** The user picks format, quality and size, and downloads or shares the file. The project stays in the library with its stack, so the user can come back and change it.
 
 The library screen is the home screen. The editor screen shows one project at a time.
@@ -106,7 +108,7 @@ The library screen lists every project as a card with a thumbnail of the current
 
 ### F3. Session restore
 
-Closing the tab, reloading or restarting the browser must not reset the app. On start the app restores the library, reopens the project that was open (if one was), and restores its effect stack, selected instance, history, zoom and pan, compare split position and export settings. Global settings (theme, compare mode) are restored too. The restore sequence is specified in [persistence.md](persistence.md#9-restore-sequence-on-startup).
+Closing the tab, reloading or restarting the browser must not reset the app. On start the app restores the library, reopens the project that was open (if one was), and restores its effect stack, selected instance, history, zoom and pan, compare split position and orientation, both effect stacks, the side being edited and export settings. Global settings (theme, compare mode) are restored too. The restore sequence is specified in [persistence.md](persistence.md#9-restore-sequence-on-startup).
 
 - AC-F3.1: Open a project, add a pixel sort instance, change the angle to 90, wait 1 s, close the tab, reopen the app URL: the same project is open, the instance is selected and shows angle 90, and the preview matches what was shown before closing.
 - AC-F3.2: After AC-F3.1, Undo restores the stack from before the angle change.
@@ -190,7 +192,7 @@ The editor renders the stack at the `drag` level while a control moves and at th
 
 ### F9. Undo and redo
 
-Every commit (parameter change, add, remove, reorder, enable or disable, preset apply, reset) creates one history entry with a label. Undo and redo move through the entries; a new commit after undo discards the redo entries. History is stored with the project and survives restarts; it holds up to 200 entries per project, dropping the oldest.
+Every commit (parameter change, add, remove, reorder, enable or disable, preset apply, reset) creates one history entry with a label. Undo and redo move through the entries; a new commit after undo discards the redo entries. History is stored with the project and survives restarts; it holds up to 200 entries per project, dropping the oldest. Both sides of the split share one history (F11).
 
 - AC-F9.1: Ctrl+Z / Cmd+Z undoes and Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y redoes; the toolbar buttons do the same and are disabled when nothing can be undone or redone.
 - AC-F9.2: The undo button's tooltip and accessible name include the entry label, for example "Undo Angle 90°" (label formats: [persistence.md section 8.2](persistence.md#82-history-jump-and-rich-action-labels-f23)).
@@ -200,7 +202,7 @@ Every commit (parameter change, add, remove, reorder, enable or disable, preset 
 
 ### F10. Presets
 
-The preset list shows built-in presets first (the eight listed in [engine.md section 7](engine.md#7-built-in-presets)), then user presets by name. Applying a preset replaces the stack (one commit). When the stack already has effects, a confirmation asks first: "Replace current effects?", with the number of effects that will be removed and a note that the change can be undone. Cancel changes nothing and adds no history entry. With an empty stack the preset applies immediately. "Add to stack" appends the preset's instances instead. "Save as preset" stores the current stack under a name. User presets can be renamed and deleted. Presets are global, not per project.
+The preset list shows built-in presets first (the eight listed in [engine.md section 7](engine.md#7-built-in-presets)), then user presets by name. Applying a preset replaces the stack (one commit). When the stack already has effects, a confirmation asks first: "Replace current effects?", with the number of effects that will be removed and a note that the change can be undone. Cancel changes nothing and adds no history entry. With an empty stack the preset applies immediately. "Add to stack" appends the preset's instances instead. "Save as preset" stores the current stack under a name. User presets can be renamed and deleted. Presets are global, not per project. Apply, "Add to stack" and "Save as preset" act on the stack of the side being edited (F11).
 
 - AC-F10.1: Applying "ASDF classic" to a project with an empty stack yields two pixel sort instances (angle 270, then angle 0) and a visible result.
 - AC-F10.2: Saving a stack as "Mine", then applying "Mine" to another project, reproduces the same parameters and seeds.
@@ -210,12 +212,39 @@ The preset list shows built-in presets first (the eight listed in [engine.md sec
 
 ### F11. Compare
 
-The Compare button toggles between the result and the source image (keyboard: `\` toggles; holding the button with a pointer or holding `\` for more than 300 ms shows the source only while held). The split view (toolbar toggle or `S`) shows the source on the left and the result on the right of a draggable divider.
+The Compare button toggles between the result (side B) and the source image (keyboard: `\` toggles; holding the button with a pointer or holding `\` for more than 300 ms shows the source only while held).
+
+The split view (toolbar toggle or `S`) shows two sides of the same image with a draggable divider. Side A is on the left or top; side B is on the right or bottom.
+
+**Orientation.** The split is vertical (side A left, side B right; the default) or horizontal (side A top, side B bottom). The orientation button next to the split toggle, or `Shift+S`, switches between them. Switching while the split view is off also turns it on, so the change is visible. The divider position is one value: the share of the canvas width (vertical) or height (horizontal) given to side A, and it is kept when the orientation changes. Orientation and position are saved per project.
+
+**Sides and stacks.** Each side has its own effect stack. Side B is the project's main stack, the one shown when the split view is off. Side A has a second stack that starts empty, so side A shows the source image until effects are added to it. Each stack holds up to 32 instances. Each side has a small label on the canvas: "Original" while its stack is empty, otherwise "A" or "B".
+
+**Editing a side.** While the split view is on, the effects panel shows an "Editing" switch with the options "A · Left" and "B · Right" ("A · Top" and "B · Bottom" when horizontal). The stack list, parameter panel and presets act on the chosen side; B is chosen by default. While the split view is off they act on side B. Two actions sit beside the switch:
+
+- **Copy to other side** replaces the other side's stack with a copy of the edited side's stack (new instance ids, same parameters and seeds). It is disabled while the edited side's stack is empty.
+- **Swap sides** exchanges the two stacks. It is disabled while both are empty.
+
+Neither asks for confirmation; each is one commit that Undo reverts.
+
+**History.** Edits to both sides share the project's one history. An edit to side A, and any edit made while the split view is on, has the side in its label, for example "Add Pixel sort (side A)". "Copy A to B", "Copy B to A" and "Swap sides" name the sides already.
+
+**Rendering.** Side A is rendered only while the split view is on and its stack is not empty. Library thumbnails always show side B.
 
 - AC-F11.1: Clicking Compare shows the source and labels the canvas "Original"; clicking again shows the result.
 - AC-F11.2: Pressing and holding Compare for 1 s and releasing returns to the result.
-- AC-F11.3: In split view, dragging the divider moves it; with the divider focused, Left and Right move it by 1% and Shift+Left/Right by 10%; its position is restored after reload.
+- AC-F11.3: In a vertical split, dragging the divider moves it; with the divider focused, Left and Right move it by 1% and Shift+Left/Right by 10%; its position is restored after reload.
 - AC-F11.4: Compare and split work while zoomed and panned, with both sides aligned to the same pixels.
+- AC-F11.5: The orientation button and `Shift+S` switch between a left/right and a top/bottom split; while the split view is off, either one turns it on. In a top/bottom split, side A is above a horizontal divider and side B below it.
+- AC-F11.6: In a horizontal split, dragging the divider moves it up and down; with the divider focused, Up and Down move it by 1% and Shift+Up/Down by 10%.
+- AC-F11.7: Each project keeps its own split orientation and divider position, and both are restored after reload.
+- AC-F11.8: With the split view on, side A starts empty, shows the source and is labelled "Original". Choosing "A" in the Editing switch and adding an effect changes side A's pixels only; side B's stack and pixels do not change. Each side's label is "Original" while its stack is empty and "A" or "B" otherwise.
+- AC-F11.9: "Copy to other side" makes the other side's pixels match the edited side's, and "Swap sides" exchanges the two stacks. Each is one history entry, and one Undo restores both stacks.
+- AC-F11.10: Undo and Redo step through edits to either side in order, and the button names include the side, for example "Undo Add Channel shift (side A)".
+- AC-F11.11: With side A chosen, applying a preset replaces side A's stack only (with the F10 confirmation counting side A's effects), and "Save as preset" saves side A's stack.
+- AC-F11.12: Side A's stack, the selected instance on each side and the side being edited are restored after reload.
+- AC-F11.13: Two sides with the same effect stack stay pixel-aligned while zoomed and panned.
+- AC-F11.14: While side A's stack is empty or the split view is off, no second preview worker exists.
 
 ### F12. Export
 
@@ -227,6 +256,8 @@ When a file-size limit is active:
 - When export finishes, the dialog displays the final exported file size along with any adjusted dimensions or quality (and a gentle notice if even the minimum size exceeded the target).
 - The file-size limit is persisted per project alongside the other export settings.
 
+Export renders side B. When side A's stack is not empty, the dialog also offers a Side choice (A or B, named by position as in F11); it starts at B each time the dialog opens and is not saved.
+
 Export renders at the chosen size in a separate worker with a progress bar and Cancel. On browsers that support sharing files (`navigator.canShare({files})`), a Share button is shown next to Download. Exported files carry no EXIF, GPS or ICC metadata and are sRGB.
 
 - AC-F12.1: Exporting a 12 MP project as PNG at Full size downloads a PNG of exactly the source dimensions within 5 s on a reference laptop.
@@ -237,6 +268,7 @@ Export renders at the chosen size in a separate worker with a progress bar and C
 - AC-F12.7: The export settings last used for a project are preselected the next time its export dialog opens.
 - AC-F12.8: Exporting with a file-size limit produces a file whose byte size is at or below the chosen target (or reaches the 64 px minimum side and reports that the target could not be met) while preserving EXIF-free output and clean cancellation within 1 s.
 - AC-F12.9: The chosen file-size limit (Off, preset, or custom) is persisted per project and restored the next time the export dialog opens.
+- AC-F12.10: With side A empty the dialog has no Side choice. With effects on side A it offers A and B, starts at B, and the downloaded pixels are those of the chosen side.
 
 ### F13. Zoom and pan
 

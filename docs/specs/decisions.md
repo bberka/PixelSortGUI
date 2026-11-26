@@ -4,6 +4,7 @@ Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium)
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup/restore (F17), and multi-image blending (F26) decisions (D27 to D30) and open questions (Q16 to Q19) by Gemini 4 Neon (Antigravity, thought level low), specification subagent.
+Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift decisions and open questions
 
@@ -224,6 +225,27 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch.
 - **Reason:** The first thing a user wants is to open a photo and get a result. A landing page adds a step on every visit and marketing copy that `DESIGN.md` section 1 rules out. An in-app guide is part of the offline precache, so it also works without a connection.
 - **Revisit if:** The owner wants a public page that explains Drift to people who have not opened it.
+
+### D33. Split orientation, side naming and controls (2026-11-26)
+
+- **Request:** "when split i should be able to set filters for left and right; also allow splitting horizontally too."
+- **Choice:** The split is vertical or horizontal, switched by a button beside the Split toggle or `Shift+S`; switching while the split view is off turns it on. Orientation and one shared divider position are saved per project. The sides are named A (left or top) and B (right or bottom). The switch shows both the letter and the position ("A · Left"); history labels and canvas pills use the letter only, which stays true after the orientation changes. A side's pill reads "Original" while its stack is empty.
+- **Reason:** A button or shortcut that changed an invisible setting would look broken. One shared position keeps the divider where the user left it. The previous "Edited" pill is replaced because both sides can now be edited.
+- **Revisit if:** Users want a separate position per orientation.
+
+### D34. Side A as an optional second stack with one shared history (2026-11-26)
+
+- **Options considered:** (a) Rename `stack` to a two-element array with a database version bump; (b) keep `stack` as side B and add optional `stackA` to project and history records; (c) a separate history per side.
+- **Choice:** Option (b) (`product.md` F11, `persistence.md` section 3). Every history entry snapshots both stacks, so Undo walks edits to both sides in order and "Copy to other side" and "Swap sides" are single commits. Labels get "(side A)" or "(side B)" when the edit is to side A or made with the split view on. Undo does not change which side is being edited. Presets, "Save as preset" and the stack and parameter panels act on the edited side, which is saved in `viewState` and counts only while the split view is on. Copy and swap ask for no confirmation. Export defaults to side B and offers a Side choice only when side A has effects; the choice is not saved. Thumbnails show side B.
+- **Reason:** Existing records stay valid with no migration, projects that never use the split view are stored exactly as before, and the single-stack behaviour is unchanged.
+- **Revisit if:** A third side or per-side export settings are needed.
+
+### D35. A second render coordinator for side A (2026-11-26)
+
+- **Options considered:** (a) Teach the coordinator and preview worker to schedule two stacks in one worker; (b) run a second `RenderCoordinator` while side A is visible and not empty.
+- **Choice:** Option (b) (`engine.md` section 8.3).
+- **Reason:** Coalescing, cooperative cancellation, crash recovery and full-resolution renders work per side with no change to the worker protocol, and an empty or hidden side A costs nothing. The price is a second decoded proxy and worker while both sides are visible.
+- **Revisit if:** Memory use on large images with both sides active causes failures; then share one worker and its decoded source.
 
 ---
 

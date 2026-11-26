@@ -13,6 +13,7 @@ import {
 	PanelRightOpenIcon,
 } from 'lucide-react';
 import {EditorSlot} from './editor-slots.tsx';
+import {SplitSideSwitcher} from '@/features/stack/split-side-switcher.tsx';
 import {Button} from '@/components/ui/button';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
 import {HistoryPanel} from '@/features/history/history-panel.tsx';
@@ -114,7 +115,8 @@ function phoneSheetHeightStyle(detent: PhoneSheetDetent): string {
 
 		case 'half': {
 			// Cap Half detent so the canvas keeps >= 40% of viewport height while a slider is dragged.
-			return 'min(42dvh, calc(60dvh - 142px))';
+			// The split side switcher, when present, comes out of this budget.
+			return 'min(42dvh, calc(60dvh - 142px - var(--split-switcher-height, 0px)))';
 		}
 
 		case 'expanded': {
@@ -342,6 +344,7 @@ export function EditorScreen() {
 				}
 				className={cn(
 					'flex min-h-0 min-w-0 shrink-0 flex-col bg-card',
+					'has-data-[slot=split-side-switcher]:[--split-switcher-height:44px]',
 					isDesktop && 'w-[340px] border-l border-border',
 					isTablet && 'w-full border-t border-border',
 					isPhonePortrait && 'w-full border-t border-border',
@@ -444,6 +447,13 @@ export function EditorScreen() {
 						</Button>
 					</div>
 				) : null}
+
+				{(isTablet && tabletCollapsed) ||
+				(isPhoneLandscape && !landscapeDrawerOpen) ||
+				// The desktop history view replaces the stack and parameters.
+				(isDesktop && historyActive) ? null : (
+					<SplitSideSwitcher />
+				)}
 
 				<Tabs
 					className={cn(

@@ -35,6 +35,8 @@ import {
 	useTransientStore,
 } from '@/app/runtime-context.tsx';
 import {selectShowingOriginal} from '@/state/transient.ts';
+import {sideCanvasLabel, selectSplitOrientation} from '@/state/split-sides.ts';
+import type {RenderStatus} from '@/state/app-store.ts';
 import {DEFAULT_SPLIT_POSITION} from '@/storage/types.ts';
 
 /**
@@ -51,6 +53,23 @@ const CANVAS_LABEL = 'Image canvas';
 function devicePixelRatio(): number {
 	const ratio = globalThis.devicePixelRatio;
 	return typeof ratio === 'number' && ratio > 0 ? ratio : 1;
+}
+
+function toRenderedSide({frame, full}: Pick<RenderStatus, 'frame' | 'full'>) {
+	return {
+		frame: frame
+			? {bitmap: frame.bitmap, width: frame.width, height: frame.height}
+			: null,
+		tiles: full
+			? full.tiles.map((tile) => ({
+					x: tile.x,
+					y: tile.y,
+					bitmap: tile.bitmap,
+					width: tile.bitmap.width,
+					height: tile.bitmap.height,
+				}))
+			: null,
+	};
 }
 
 function isPointerTarget(target: EventTarget | null): boolean {
@@ -93,7 +112,20 @@ export function CanvasStage() {
 	const full = useAppStore((state) => state.render.full);
 	const busy = useAppStore((state) => state.render.busy);
 	const progress = useAppStore((state) => state.render.progress);
-	const failed = useAppStore((state) => state.render.failed);
+	const failed = useAppStore(
+		(state) => state.render.failed || state.renderA.failed,
+	);
+	const frameA = useAppStore((state) => state.renderA.frame);
+	const fullA = useAppStore((state) => state.renderA.full);
+	const busyA = useAppStore((state) => state.renderA.busy);
+	const progressA = useAppStore((state) => state.renderA.progress);
+	const orientation = useAppStore(selectSplitOrientation);
+	const labelA = useAppStore((state) =>
+		sideCanvasLabel(state.activeProject, 'a'),
+	);
+	const labelB = useAppStore((state) =>
+		sideCanvasLabel(state.activeProject, 'b'),
+	);
 
 	const [labelZoom, setLabelZoom] = useState(1);
 
@@ -118,11 +150,19 @@ export function CanvasStage() {
 	const lastTapRef = useRef<{time: number; position: Point} | null>(null);
 	const wheelTimerRef = useRef<unknown>(null);
 
-	const previewBusy = busy.drag || busy.settle;
+	const previewBusyB = busy.drag || busy.settle;
+	const previewBusy = previewBusyB || busyA.drag || busyA.settle;
 	const progressVisible = useDelayedFlag(previewBusy, PROGRESS_DELAY_MS);
-	const progressFraction = busy.settle ? progress.settle : progress.drag;
+	// One bar: side B's progress, or side A's while only A is rendering.
+	const shown = previewBusyB
+		? {busy, progress}
+		: {busy: busyA, progress: progressA};
+	const progressFraction = shown.busy.settle
+		? shown.progress.settle
+		: shown.progress.drag;
 	const announcedRenderRef = useRef(false);
-	const renderBusy = busy.settle || busy.full;
+	const renderingFull = busy.full || busyA.full;
+	const renderBusy = busy.settle || busyA.settle || renderingFull;
 	const announceRender = useDelayedFlag(renderBusy, PROGRESS_DELAY_MS);
 
 	// Announce long settle and full-resolution renders (>= 300 ms) without
@@ -183,13 +223,18 @@ export function CanvasStage() {
 			return;
 		}
 
-		const tiles = fullRef.current;
 		const loadedSource = renderSourceRef.current;
+		// Read at draw time: side A's bitmaps close as soon as it leaves the state.
+		const {renderA, activeProject} = bundle.store.getState();
 		let compare: CompareDraw = {mode: 'none'};
 		if (showingOriginalRef.current) {
 			compare = {mode: 'original'};
 		} else if (compareModeRef.current === 'split') {
-			compare = {mode: 'split', position: splitPositionRef.current};
+			compare = {
+				mode: 'split',
+				position: splitPositionRef.current,
+				orientation: activeProject?.viewState.splitOrientation,
+			};
 		}
 
 		drawCanvas({
@@ -204,27 +249,13 @@ export function CanvasStage() {
 						height: loadedSource.settle.height,
 					}
 				: null,
-			frame: frameRef.current
-				? {
-						bitmap: frameRef.current.bitmap,
-						width: frameRef.current.width,
-						height: frameRef.current.height,
-					}
-				: null,
-			tiles: tiles
-				? tiles.tiles.map((tile) => ({
-						x: tile.x,
-						y: tile.y,
-						bitmap: tile.bitmap,
-						width: tile.bitmap.width,
-						height: tile.bitmap.height,
-					}))
-				: null,
+			...toRenderedSide({frame: frameRef.current, full: fullRef.current}),
+			sideA: toRenderedSide(renderA),
 			compare,
 			checker: checkerRef.current,
 			dpr,
 		});
-	}, []);
+	}, [bundle.store]);
 
 	const scheduleDraw = useCallback(() => {
 		if (rafRef.current !== null) {
@@ -288,12 +319,14 @@ export function CanvasStage() {
 			writeLabel(next.zoom);
 			setLabelZoom(next.zoom);
 			if (viewportRef.current.width > 0 && viewportRef.current.height > 0) {
-				bundle.coordinator.setViewScale(next.zoom * devicePixelRatio());
+				bundle.store
+					.getState()
+					.setRenderViewScale(next.zoom * devicePixelRatio());
 			}
 
 			scheduleDraw();
 		},
-		[bundle.coordinator, scheduleDraw, writeLabel],
+		[bundle.store, scheduleDraw, writeLabel],
 	);
 
 	// A new project, or a new source size, takes the stored view state.
@@ -376,6 +409,10 @@ export function CanvasStage() {
 		splitPositionRef.current = clampSplitPosition(splitPosition);
 		scheduleDraw();
 	}, [compareMode, showingOriginal, splitPosition, scheduleDraw]);
+
+	useEffect(() => {
+		scheduleDraw();
+	}, [frameA, fullA, orientation, scheduleDraw]);
 
 	useEffect(
 		() =>
@@ -727,6 +764,9 @@ export function CanvasStage() {
 				showingOriginal={showingOriginal}
 				splitActive={compareMode === 'split' && projectId !== null}
 				splitPosition={splitPosition}
+				orientation={orientation}
+				labelA={labelA}
+				labelB={labelB}
 				onDragSplit={(position) => {
 					splitPositionRef.current = clampSplitPosition(position);
 					scheduleDraw();
@@ -743,7 +783,10 @@ export function CanvasStage() {
 				zoom={labelZoom}
 				progressVisible={progressVisible}
 				progressFraction={progressFraction}
-				renderingFull={busy.full}
+				renderingFull={renderingFull}
+				renderingFullAtTop={
+					compareMode === 'split' && orientation === 'horizontal'
+				}
 				failed={failed}
 				onFit={() => {
 					const source = sourceRef.current;
@@ -759,7 +802,7 @@ export function CanvasStage() {
 					}
 				}}
 				onRetry={() => {
-					bundle.coordinator.retry();
+					bundle.store.getState().retryRender();
 				}}
 			/>
 		</div>

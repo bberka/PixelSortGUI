@@ -5,6 +5,7 @@ export * from './app-store.ts';
 export * from './effect-utils.ts';
 export * from './pwa.ts';
 export * from './router.ts';
+export * from './split-sides.ts';
 export * from './theme.ts';
 export * from './thumbnail.ts';
 export * from './transient.ts';
@@ -39,7 +40,10 @@ export function bootAppRuntime(): AppRuntime {
 		},
 	};
 
-	runtime.ready = restoreStartup({coordinator}).then((result) => {
+	runtime.ready = restoreStartup({
+		coordinator,
+		createSideCoordinator: () => createRenderCoordinator(),
+	}).then((result) => {
 		runtime.result = result;
 		if (result.status !== 'ready') {
 			coordinator.dispose();

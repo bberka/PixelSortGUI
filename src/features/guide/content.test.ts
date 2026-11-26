@@ -15,6 +15,8 @@ function keysFor(where: string): string[] {
 const NAMED_KEYS: Readonly<Record<string, string>> = {
 	Left: 'ArrowLeft',
 	Right: 'ArrowRight',
+	Up: 'ArrowUp',
+	Down: 'ArrowDown',
 	'Page Up': 'PageUp',
 	'Page Down': 'PageDown',
 };
@@ -62,8 +64,18 @@ describe('guide content', () => {
 
 	it('lists split divider, slider and dial keys their handlers accept', () => {
 		const range = {min: 0, max: 100, step: 1};
-		for (const name of keysFor('Split divider')) {
-			expect(stepSplitPosition(0.5, key(name).key, false)).not.toBeNull();
+		for (const [where, orientation] of [
+			['Left/right split divider', 'vertical'],
+			['Top/bottom split divider', 'horizontal'],
+			['Split divider', 'vertical'],
+			['Split divider', 'horizontal'],
+		] as const) {
+			expect(keysFor(where)).not.toEqual([]);
+			for (const name of keysFor(where)) {
+				expect(
+					stepSplitPosition(0.5, key(name).key, false, orientation),
+				).not.toBeNull();
+			}
 		}
 
 		for (const name of keysFor('Angle dial')) {

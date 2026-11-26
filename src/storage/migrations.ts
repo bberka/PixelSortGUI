@@ -125,3 +125,35 @@ export function resolveStoredStack(
 		unsupportedInstances,
 	};
 }
+
+export type ResolvedProjectResult<Project> = {
+	project: Project;
+	envelopeStatus: 'ok' | 'newer-version';
+	needsWriteBack: boolean;
+	unsupportedInstances: UnsupportedInstanceInfo[];
+};
+
+// `resolveStoredStack` for both of a project's stacks.
+export function resolveProjectStacks<
+	Project extends {stack: EffectStack; stackA?: EffectStack},
+>(project: Project, registry: EffectRegistry): ResolvedProjectResult<Project> {
+	const main = resolveStoredStack(project.stack, registry);
+	const sideA = project.stackA
+		? resolveStoredStack(project.stackA, registry)
+		: null;
+	const needsWriteBack = main.needsWriteBack || Boolean(sideA?.needsWriteBack);
+	return {
+		project: needsWriteBack
+			? {...project, stack: main.stack, ...(sideA && {stackA: sideA.stack})}
+			: project,
+		envelopeStatus:
+			sideA?.envelopeStatus === 'newer-version'
+				? 'newer-version'
+				: main.envelopeStatus,
+		needsWriteBack,
+		unsupportedInstances: [
+			...main.unsupportedInstances,
+			...(sideA?.unsupportedInstances ?? []),
+		],
+	};
+}

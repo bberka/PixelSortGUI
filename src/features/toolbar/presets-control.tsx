@@ -37,6 +37,11 @@ import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {MAX_STACK_INSTANCES} from '@/engine/types.ts';
 import type {BuiltinPreset} from '@/presets/builtin.ts';
 import type {UserPresetRecord} from '@/storage/types.ts';
+import {
+	selectEditingSide,
+	selectEditingStack,
+	sideLetter,
+} from '@/state/split-sides.ts';
 
 type PresetItem = BuiltinPreset | UserPresetRecord;
 
@@ -231,7 +236,13 @@ export function PresetsControl() {
 	const builtinPresets = useAppStore((state) => state.builtinPresets);
 	const userPresets = useAppStore((state) => state.presets);
 	const stackLength = useAppStore(
-		(state) => state.activeProject?.stack.instances.length ?? 0,
+		(state) => selectEditingStack(state)?.instances.length ?? 0,
+	);
+	// Named in the confirmation only while the split view shows two stacks.
+	const sideName = useAppStore((state) =>
+		state.compareMode === 'split'
+			? sideLetter(selectEditingSide(state))
+			: undefined,
 	);
 	const applyPreset = useAppStore((state) => state.applyPreset);
 	const addPresetToStack = useAppStore((state) => state.addPresetToStack);
@@ -380,6 +391,7 @@ export function PresetsControl() {
 
 			<ReplaceEffectsDialog
 				presetName={replacing?.preset.name ?? null}
+				sideName={sideName}
 				effectCount={replacing?.effectCount ?? 0}
 				onOpenChange={(nextOpen) => {
 					if (!nextOpen) {

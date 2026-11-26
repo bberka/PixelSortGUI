@@ -120,6 +120,32 @@ export function validateStackForWrite(stack: EffectStack): void {
 	}
 }
 
+/**
+ Returns `record` holding the given side A. An empty side A leaves no fields
+ behind, so a project that never used it is stored as before.
+ */
+export function withSideA<
+	Value extends {
+		stackA?: EffectStack;
+		selectedInstanceIdA?: string | null;
+	},
+>(
+	record: Value,
+	stackA: EffectStack | undefined,
+	selectedInstanceIdA: string | null | undefined,
+): Value {
+	const next = {...record};
+	if (!stackA || stackA.instances.length === 0) {
+		delete next.stackA;
+		delete next.selectedInstanceIdA;
+		return next;
+	}
+
+	next.stackA = stackA;
+	next.selectedInstanceIdA = selectedInstanceIdA ?? null;
+	return next;
+}
+
 export function normalizeViewState(viewState: ViewState): ViewState {
 	const zoom = Number.isFinite(viewState.zoom)
 		? clamp(viewState.zoom, MIN_ZOOM, MAX_ZOOM)
@@ -127,11 +153,23 @@ export function normalizeViewState(viewState: ViewState): ViewState {
 	const splitPosition = Number.isFinite(viewState.splitPosition)
 		? clamp(viewState.splitPosition, 0, 1)
 		: DEFAULT_SPLIT_POSITION;
-	return {
+	const next: ViewState = {
 		...viewState,
 		zoom,
 		splitPosition,
 	};
+	if (
+		next.splitOrientation !== 'vertical' &&
+		next.splitOrientation !== 'horizontal'
+	) {
+		delete next.splitOrientation;
+	}
+
+	if (next.editSide !== 'a' && next.editSide !== 'b') {
+		delete next.editSide;
+	}
+
+	return next;
 }
 
 export function normalizeExportSettings(

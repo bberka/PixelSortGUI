@@ -1,3 +1,4 @@
+import type {SplitOrientation} from '../../storage/types.ts';
 import {
 	SMOOTHING_MAX_ZOOM,
 	imageRect,
@@ -55,7 +56,17 @@ export type TileImage = FrameImage & {
 export type CompareDraw =
 	| {readonly mode: 'none'}
 	| {readonly mode: 'original'}
-	| {readonly mode: 'split'; readonly position: number};
+	| {
+			readonly mode: 'split';
+			readonly position: number;
+			readonly orientation?: SplitOrientation;
+	  };
+
+// A rendered result: the preview frame and any full-resolution tiles over it.
+export type RenderedSide = {
+	readonly frame: FrameImage | null;
+	readonly tiles: readonly TileImage[] | null;
+};
 
 export type DrawInput = {
 	readonly surface: CanvasSurface;
@@ -66,6 +77,8 @@ export type DrawInput = {
 	readonly original?: FrameImage | null;
 	readonly frame: FrameImage | null;
 	readonly tiles: readonly TileImage[] | null;
+	// Split side A. Without a frame, side A shows `original`.
+	readonly sideA?: RenderedSide | null;
 	readonly compare?: CompareDraw;
 	// Backdrop for transparent pixels; null leaves the area cleared.
 	readonly checker: CanvasPattern | null;
@@ -119,12 +132,12 @@ export function drawCanvas(input: DrawInput): void {
 		width: source.width,
 		height: source.height,
 	};
-	const drawEdited = () => {
-		if (input.frame) {
-			drawRegion(surface, input.frame, fullRegion, view, viewport);
+	const drawEdited = ({frame, tiles}: RenderedSide) => {
+		if (frame) {
+			drawRegion(surface, frame, fullRegion, view, viewport);
 		}
 
-		for (const tile of input.tiles ?? []) {
+		for (const tile of tiles ?? []) {
 			drawRegion(
 				surface,
 				tile,
@@ -148,30 +161,44 @@ export function drawCanvas(input: DrawInput): void {
 		const ratio = Number.isFinite(compare.position)
 			? Math.min(1, Math.max(0, compare.position))
 			: 0.5;
-		const splitX = ratio * viewport.width;
-
-		if (splitX > 0 && input.original) {
+		const horizontal = compare.orientation === 'horizontal';
+		const extent = horizontal ? viewport.height : viewport.width;
+		const split = ratio * extent;
+		const clipped = (from: number, length: number, paint: () => void) => {
 			surface.save();
 			surface.beginPath();
-			surface.rect(0, 0, splitX, viewport.height);
+			if (horizontal) {
+				surface.rect(0, from, viewport.width, length);
+			} else {
+				surface.rect(from, 0, length, viewport.height);
+			}
+
 			surface.clip();
-			drawRegion(surface, input.original, fullRegion, view, viewport);
+			paint();
 			surface.restore();
+		};
+
+		const sideA = input.sideA?.frame ? input.sideA : null;
+		if (split > 0 && (sideA || input.original)) {
+			clipped(0, split, () => {
+				if (sideA) {
+					drawEdited(sideA);
+				} else if (input.original) {
+					drawRegion(surface, input.original, fullRegion, view, viewport);
+				}
+			});
 		}
 
-		if (splitX < viewport.width) {
-			surface.save();
-			surface.beginPath();
-			surface.rect(splitX, 0, viewport.width - splitX, viewport.height);
-			surface.clip();
-			drawEdited();
-			surface.restore();
+		if (split < extent) {
+			clipped(split, extent - split, () => {
+				drawEdited(input);
+			});
 		}
 
 		return;
 	}
 
-	drawEdited();
+	drawEdited(input);
 }
 
 /**

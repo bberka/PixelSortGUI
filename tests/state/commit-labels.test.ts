@@ -23,6 +23,13 @@ const percent: ParamSpec = {
 	unit: 'percent',
 };
 
+const picture: ParamSpec = {
+	kind: 'image',
+	label: 'Blend image',
+	group: 'Source',
+	default: '',
+};
+
 describe('formatParamCommitLabel', () => {
 	it.each<[ParamSpec, ParamValue, string]>([
 		[specs.threshold, [0.25, 0.8], 'Threshold range 0.25 to 0.80'],
@@ -38,6 +45,8 @@ describe('formatParamCommitLabel', () => {
 		[specs.seed, 12_345, 'Seed 12345'],
 		[channelShiftParamSpecs.redX, -20, 'Red X -20 px'],
 		[percent, 0.45, 'Amount 45%'],
+		[picture, 'a'.repeat(64), 'Blend image chosen'],
+		[picture, '', 'Blend image cleared'],
 	])('labels %o set to %o', (spec, value, expected) => {
 		expect(formatParamCommitLabel(spec, value)).toBe(expected);
 	});

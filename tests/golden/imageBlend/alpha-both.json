@@ -1,0 +1,32 @@
+{
+	"input": "alpha-32x32",
+	"extraSources": {
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+			"fixture": "alpha-32x32"
+		}
+	},
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "ib000001",
+				"type": "imageBlend",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"image": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					"blendMode": "multiply",
+					"opacity": 0.67,
+					"fit": "cover",
+					"scale": 1,
+					"offsetX": 0.25,
+					"offsetY": -0.25,
+					"rotation": 45
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

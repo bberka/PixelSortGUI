@@ -1018,6 +1018,10 @@ function valuesFor(spec: ParamSpec): ParamValue[] {
 		case 'seed': {
 			return [0, 0xff_ff_ff_ff];
 		}
+
+		case 'image': {
+			return [''];
+		}
 	}
 }
 

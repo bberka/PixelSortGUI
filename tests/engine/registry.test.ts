@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vite-plus/test';
-import {createRegistry} from '../../src/engine/registry.ts';
+import {createRegistry, listedEffects} from '../../src/engine/registry.ts';
 import {addEffect, invertEffect, noiseEffect} from './sample-effects.ts';
 
 describe('createRegistry', () => {
@@ -13,6 +13,13 @@ describe('createRegistry', () => {
 		const add = addEffect();
 		const registry = createRegistry([noiseEffect, add, invertEffect]);
 		expect(registry.list()).toEqual([noiseEffect, add, invertEffect]);
+	});
+
+	it('offers every effect except unlisted ones, which stay resolvable', () => {
+		const hidden = {...addEffect(), unlisted: true};
+		const registry = createRegistry([noiseEffect, hidden, invertEffect]);
+		expect(listedEffects(registry)).toEqual([noiseEffect, invertEffect]);
+		expect(registry.get('testAdd')).toBe(hidden);
 	});
 
 	it('throws on a duplicate type', () => {

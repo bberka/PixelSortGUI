@@ -7,6 +7,7 @@ export type AngleSpec = Extract<ParamSpec, {kind: 'angle'}>;
 export type EnumSpec = Extract<ParamSpec, {kind: 'enum'}>;
 export type BooleanSpec = Extract<ParamSpec, {kind: 'boolean'}>;
 export type SeedSpec = Extract<ParamSpec, {kind: 'seed'}>;
+export type ImageSpec = Extract<ParamSpec, {kind: 'image'}>;
 export type NumericSpec = NumberSpec | IntegerSpec;
 
 export function decimalsForStep(step: number): number {
@@ -130,7 +131,8 @@ export function isDefaultParamValue(
 		case 'integer':
 		case 'boolean':
 		case 'enum':
-		case 'angle': {
+		case 'angle':
+		case 'image': {
 			return value === spec.default;
 		}
 

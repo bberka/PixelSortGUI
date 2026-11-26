@@ -103,23 +103,32 @@ test.describe('golden cases match in real browsers', () => {
 					? // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
 						(applyTransform(fixture, entry.spec.transform) as Image)
 					: fixture;
-				const targetWidth = Math.max(
-					1,
-					Math.floor(source.width * entry.spec.scale),
-				);
-				const targetHeight = Math.max(
-					1,
-					Math.floor(source.height * entry.spec.scale),
-				);
-				const renderInput =
-					targetWidth === source.width && targetHeight === source.height
-						? source
+				const scaled = (image: Image, scale: number): Image => {
+					const width = Math.max(1, Math.floor(image.width * scale));
+					const height = Math.max(1, Math.floor(image.height * scale));
+					return width === image.width && height === image.height
+						? image
 						: // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
-							(boxDownscale(source, targetWidth, targetHeight) as {
-								width: number;
-								height: number;
-								data: Uint8ClampedArray<ArrayBuffer>;
-							});
+							(boxDownscale(image, width, height) as Image);
+				};
+
+				const renderInput = scaled(source, entry.spec.scale);
+				const extraSources = new Map(
+					Object.entries(entry.spec.extraSources ?? {}).map(
+						([sha256, extra]) => {
+							// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
+							const stored = getSyntheticFixture(extra.fixture) as Image;
+							return [
+								sha256,
+								{
+									...scaled(stored, extra.scale ?? entry.spec.scale),
+									sourceWidth: stored.width,
+									sourceHeight: stored.height,
+								},
+							];
+						},
+					),
+				);
 
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
 				const rendered = (await renderStack(
@@ -131,6 +140,7 @@ test.describe('golden cases match in real browsers', () => {
 						sourceWidth: source.width,
 						sourceHeight: source.height,
 						debug: entry.spec.debug,
+						extraSources,
 						checkpoint: () => undefined,
 					},
 				)) as {

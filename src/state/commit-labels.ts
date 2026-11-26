@@ -71,6 +71,10 @@ function formatValue(spec: ParamSpec, value: ParamValue): string {
 		case 'seed': {
 			return String(value);
 		}
+
+		case 'image': {
+			return value === '' ? 'cleared' : 'chosen';
+		}
 	}
 }
 

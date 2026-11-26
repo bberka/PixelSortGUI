@@ -9,6 +9,7 @@ import {
 	DialogTrigger,
 } from '@/components/ui/dialog';
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover';
+import {listedEffects} from '@/engine/registry.ts';
 import type {EffectRegistry} from '@/engine/types.ts';
 import {cn} from '@/lib/utils';
 
@@ -29,7 +30,7 @@ export function EffectOptions({
 }: EffectOptionsProps) {
 	return (
 		<ul className={cn('flex flex-col gap-0.5', className)}>
-			{registry.list().map((definition) => (
+			{listedEffects(registry).map((definition) => (
 				<li key={definition.type}>
 					<button
 						type="button"

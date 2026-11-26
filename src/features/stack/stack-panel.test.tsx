@@ -7,7 +7,7 @@ import {EffectStackPanel} from './stack-panel.tsx';
 import {LiveRegion} from '@/app/live-region.tsx';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 import {effects} from '@/engine/effects/index.ts';
-import {createRegistry} from '@/engine/registry.ts';
+import {createRegistry, listedEffects} from '@/engine/registry.ts';
 import {pixelSortEffect} from '@/engine/effects/pixel-sort/index.ts';
 import type {EffectRegistry} from '@/engine/types.ts';
 import type {AppRuntime} from '@/state/index.ts';
@@ -194,10 +194,12 @@ describe('add effect picker', () => {
 		});
 		await flush();
 
-		for (const definition of registry.list()) {
+		for (const definition of listedEffects(registry)) {
 			expect(document.body.textContent).toContain(definition.label);
 			expect(document.body.textContent).toContain(definition.description);
 		}
+
+		expect(document.body.textContent).not.toContain('Image blend');
 
 		const choice = [...document.querySelectorAll('button')].find((button) =>
 			button.textContent?.startsWith('Channel shift'),

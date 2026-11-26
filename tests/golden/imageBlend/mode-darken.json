@@ -1,0 +1,32 @@
+{
+	"input": "gradient-64x48",
+	"extraSources": {
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+			"fixture": "bands-80x80"
+		}
+	},
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "ib000001",
+				"type": "imageBlend",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"image": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					"blendMode": "darken",
+					"opacity": 1,
+					"fit": "cover",
+					"scale": 1,
+					"offsetX": 0,
+					"offsetY": 0,
+					"rotation": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

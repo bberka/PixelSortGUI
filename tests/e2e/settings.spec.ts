@@ -1,3 +1,5 @@
+import {readFile} from 'node:fs/promises';
+import path from 'node:path';
 import {expect, test, type Page} from '@playwright/test';
 import {assertNoA11yViolations} from './axe.ts';
 import {importSyntheticProject} from './seed.ts';
@@ -141,6 +143,37 @@ test.describe('Settings, storage status, and About', () => {
 		);
 	});
 
+	test('AC-F24.1 & AC-F24.2: expands the CHANGELOG.md release notes offline with zero network requests', async ({
+		page,
+		context,
+	}) => {
+		const changelog = await readFile(
+			path.resolve(import.meta.dirname, '../../CHANGELOG.md'),
+			'utf8',
+		);
+		await page.goto('/');
+		const dialog = await openSettings(page);
+		const toggle = dialog.getByRole('button', {name: 'View changelog'});
+		await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		await page.waitForLoadState('networkidle');
+
+		const requests: string[] = [];
+		context.on('request', (request) => {
+			requests.push(request.url());
+		});
+		await context.setOffline(true);
+		await toggle.click();
+
+		const notes = dialog.getByRole('region', {name: 'Release notes'});
+		await expect(notes).toBeVisible();
+		expect(await notes.locator('p').textContent()).toBe(changelog);
+		const hide = dialog.getByRole('button', {name: 'Hide changelog'});
+		await expect(hide).toHaveAttribute('aria-expanded', 'true');
+		await hide.click();
+		await expect(notes).toBeHidden();
+		expect(requests).toEqual([]);
+	});
+
 	test('persistence request stays non-blocking while pending', async ({
 		page,
 	}) => {
@@ -200,6 +233,11 @@ test.describe('Settings, storage status, and About', () => {
 				const dialog = await openSettings(page);
 				await expect(
 					dialog.getByRole('heading', {name: 'Appearance'}),
+				).toBeVisible();
+
+				await dialog.getByRole('button', {name: 'View changelog'}).click();
+				await expect(
+					dialog.getByRole('region', {name: 'Release notes'}),
 				).toBeVisible();
 
 				const overflow = await page.evaluate(

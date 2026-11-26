@@ -374,6 +374,9 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | Worker crash (engine.md section 11) | 2nd worker crash within 60 s | Centered error card over canvas stage: `"Rendering stopped unexpectedly."` | `"Retry"`, `"Reset effects"` |
 | Insecure context (product.md section 4) | `!window.isSecureContext` | Full-screen blocking card: `"Secure connection required"` + `"Open Drift over HTTPS or http://localhost so browser storage and offline features can work."` | none |
 | Unsupported image format (AC-F1.3) | Browser cannot decode file | Error toast / dialog: `"Can't open <file name>: the browser can't read this image format."` | `"Dismiss"` |
+| HEIC / HEIF file (AC-F21.4) | HEIC/HEIF extension or header | Same dialog: `"Can't open <file name>: HEIC/HEIF is not supported in this browser. Convert it to JPEG, PNG, or WebP first."` | `"Dismiss"` |
+| Camera RAW file (AC-F21.4) | RAW extension or header | Same dialog: `"Can't open <file name>: RAW camera files are not supported. Export a TIFF, PNG, or JPEG from your RAW converter first."` | `"Dismiss"` |
+| Animated input (AC-F21.3) | Animated GIF, WebP, APNG, or AVIF imported | Non-blocking toast: `"Imported the first frame of <file name>. Animation is not supported yet."` | none |
 | Image too large (AC-F1.4) | Longest side > 16,384 px or file size > 200 MB | Error dialog: `"Image too large: the longest side is <N> px; the limit is 16,384 px."` (or file-size equivalent) | `"Dismiss"` |
 | Large image over 50 MP (AC-F1.5) | Image > 50 MP (50,000,000 px) within longest-side and file-size limits | `AlertDialog`: explains the 50 MP guaranteed maximum and that larger files may fail to export | `"Import at 50 MP"` (primary), `"Import anyway"` (secondary), `"Cancel"` |
 | Deleted project link (AC-F3.5) | Open `#/p/<deleted-id>` | Library screen + toast: `"That project no longer exists."` | none |

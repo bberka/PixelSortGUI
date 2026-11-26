@@ -1,4 +1,5 @@
 import {describe, expect, it} from 'vite-plus/test';
+import {IDENTITY_TRANSFORM} from '../../src/engine/transform.ts';
 import {createRegistry} from '../../src/engine/registry.ts';
 import type {EffectDefinition} from '../../src/engine/types.ts';
 import {MISSING_PROJECT_NOTICE} from '../../src/state/app-store.ts';
@@ -442,6 +443,7 @@ describe('startup restore sequence (persistence.md section 9)', () => {
 					blob: created.source.blob,
 					width: 1200,
 					height: 900,
+					transform: IDENTITY_TRANSFORM,
 				},
 			},
 			{

@@ -26,10 +26,10 @@ describe('openDatabase versionchange handling', () => {
 		const idb = new IDBFactory();
 		const events: Array<{oldVersion: number; newVersion: number | null}> = [];
 
-		const dbV1 = await openDatabase({
+		const dbV2 = await openDatabase({
 			indexedDB: idb,
 			name: 'drift-vc-upgrade',
-			version: 1,
+			version: 2,
 			onVersionChange(event) {
 				events.push({
 					oldVersion: event.oldVersion,
@@ -38,23 +38,23 @@ describe('openDatabase versionchange handling', () => {
 			},
 		});
 
-		const dbV2 = await openDatabase({
+		const dbV3 = await openDatabase({
 			indexedDB: idb,
 			name: 'drift-vc-upgrade',
-			version: 2,
+			version: 3,
 			migrations: {
 				...dbMigrations,
-				1(database) {
+				2(database) {
 					database.createObjectStore('extra', {keyPath: 'id'});
 				},
 			},
 		});
 
-		expect(events).toEqual([{oldVersion: 1, newVersion: 2}]);
-		expect(dbV2.version).toBe(2);
-		expect(() => dbV1.transaction('projects', 'readonly')).toThrow();
+		expect(events).toEqual([{oldVersion: 2, newVersion: 3}]);
+		expect(dbV3.version).toBe(3);
+		expect(() => dbV2.transaction('projects', 'readonly')).toThrow();
 
-		dbV2.close();
+		dbV3.close();
 	});
 
 	it('closes the open connection and notifies onVersionChange when the database is deleted', async () => {

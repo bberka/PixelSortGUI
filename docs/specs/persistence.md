@@ -5,6 +5,7 @@ Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low)
 Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and multi-image source reference counting (F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and side A fields by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with database version 2 storage rules for geometry transforms by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift persistence spec
 
@@ -78,6 +79,9 @@ type ProjectRecord = {
 	sourceHash: string; // foreign key to sources.sha256
 	sourceWidth: number; // copied from SourceRecord for fast library card rendering
 	sourceHeight: number; // copied from SourceRecord for fast library card rendering
+	transform: SourceTransform; // crop, rotation, flip and resize (engine.md section 16.3, section 8.1)
+	effectiveWidth: number; // width after transform, derived from the source size and transform
+	effectiveHeight: number; // height after transform
 	stack: EffectStack; // main stack (split side B), exact serialised form from engine.md section 2.2
 	selectedInstanceId: string | null; // id of selected EffectInstance in stack, or null
 	stackA?: EffectStack; // split side A; absent when empty
@@ -97,7 +101,7 @@ type ThumbnailRecord = {
 	blob: Blob; // image/webp where supported, else image/jpeg quality 0.80; longest side <= 512 px
 	width: number;
 	height: number;
-	stackSignature: string; // SHA-256 (or canonical string) of stack used to render this thumbnail
+	stackSignature: string; // canonicalJson({transform, stack}) used to render this thumbnail
 	updatedAt: number; // Unix epoch ms
 };
 
@@ -106,6 +110,7 @@ type HistoryEntryRecord = {
 	seq: number; // strictly increasing integer starting at 0 ('Initial')
 	label: string; // human-readable commit label, e.g. 'Angle 90°', 'Add Pixel sort' (section 8.2)
 	stack: EffectStack; // full snapshot at this commit; keeps original instance versions
+	transform: SourceTransform; // geometry snapshot at this commit
 	selectedInstanceId: string | null;
 	stackA?: EffectStack; // side A snapshot at this commit; absent means empty
 	selectedInstanceIdA?: string | null;
@@ -134,7 +139,7 @@ type AppStateRecord = {
 
 type SchemaInfoRecord = {
 	key: 'schemaInfo';
-	dbVersion: number; // 1
+	dbVersion: number; // 2
 	migratedAt: number; // Unix epoch ms
 };
 ```
@@ -148,6 +153,8 @@ Field invariants enforced before every write:
 - `viewState.splitOrientation` and `viewState.editSide`: any other value is removed.
 - `viewState.splitPosition`: clamped to `[0, 1]`.
 - `exportSettings.quality` and `exportSettings.avifQuality` (when present): rounded integer clamped to `[50, 100]`.
+- `transform`: a write rejects a value that breaks the rules of engine.md section 16.3 for the source size. A read repairs it (section 8.1).
+- `effectiveWidth` and `effectiveHeight`: equal `effectiveDimensions(sourceWidth, sourceHeight, transform)` in every record this version writes with a geometry change.
 - `history` window per project: at most **201** retained entries (`seq` count ≤ 201), consisting of 1 oldest reachable base state plus up to **200** undoable commits. This guarantees AC-F9.3 ("After 205 commits, 200 undos are possible and the 201st is not").
 
 ## 4. What is saved and when
@@ -156,17 +163,18 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 
 | User action | Stores written | Timing | Exact behaviour |
 |---|---|---|---|
-| Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack`, `historyHeadSeq: 0`, and default `viewState` (`fitMode: 'fit'`, `zoom: 1`, centred at `(width / 2, height / 2)`, `splitPosition: 0.5`); insert `history` entry `(projectId, 0)` with label `"Initial"`; in a multi-file import, set `meta.appState.activeProjectId` to the first imported project. |
+| Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack`, the identity `transform`, effective size equal to the source size, `historyHeadSeq: 0`, and default `viewState` (`fitMode: 'fit'`, `zoom: 1`, centred at `(width / 2, height / 2)`, `splitPosition: 0.5`); insert `history` entry `(projectId, 0)` with label `"Initial"`; in a multi-file import, set `meta.appState.activeProjectId` to the first imported project. |
 | Drag slider / dial / divider | none | Never during drag | Transient value updates worker preview only. |
-| Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Every entry snapshots both sides, so one history covers both. Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
-| Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq`, `updatedAt`); an entry without `stackA` empties side A. Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
+| Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Every entry snapshots both sides and the transform, so one history covers all of them. A stack commit keeps the project's transform, which includes applying a preset (AC-F20.6). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
+| Commit geometry change (F20) | `projects`, `history` | Immediate | The stack commit transaction with a new `transform` and the stacks unchanged: one history entry labelled per section 8.2. |
+| Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `updatedAt`); an entry without `stackA` empties side A. Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
 | Jump to history entry (F23) | `projects` | Immediate (0 ms debounce) | Read the `HistoryEntryRecord` at the chosen `seq` and update `ProjectRecord` as undo does; later entries stay until the next commit (section 8.2). |
 | Zoom, pan, split position and orientation, side being edited, select instance (F3, F11, F13) | `projects` | Debounced 200 ms; flushed on `visibilitychange` (`hidden`) and `pagehide` | Updates `viewState`, `selectedInstanceId` and `selectedInstanceIdA` on `ProjectRecord`. Restores zoom and centre within 1 source px (AC-F3.3) and split position (AC-F11.3). |
 | Open project / Return to library (F2, F3) | `projects`, `meta` | Immediate | Opening a project sets `projects.openedAt = Date.now()` and `meta.appState.activeProjectId = id`, updating URL hash to `#/p/<id>`. Returning to library sets `activeProjectId = null` and hash to `#/` (AC-F3.4). |
 | Change export settings (F12) | `projects` | Immediate on export start or dialog close | Saves `exportSettings` on `ProjectRecord` (AC-F12.7). |
 | Generate result thumbnail (F2) | `thumbnails` | Within 500 ms after `settle` render of a commit or initial import | Worker or OffscreenCanvas scales the `settle` bitmap to longest side ≤ 512 px, encodes WebP (or JPEG q=0.80 where WebP encoding is unavailable), writes `ThumbnailRecord`. Must finish within 5 s of commit (AC-F2.2). |
 | Rename project (F2) | `projects` | Immediate | Validates 1..120 chars trimmed, updates `name` and `updatedAt` (AC-F2.3). |
-| Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState`, same `stack`, `stackA` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
+| Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState` centred on the effective size, same `stack`, `stackA`, `transform` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
@@ -178,7 +186,7 @@ Two distinct situations must be handled cleanly:
 
 ### 5.1 IndexedDB cannot be opened
 
-If `indexedDB.open('drift', 1)` throws or fires `error` (for example, storage disabled by enterprise policy, corrupted backing store, or strict iframe sandbox), the app does not crash:
+If `indexedDB.open('drift', DB_VERSION)` throws or fires `error` (for example, storage disabled by enterprise policy, corrupted backing store, or strict iframe sandbox), the app does not crash:
 
 1. Switch the storage repository to `MemoryStorageAdapter`, which implements the exact same async repository interface backed by `Map`s in RAM.
 2. Set `storageUnavailable = true` in app state so the UI displays the persistent, non-dismissable banner: `"Storage unavailable: nothing will be saved after you close this tab."` (AC-F16.4).
@@ -202,7 +210,7 @@ If a previous crash or interrupted run leaves a `sources` record with zero refer
 
 Three independent version numbers govern stored data:
 
-1. **IndexedDB schema version (`dbVersion`, starts at `1`):**
+1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `2`):**
    - Managed inside `IDBOpenDBRequest.onupgradeneeded`.
    - Each bump from `v` to `v + 1` runs a pure, sequential upgrade function `dbMigrations[v]` inside the versionchange transaction, updating `meta.schemaInfo` at the end.
    - Upgrades never discard user projects, source blobs, or presets.
@@ -252,22 +260,36 @@ Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted
 
 ### 8.1 Database version 2 (`SourceTransform`, F20)
 
-When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps from `1` to `2`:
+`DB_VERSION` in `src/storage/types.ts` is `2`. Version 2 adds the geometry transform to stored projects:
 
 - `ProjectRecord` adds:
   - `transform: SourceTransform` (from [engine.md section 16.3](engine.md#163-geometry-transforms-f20), default `IDENTITY_TRANSFORM`).
   - `effectiveWidth: number` and `effectiveHeight: number` (derived from `sourceWidth`, `sourceHeight`, and `transform`; cached on `ProjectRecord` so Library cards show cropped/rotated/resized dimensions without loading `sources`).
 - `HistoryEntryRecord` adds:
-  - `transform: SourceTransform` (full snapshot of the project's geometry at that commit, alongside `stack`).
-- `ThumbnailRecord.stackSignature` becomes `canonicalJson({transform, stack})` (side B only) so any geometry commit invalidates and regenerates the project thumbnail.
+  - `transform: SourceTransform` (full snapshot of the project's geometry at that commit, alongside `stack` and `stackA`).
+- `ThumbnailRecord.stackSignature` is `canonicalJson({transform, stack})` (side B only) so any geometry commit invalidates and regenerates the project thumbnail. A signature written by version 1 matches nothing, so the next `settle` render of that project replaces the thumbnail.
 - `UserPresetRecord` is **unchanged**: presets store `EffectStack` only, so applying a preset never overwrites a project's crop, rotation, flip, or resize (AC-F20.6).
 
 **Migration (`dbMigrations[1]` in `src/storage/db.ts`):**
 
-1. Inside `onupgradeneeded` (from version 1 to 2), iterate all records in `projects`: set `transform = IDENTITY_TRANSFORM`, `effectiveWidth = project.sourceWidth`, `effectiveHeight = project.sourceHeight` where missing.
+1. Inside `onupgradeneeded` (from version 1 to 2), iterate all records in `projects`: set `transform = IDENTITY_TRANSFORM` where missing, then set `effectiveWidth` and `effectiveHeight` from the source size and that transform. A present but invalid transform is left as stored for the read-time repair below, with the effective size set to the source size.
 2. Iterate all records in `history`: set `transform = IDENTITY_TRANSFORM` where missing.
 3. Update `meta.schemaInfo` to `dbVersion: 2`.
-4. `sources`, `presets`, and `thumbnails` are untouched. `MemoryStorageAdapter` mirrors the same default fields.
+4. `sources`, `presets`, and `thumbnails` are untouched. `MemoryStorageAdapter` writes the same fields.
+
+**Reading stored geometry (`src/storage/geometry.ts`):**
+
+- A transform is valid when it has the shape of `SourceTransform` (a rotation of 0, 90, 180 or 270; boolean flips; `crop` and `resize` each an object or `null`) and `effectiveDimensions` accepts it for the source size. A missing transform means the identity.
+- An invalid transform is replaced by the identity and never throws. The effective size is always recomputed from the transform, so a wrong cached size is corrected without a notice.
+- The app repairs every project record before it enters app state. When the project being opened, or the history entry being applied by undo, redo or jump, held an invalid transform, it shows the notice `"The saved crop, rotation and size of <project name> were invalid and have been reset."`
+- Opening a project writes nothing extra. The repaired value is saved by the next commit, undo, redo or jump.
+
+**Writing geometry:**
+
+- Repository: `commitStack` takes an optional `transform`. Omitted keeps the project's transform. An invalid one throws `StorageValidationError` and writes nothing.
+- App store: `setTransform(projectId: string, transform: SourceTransform, label?: string): Promise<boolean>` flushes a pending keyboard commit, then writes one history entry holding the new transform and the unchanged stacks. It returns `false` and writes nothing when `projectId` is not the active project or the transform equals the current one. An invalid transform throws `StorageValidationError`.
+- After a commit, undo, redo or jump, the app passes the project and its source to `coordinator.setSource` (`renderSourceFor`), for both split sides. The coordinator ignores an unchanged geometry.
+- Library cards show the effective size.
 
 ### 8.2 History jump and rich action labels (F23)
 
@@ -275,7 +297,7 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
 
 - **Repository method:** Add `jumpToHistory(projectId: string, seq: number): Promise<HistoryStepResult | null>` to `StorageRepository` (`src/storage/types.ts`). Inside one `readwrite` transaction:
   1. Verify `project.historyMinSeq <= seq <= project.historyMaxSeq` and read `history.get([projectId, seq])`.
-  2. Update `ProjectRecord` (`stack`, `transform` once F20 lands, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq: seq`, `updatedAt`).
+  2. Update `ProjectRecord` (`stack`, `transform`, `effectiveWidth`, `effectiveHeight`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `historyHeadSeq: seq`, `updatedAt`).
   3. Never delete entries with `seq > historyHeadSeq` during a jump (those remain as the redo branch until a new commit overwrites them). Never alter `viewState`, `theme`, or library selection.
 - **Return value:** `null`, with nothing written, when `seq` is not an integer, lies outside the retained window, or has no stored entry. An unknown project throws `StorageNotFoundError`, as undo does. Jumping to the current entry is allowed.
 - **App store:** `jumpToHistory(projectId: string, seq: number): Promise<boolean>` flushes a pending keyboard commit first, then updates the active project and the preview exactly as undo and redo do. It returns `false` and changes nothing when `projectId` is not the active project or the repository returns `null`. The loaded history list keeps the redo entries.
@@ -290,9 +312,11 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
 | Reset one parameter, reset all, randomize | `"Reset Angle"`, `"Reset Pixel sort"`, `"Randomize Pixel sort"` |
 | Apply a preset, add a preset to the stack | `"Apply preset ASDF classic"`, `"Add Bright streaks"` |
 | Copy one split side over the other, swap them (F11) | `"Copy A to B"`, `"Swap sides"` |
-| Geometry actions (F20) | `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"` |
+| Geometry actions (F20) | `"Rotate 90° CW"`, `"Rotate 90° CCW"`, `"Rotate 180°"`, `"Flip horizontal"`, `"Flip vertical"`, `"Crop 1200 × 800"`, `"Resize 1000 × 500"`, `"Reset crop"`, `"Reset resize"`, `"Reset transform"` |
 
-  A label for an edit to split side A, or for any edit made while the split view is on, ends in `" (side A)"` or `" (side B)"` (product.md F11). Value formats: range `"Threshold range 0.25 to 0.80"`; angle `"Angle 90°"` (at most one decimal); a fractional-step number shows at least two decimals and keeps any further significant ones up to the step (`0.80`, `0.253`); percent numbers `"45%"`; pixel integers `"120 px"`; choices use the option label (`"Order Descending"`); switches `"Invert on"` / `"Invert off"`; seeds show the number. Labels are stored with the entry, so entries written by earlier releases keep their old text.
+  A label for an edit to split side A, or for any edit made while the split view is on, ends in `" (side A)"` or `" (side B)"` (product.md F11). Geometry applies to both sides, so its labels never name a side.
+
+  A geometry label is derived from the change (`formatTransformCommitLabel`, `src/state/commit-labels.ts`). The first matching rule wins: a change to the identity that undoes more than one of orientation, crop and resize is `"Reset transform"`; a change of orientation is named for the turn or flip as seen on screen (`"Transform"` when it is neither one quarter or half turn nor one flip), whatever it does to the crop and size; a new or changed crop is `"Crop <width> × <height>"`, a removed one `"Reset crop"`; otherwise a new or changed resize is `"Resize <width> × <height>"`, a removed one `"Reset resize"`. A caller may pass its own label. Value formats: range `"Threshold range 0.25 to 0.80"`; angle `"Angle 90°"` (at most one decimal); a fractional-step number shows at least two decimals and keeps any further significant ones up to the step (`0.80`, `0.253`); percent numbers `"45%"`; pixel integers `"120 px"`; choices use the option label (`"Order Descending"`); switches `"Invert on"` / `"Invert off"`; seeds show the number. Labels are stored with the entry, so entries written by earlier releases keep their old text.
 - **Memory footprint:** Each `HistoryEntryRecord` is plain JSON (`EffectStack` + `SourceTransform`, ~0.5 to 4 KB). At the 201-entry cap, a project's entire history stays under ~1 MB in RAM and IndexedDB, with zero pixel buffers stored.
 
 ### 8.3 Project file format (F25)

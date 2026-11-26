@@ -1,4 +1,6 @@
+import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	createDefaultAppState,
 	createDefaultExportSettings,
@@ -220,9 +222,15 @@ export class IndexedDbRepository implements StorageRepository {
 					return null;
 				}
 
+				const {repaired, ...geometry} = resolveStoredGeometry(
+					existing.sourceWidth,
+					existing.sourceHeight,
+					entry.transform,
+				);
 				const updated = withSideA<ProjectRecord>(
 					{
 						...existing,
+						...geometry,
 						stack: entry.stack,
 						selectedInstanceId: entry.selectedInstanceId,
 						historyHeadSeq: entry.seq,
@@ -309,6 +317,9 @@ export class IndexedDbRepository implements StorageRepository {
 					sourceHash: sha256,
 					sourceWidth: input.width,
 					sourceHeight: input.height,
+					transform: IDENTITY_TRANSFORM,
+					effectiveWidth: input.width,
+					effectiveHeight: input.height,
 					stack: initialStack,
 					selectedInstanceId: null,
 					historyHeadSeq: 0,
@@ -327,6 +338,7 @@ export class IndexedDbRepository implements StorageRepository {
 					label: 'Initial',
 					stack: initialStack,
 					selectedInstanceId: null,
+					transform: IDENTITY_TRANSFORM,
 					createdAt: now,
 				};
 
@@ -479,13 +491,18 @@ export class IndexedDbRepository implements StorageRepository {
 					throw new StorageNotFoundError(`Project "${id}" not found`);
 				}
 
+				const size = resolveStoredGeometry(
+					existing.sourceWidth,
+					existing.sourceHeight,
+					existing.transform,
+				);
 				const copy: ProjectRecord = {
 					...existing,
 					id: newId,
 					name: createDuplicateProjectName(existing.name),
 					viewState: createDefaultViewState(
-						existing.sourceWidth,
-						existing.sourceHeight,
+						size.effectiveWidth,
+						size.effectiveHeight,
 					),
 					createdAt: now,
 					updatedAt: now,
@@ -603,6 +620,8 @@ export class IndexedDbRepository implements StorageRepository {
 					);
 				}
 
+				// Validated first, so a rejected transform leaves history alone.
+				const geometry = commitGeometry(existing, input.transform);
 				await requestToPromise(
 					historyStore.delete(
 						this.#keyRange.bound(
@@ -625,6 +644,7 @@ export class IndexedDbRepository implements StorageRepository {
 						label: input.label,
 						stack: input.stack,
 						selectedInstanceId: input.selectedInstanceId,
+						transform: geometry.transform,
 						createdAt: now,
 					},
 					stackA,
@@ -649,6 +669,7 @@ export class IndexedDbRepository implements StorageRepository {
 				const updated = withSideA<ProjectRecord>(
 					{
 						...existing,
+						...geometry,
 						stack: input.stack,
 						selectedInstanceId: input.selectedInstanceId,
 						historyHeadSeq: nextSeq,

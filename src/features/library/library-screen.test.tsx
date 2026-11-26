@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore, makeTestBlob} from '../../../tests/state/fixtures.ts';
 import {App} from '@/app/app.tsx';
+import {IDENTITY_TRANSFORM} from '@/engine/transform.ts';
 import {MemoryStorageAdapter} from '@/storage/memory-adapter.ts';
 import type {RestoreResult} from '@/storage/restore.ts';
 import type {AppStore} from '@/state/app-store.ts';
@@ -293,6 +294,25 @@ describe('project cards', () => {
 		expect(card.textContent).toContain('320 × 240 px');
 		expect(card.textContent).toContain('Today');
 		expect(card.querySelector('time')?.getAttribute('datetime')).toContain('T');
+	});
+
+	it('shows the size after the geometry transform (AC-F20.1)', async () => {
+		const harness = await renderLibrary(['turned']);
+		const [{id, stack}] = harness.projects;
+		const {project} = await harness.repository.commitStack({
+			projectId: id,
+			stack,
+			selectedInstanceId: null,
+			transform: {...IDENTITY_TRANSFORM, rotation: 90},
+			label: 'Rotate 90° CW',
+		});
+
+		await act(async () => {
+			harness.store.setState({projects: [project]});
+		});
+
+		expect(harness.container.textContent).toContain('240 × 320 px');
+		expect(harness.container.textContent).not.toContain('320 × 240 px');
 	});
 
 	it('opens the project when the card body is activated', async () => {

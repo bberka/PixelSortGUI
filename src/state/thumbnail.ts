@@ -1,4 +1,6 @@
+import {canonicalJson} from '../engine/types.ts';
 import type {Frame} from '../render/coordinator.ts';
+import type {ProjectRecord} from '../storage/types.ts';
 
 export const MAX_THUMBNAIL_SIDE = 512;
 export const THUMBNAIL_QUALITY = 0.8;
@@ -17,6 +19,14 @@ export type GeneratedThumbnail = {
 export type ThumbnailGenerator = (
 	frame: Frame,
 ) => Promise<GeneratedThumbnail | null>;
+
+// Equal while a thumbnail still shows the project's geometry and main stack.
+export function thumbnailSignature({
+	transform,
+	stack,
+}: Pick<ProjectRecord, 'transform' | 'stack'>): string {
+	return canonicalJson({transform, stack});
+}
 
 export function computeThumbnailDimensions(
 	width: number,

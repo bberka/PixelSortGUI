@@ -78,7 +78,10 @@ const ProjectCardView = ({
 				<div className="flex items-center justify-between gap-1 px-2.5 pt-0.5 pb-1.5">
 					<div className="min-w-0">
 						<span className="block text-xs leading-4 text-muted-foreground">
-							{formatDimensions(project.sourceWidth, project.sourceHeight)}
+							{formatDimensions(
+								project.effectiveWidth,
+								project.effectiveHeight,
+							)}
 						</span>
 						<time
 							className="block text-xs leading-4 text-muted-foreground"

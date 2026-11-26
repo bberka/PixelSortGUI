@@ -5,6 +5,7 @@ export const CHANGELOG_TEXT = `# Changelog
 
 - New effect: Mirror fold, which mirrors or folds the image left to right, top to bottom, four ways or as a kaleidoscope.
 - New effect: Bayer dither.
+- New effect: Threshold invert, which inverts channels inside a key range and can show the selection.
 
 ## v0.2.0
 

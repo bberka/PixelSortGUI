@@ -393,6 +393,16 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 		// Zoom to 200% via zoom dropdown and pan with ArrowRight
 		await page.getByRole('button', {name: /^Zoom /}).click();
 		await page.getByRole('menuitem', {name: '200%', exact: true}).click();
+		const centerXBeforePan = await page.evaluate(async () => {
+			const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime!;
+			const booted = await runtime.ready;
+			if (booted.status !== 'ready') {
+				throw new Error('Not ready');
+			}
+
+			return booted.bundle.store.getState().activeProject?.viewState.centerX;
+		});
+		expect(typeof centerXBeforePan).toBe('number');
 		await canvas.focus();
 		await page.keyboard.press('ArrowRight');
 
@@ -414,6 +424,8 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 
 		expect(beforeReload.viewState?.zoom).toBeCloseTo(2, 2);
 		expect(beforeReload.viewState?.splitPosition).toBeCloseTo(0.6, 2);
+		expect(typeof beforeReload.viewState?.centerX).toBe('number');
+		expect(beforeReload.viewState?.centerX).not.toBe(centerXBeforePan);
 		expect(beforeReload.presets).toContain('Acceptance custom');
 
 		// Reload and verify state restoration
@@ -443,10 +455,10 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 		expect(afterReload.presets).toContain('Acceptance custom');
 		expect(afterReload.viewState?.zoom).toBeCloseTo(2, 2);
 		expect(afterReload.viewState?.splitPosition).toBeCloseTo(0.6, 2);
+		expect(typeof afterReload.viewState?.centerX).toBe('number');
 		expect(
 			Math.abs(
-				(afterReload.viewState?.centerX ?? 0) -
-					(beforeReload.viewState?.centerX ?? 0),
+				afterReload.viewState!.centerX - beforeReload.viewState!.centerX,
 			),
 		).toBeLessThanOrEqual(1);
 
@@ -483,7 +495,8 @@ test.describe('v0.1.0 E2E acceptance suite (T6.3)', () => {
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 		await page.keyboard.press('Escape');
 
-		// Reload on dark OS and verify Light theme persisted before first paint
+		// Reload on dark OS and verify Light theme persisted across reload
+		// (zero-FOUC pre-paint check is covered in tests/e2e/theme.spec.ts)
 		await page.reload();
 		const lightMetrics = await page.evaluate(() => ({
 			theme: globalThis.document.documentElement.dataset.theme,

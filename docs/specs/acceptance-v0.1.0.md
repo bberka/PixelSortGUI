@@ -5,15 +5,15 @@ Maps every first-release feature (`F1`–`F16`, `F18`–`F19` in [product.md](pr
 | Feature | Automated E2E / Unit coverage | Manual desktop checklist (`T6.4`) |
 |---|---|---|
 | `F1` Import images | `tests/e2e/import.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/codec/decode.test.ts` | Native OS file picker & drag-drop smoke on Chromium/Firefox |
-| `F2` Library | `tests/e2e/library.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/storage/repository.test.ts` | 100-project scroll smoothness on reference laptop |
-| `F3` Session restore | `tests/e2e/session-restore.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/storage/restore.test.ts` | Cold browser restart & 50-project < 1 s startup check |
-| `F4` Effect stack | `tests/e2e/effect-stack.spec.ts`, `tests/e2e/param-panel.spec.ts`, `src/engine/pipeline.test.ts` | — |
-| `F5` Parameter controls | `tests/e2e/param-panel.spec.ts`, `src/engine/params.test.ts` | — |
+| `F2` Library | `tests/e2e/library.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/storage/repository.test.ts` | 100-project scroll smoothness on reference laptop |
+| `F3` Session restore | `tests/e2e/session-restore.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/storage/restore.test.ts` | Cold browser restart & 50-project < 1 s startup check |
+| `F4` Effect stack | `tests/e2e/effect-stack.spec.ts`, `tests/e2e/param-panel.spec.ts`, `tests/engine/pipeline.test.ts` | — |
+| `F5` Parameter controls | `tests/e2e/param-panel.spec.ts`, `tests/engine/params.test.ts` | — |
 | `F6` Pixel sort effect | `tests/e2e/acceptance.spec.ts`, `tests/e2e/golden.spec.ts`, `tests/engine/pixel-sort.test.ts`, `tests/engine/effect-contract.test.ts` | — |
 | `F7` Glitch effects (`channelShift`) | `tests/e2e/acceptance.spec.ts`, `tests/e2e/golden.spec.ts`, `tests/engine/channel-shift.test.ts` | — |
 | `F8` Live preview & full-res view | `tests/e2e/render-workers.spec.ts`, `tests/e2e/canvas.spec.ts`, `tests/e2e/render-bench.spec.ts`, `src/render/coordinator.test.ts` | 12 MP 5 s drag trace & p50/p95 timing sign-off on reference laptop |
-| `F9` Undo and redo | `tests/e2e/toolbar.spec.ts`, `tests/e2e/session-restore.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/storage/repository.test.ts` | — |
-| `F10` Presets | `tests/e2e/toolbar.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/presets/builtin.test.ts` | — |
+| `F9` Undo and redo | `tests/e2e/toolbar.spec.ts`, `tests/e2e/session-restore.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/storage/repository.test.ts` | — |
+| `F10` Presets | `tests/e2e/toolbar.spec.ts`, `tests/e2e/acceptance.spec.ts`, `tests/presets/builtin.test.ts` | — |
 | `F11` Compare & split view | `tests/e2e/compare.spec.ts`, `tests/e2e/acceptance.spec.ts` | — |
 | `F12` Export | `tests/e2e/export.spec.ts`, `tests/e2e/acceptance.spec.ts`, `src/codec/encode.test.ts` | 12 MP Full PNG < 5 s timing & Web Share check where supported |
 | `F13` Zoom and pan | `tests/e2e/canvas.spec.ts`, `tests/e2e/acceptance.spec.ts` | 60 fps continuous wheel/trackpad zoom check on reference laptop |

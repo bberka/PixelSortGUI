@@ -1,7 +1,7 @@
 import {LANCZOS_TABLE} from './lanczos-table.ts';
 import {clamp, floorDiv, roundHalfAway} from './math.ts';
 import {boxDownscale} from './resample.ts';
-import {createImage, type RgbaImage} from './types.ts';
+import {canonicalJson, createImage, type RgbaImage} from './types.ts';
 
 export type RotationDegrees = 0 | 90 | 180 | 270;
 export type ResizeFilter = 'lanczos3' | 'bilinear' | 'nearest';
@@ -47,6 +47,13 @@ export const IDENTITY_TRANSFORM: SourceTransform = Object.freeze({
 	crop: null,
 	resize: null,
 });
+
+// Equal for equal geometry; a missing transform is the identity.
+export function transformKey(
+	transform: SourceTransform = IDENTITY_TRANSFORM,
+): string {
+	return canonicalJson(transform);
+}
 
 export const MAX_OUTPUT_SIDE = 16_384;
 // A larger cropped image may keep or reduce its own pixel count.

@@ -2,7 +2,14 @@ import {decodeImage, isMemoryError, renderSize} from '../codec/decode.ts';
 import {encodeImage} from '../codec/encode.ts';
 import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
 import {renderStack} from '../engine/pipeline.ts';
+import {
+	applyTransform,
+	IDENTITY_TRANSFORM,
+	type Size,
+	type SourceTransform,
+} from '../engine/transform.ts';
 import type {RgbaImage} from '../engine/types.ts';
+import {checkedDimensions, exportTransform, isIdentity} from './geometry.ts';
 import {
 	FULL_TILE_SIZE,
 	type EngineErrorCode,
@@ -40,34 +47,65 @@ type Job = {
 	sourceWidth: number;
 	sourceHeight: number;
 	scale: number;
+	transform?: SourceTransform;
 } & StackRequest;
 
 function postProgress(jobId: number, stage: ExportStage, fraction: number) {
 	scope.postMessage({type: 'progress', jobId, stage, fraction});
 }
 
-// This worker is cancelled by terminating it, so the render never yields.
-async function decodeAndRender(job: Job): Promise<RgbaImage> {
-	const {jobId, sourceWidth, sourceHeight} = job;
-	postProgress(jobId, 'decode', 0);
-	const size = renderSize(sourceWidth, sourceHeight, job.scale);
+async function decode(blob: Blob, resize?: Size): Promise<RgbaImage> {
 	const decoded = await decodeImage(
-		job.blob,
-		size.width < sourceWidth || size.height < sourceHeight
-			? {resizeWidth: size.width, resizeHeight: size.height}
-			: {},
+		blob,
+		resize ? {resizeWidth: resize.width, resizeHeight: resize.height} : {},
 	);
 	if (!decoded.ok) {
 		throw new JobError(decoded.error.code, decoded.error.message);
 	}
 
+	return decoded.value;
+}
+
+/**
+ The effective image at export size (engine.md section 16.3), with the size the
+ effects count their pixels in. The full decode is released on return.
+ */
+async function decodeSource(
+	job: Job,
+): Promise<{image: RgbaImage; effective: Size}> {
+	const {blob, sourceWidth, sourceHeight} = job;
+	const transform = job.transform ?? IDENTITY_TRANSFORM;
+	const checked = checkedDimensions(sourceWidth, sourceHeight, transform);
+	if ('error' in checked) {
+		throw new JobError('internal', checked.error);
+	}
+
+	const effective = checked.size;
+	const size = renderSize(effective.width, effective.height, job.scale);
+	if (isIdentity(transform)) {
+		const smaller = size.width < sourceWidth || size.height < sourceHeight;
+		return {image: await decode(blob, smaller ? size : undefined), effective};
+	}
+
+	const full = await decode(blob);
+	return {
+		image: applyTransform(full, exportTransform(transform, size)),
+		effective,
+	};
+}
+
+// This worker is cancelled by terminating it, so the render never yields.
+async function decodeAndRender(job: Job): Promise<RgbaImage> {
+	const {jobId} = job;
+	postProgress(jobId, 'decode', 0);
+	const {image, effective} = await decodeSource(job);
 	postProgress(jobId, 'decode', 1);
 	postProgress(jobId, 'render', 0);
 	let lastProgress = performance.now();
-	const result = await renderStack(decoded.value, job.stack, effectRegistry, {
+	const result = await renderStack(image, job.stack, effectRegistry, {
 		level: 'full',
-		sourceWidth,
-		sourceHeight,
+		sourceWidth: effective.width,
+		sourceHeight: effective.height,
 		debug: job.debug,
 		checkpoint: () => undefined,
 		onProgress(fraction) {

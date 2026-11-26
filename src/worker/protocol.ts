@@ -1,6 +1,7 @@
 import type {CodecErrorCode} from '../codec/decode.ts';
 import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
+import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
 
 // Message types shared by the main thread and both workers (engine.md section 11).
@@ -32,6 +33,15 @@ export type PreviewRequest =
 			sourceWidth: number;
 			sourceHeight: number;
 			caps: {drag: number; settle: number};
+			// Missing means the identity (engine.md section 16.3).
+			transform?: SourceTransform;
+	  }
+	| {
+			// New geometry for the loaded source, answered by `sourceLoaded`.
+			type: 'setTransform';
+			requestId: number;
+			sourceKey: string;
+			transform: SourceTransform;
 	  }
 	| ({
 			type: 'render';
@@ -51,6 +61,8 @@ export type PreviewResponse =
 			sourceKey: string;
 			settle: ProxySize;
 			drag: ProxySize;
+			// The image size after the transform.
+			effective?: ProxySize;
 			original: ImageBitmap;
 	  }
 	| {type: 'progress'; jobId: number; fraction: number}
@@ -86,8 +98,10 @@ export type ExportRequest =
 			blob: Blob;
 			sourceWidth: number;
 			sourceHeight: number;
-			// Input of the render size rule (engine.md section 8.1), in (0, 1].
+			// Input of the render size rule (engine.md section 8.1), in (0, 1],
+			// applied to the size after the transform.
 			scale: number;
+			transform?: SourceTransform;
 			format: ExportFormat;
 			// 0..100. Ignored for PNG.
 			quality: number;
@@ -101,6 +115,7 @@ export type ExportRequest =
 			blob: Blob;
 			sourceWidth: number;
 			sourceHeight: number;
+			transform?: SourceTransform;
 	  } & StackRequest);
 
 export type ExportResponse =

@@ -448,8 +448,16 @@ test('AC-F11.10: undo and redo step through both sides with the side in the butt
 		page.getByRole('button', {name: 'Redo Add Channel shift (side A)'}),
 	).toBeEnabled();
 
+	// Each step is written to storage first. The button names change with the
+	// stacks, so wait for them before pressing again or reading the stacks.
 	await page.keyboard.press('Control+Shift+z');
+	await expect(
+		page.getByRole('button', {name: 'Redo Add Pixel sort (side B)'}),
+	).toBeEnabled();
 	await page.keyboard.press('Control+Shift+z');
+	await expect(
+		page.getByRole('button', {name: 'Undo Add Pixel sort (side B)'}),
+	).toBeEnabled();
 	await expect(label(page, 'a')).toHaveText('A');
 	const state = await readState(page);
 	expect(state.stack.instances).toHaveLength(2);

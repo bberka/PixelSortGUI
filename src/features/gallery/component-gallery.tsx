@@ -102,6 +102,7 @@ const TOKEN_SWATCHES = [
 	{name: '--primary', className: 'bg-primary'},
 	{name: '--accent', className: 'bg-accent'},
 	{name: '--destructive', className: 'bg-destructive'},
+	{name: '--destructive-hover', className: 'bg-destructive-hover'},
 	{name: '--warning', className: 'bg-warning'},
 	{name: '--success', className: 'bg-success'},
 ] as const;

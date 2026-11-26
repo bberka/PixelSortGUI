@@ -1,17 +1,29 @@
 import type * as React from 'react';
+import {createContext, useContext, useRef, type ComponentProps} from 'react';
 import {CheckIcon, ChevronRightIcon, CircleIcon} from 'lucide-react';
 import {DropdownMenu as DropdownMenuPrimitive} from 'radix-ui';
 import {cn} from '@/lib/utils';
 
+const DropdownMenuModalContext = createContext(true);
+
 function DropdownMenu({
+	modal = true,
 	...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
-	return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+}: ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+	return (
+		<DropdownMenuModalContext.Provider value={modal}>
+			<DropdownMenuPrimitive.Root
+				data-slot="dropdown-menu"
+				modal={modal}
+				{...props}
+			/>
+		</DropdownMenuModalContext.Provider>
+	);
 }
 
 function DropdownMenuPortal({
 	...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
+}: ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
 	return (
 		<DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 	);
@@ -19,7 +31,7 @@ function DropdownMenuPortal({
 
 function DropdownMenuTrigger({
 	...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+}: ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
 	return (
 		<DropdownMenuPrimitive.Trigger
 			data-slot="dropdown-menu-trigger"
@@ -32,27 +44,64 @@ function DropdownMenuContent({
 	className,
 	sideOffset = 4,
 	onCloseAutoFocus,
+	onInteractOutside,
+	ref,
 	...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
-	const handleCloseAutoFocus: NonNullable<
-		React.ComponentProps<
-			typeof DropdownMenuPrimitive.Content
-		>['onCloseAutoFocus']
+}: ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+	const modal = useContext(DropdownMenuModalContext);
+	const contentRef = useRef<HTMLDivElement | null>(null);
+	const radixWillSkipFocusRef = useRef(false);
+
+	const setContentRef = (node: HTMLDivElement | null) => {
+		contentRef.current = node;
+		if (typeof ref === 'function') {
+			ref(node);
+		} else if (ref) {
+			ref.current = node;
+		}
+	};
+
+	const handleInteractOutside: NonNullable<
+		ComponentProps<typeof DropdownMenuPrimitive.Content>['onInteractOutside']
 	> = (event) => {
-		onCloseAutoFocus?.(event);
+		onInteractOutside?.(event);
 		if (event.defaultPrevented) {
 			return;
 		}
 
+		const {originalEvent} = event.detail;
+		const isPointer = 'button' in originalEvent;
+		const ctrlLeftClick =
+			isPointer && originalEvent.button === 0 && originalEvent.ctrlKey;
+		const isRightClick =
+			isPointer && (originalEvent.button === 2 || ctrlLeftClick);
+		if (!modal || isRightClick) {
+			radixWillSkipFocusRef.current = true;
+		}
+	};
+
+	const handleCloseAutoFocus: NonNullable<
+		ComponentProps<typeof DropdownMenuPrimitive.Content>['onCloseAutoFocus']
+	> = (event) => {
+		const radixWillSkipFocus = radixWillSkipFocusRef.current;
+		radixWillSkipFocusRef.current = false;
+		onCloseAutoFocus?.(event);
+		if (event.defaultPrevented || radixWillSkipFocus) {
+			return;
+		}
+
 		// Radix FocusScope runs onCloseAutoFocus in a deferred setTimeout(..., 0)
-		// after unmount. If focus has already moved to another element in the
-		// document (such as the canvas or a dialog), do not steal it back to the
-		// menu trigger.
+		// after unmount. If focus has already moved to a connected element outside
+		// the menu content (such as the canvas or a dialog), do not steal it back
+		// to the menu trigger. When radixWillSkipFocus is true, Radix's internal
+		// handler already skips trigger focus and must still run so its
+		// hasInteractedOutsideRef resets for the next open/close cycle.
 		const active = globalThis.document?.activeElement;
 		if (
 			active?.isConnected &&
 			active !== globalThis.document.body &&
-			active !== globalThis.document.documentElement
+			active !== globalThis.document.documentElement &&
+			!contentRef.current?.contains(active)
 		) {
 			event.preventDefault();
 		}
@@ -61,12 +110,14 @@ function DropdownMenuContent({
 	return (
 		<DropdownMenuPrimitive.Portal>
 			<DropdownMenuPrimitive.Content
+				ref={setContentRef}
 				data-slot="dropdown-menu-content"
 				sideOffset={sideOffset}
 				className={cn(
 					'surface-overlay z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[10rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md p-1 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
 					className,
 				)}
+				onInteractOutside={handleInteractOutside}
 				onCloseAutoFocus={handleCloseAutoFocus}
 				{...props}
 			/>

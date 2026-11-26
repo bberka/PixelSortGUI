@@ -278,6 +278,36 @@ export function CanvasStage() {
 		claimView(resolveView(project.viewState, source, viewportRef.current));
 	}, [bundle, projectId, sourceWidth, sourceHeight, claimView, scheduleDraw]);
 
+	const syncViewport = useCallback((): Size => {
+		const stage = stageRef.current;
+		if (!stage) {
+			return viewportRef.current;
+		}
+
+		const width = stage.clientWidth;
+		const height = stage.clientHeight;
+		const previous = viewportRef.current;
+		if (previous.width === width && previous.height === height) {
+			return previous;
+		}
+
+		const next: Size = {width, height};
+		viewportRef.current = next;
+		const source = sourceRef.current;
+		const {current} = viewRef;
+		if (source && current) {
+			claimView(
+				current.fitMode === 'fit'
+					? fitView(source, next)
+					: clampCenter(current, source, next),
+			);
+			return next;
+		}
+
+		scheduleDraw();
+		return next;
+	}, [claimView, scheduleDraw]);
+
 	// The viewport decides the fit zoom; a resize keeps a custom zoom and centre.
 	useEffect(() => {
 		const stage = stageRef.current;
@@ -285,40 +315,17 @@ export function CanvasStage() {
 			return undefined;
 		}
 
-		const sync = () => {
-			const width = stage.clientWidth;
-			const height = stage.clientHeight;
-			const previous = viewportRef.current;
-			if (previous.width === width && previous.height === height) {
-				return;
-			}
-
-			viewportRef.current = {width, height};
-			const source = sourceRef.current;
-			const {current} = viewRef;
-			if (source && current) {
-				claimView(
-					current.fitMode === 'fit'
-						? fitView(source, {width, height})
-						: clampCenter(current, source, {width, height}),
-				);
-				return;
-			}
-
-			scheduleDraw();
-		};
-
-		sync();
+		syncViewport();
 		if (typeof ResizeObserver !== 'function') {
 			return undefined;
 		}
 
-		const observer = new ResizeObserver(sync);
+		const observer = new ResizeObserver(syncViewport);
 		observer.observe(stage);
 		return () => {
 			observer.disconnect();
 		};
-	}, [claimView, scheduleDraw]);
+	}, [syncViewport]);
 
 	useEffect(() => {
 		renderSourceRef.current = renderSource;
@@ -645,31 +652,15 @@ export function CanvasStage() {
 		toggleFitAndActual(pointerPosition(event));
 	};
 
-	const readViewport = useCallback((): Size => {
-		const stage = stageRef.current;
-		if (stage && stage.clientWidth > 0 && stage.clientHeight > 0) {
-			const live = {width: stage.clientWidth, height: stage.clientHeight};
-			if (
-				viewportRef.current.width !== live.width ||
-				viewportRef.current.height !== live.height
-			) {
-				viewportRef.current = live;
-			}
-
-			return live;
-		}
-
-		return viewportRef.current;
-	}, []);
-
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+		const viewport = syncViewport();
 		const {current} = viewRef;
 		const source = sourceRef.current;
 		if (!current || !source) {
 			return;
 		}
 
-		const next = arrowPan(event.key, current, source, readViewport());
+		const next = arrowPan(event.key, current, source, viewport);
 		if (!next) {
 			return;
 		}

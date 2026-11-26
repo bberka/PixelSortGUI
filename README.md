@@ -16,6 +16,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Posterize effect: reduce colour depth to a set number of levels per channel or by dropping low bits, with an optional monochrome output.
 - Mirror fold effect: mirror the image left to right, top to bottom, four ways or as an eight-way kaleidoscope, around a movable centre, from either side.
 - Bayer dither effect: ordered dithering with a 2×2, 4×4 or 8×8 pattern, 2 to 16 levels per channel, a spread amount, a pattern scale and an optional monochrome output.
+- Threshold invert effect: invert all channels or one of them for pixels whose luma, lightness, value, saturation, hue, red, green or blue lies in a range, or outside it, with a selection view.
 - Scanline wave effect: displace rows or columns along a sine, triangle, square or sawtooth wave, with amplitude, wavelength, phase, per-line jitter with a seed, and wrap or stretch at the edges.
 - RGB noise effect: add colour or monochrome noise with an amount, a grain size, a chance of dead or hot pixels, and a seed.
 - JPEG crush effect: crush 4 to 64 px blocks like a badly saved JPEG, with a quality level, optional chroma subsampling, and seeded block corruption that bends colours. It gives the same output in every browser.

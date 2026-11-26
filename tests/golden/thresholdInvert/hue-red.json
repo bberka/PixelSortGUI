@@ -1,0 +1,23 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "ti000002",
+				"type": "thresholdInvert",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"selectKey": "hue",
+					"threshold": [0.2, 0.6],
+					"invertSelection": false,
+					"channels": "red"
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

@@ -11,6 +11,7 @@ import {sliceShiftEffect} from './slice-shift.ts';
 import {posterizeEffect} from './posterize.ts';
 import {rgbNoiseEffect} from './rgb-noise.ts';
 import {scanlineWaveEffect} from './scanline-wave.ts';
+import {thresholdInvertEffect} from './threshold-invert.ts';
 
 /**
  Static effect registry for render workers, bundling all render implementations
@@ -27,6 +28,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	mirrorFoldEffect,
 	bayerDitherEffect,
 	rgbNoiseEffect,
+	thresholdInvertEffect,
 	jpegCrushEffect,
 ];
 

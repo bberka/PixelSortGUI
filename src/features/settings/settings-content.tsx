@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {
+	BookOpenIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
 	DownloadIcon,
@@ -17,6 +18,8 @@ import {
 	THIRD_PARTY_NOTICES_FILE,
 } from './third-party-notices.generated.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
+import {GUIDE_SETTINGS_LINK} from '@/features/guide/content.ts';
+import {GUIDE_HASH} from '@/features/guide/navigation.ts';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {ScrollArea} from '@/components/ui/scroll-area';
@@ -63,9 +66,17 @@ function getAppVersionLabel(): string {
 export type SettingsContentProps = {
 	readonly open: boolean;
 	readonly storageManager?: StorageManagerLike;
+	/**
+	 Called when the guide link is followed, so the dialog can close.
+	 */
+	readonly onOpenGuide?: () => void;
 };
 
-export function SettingsContent({open, storageManager}: SettingsContentProps) {
+export function SettingsContent({
+	open,
+	storageManager,
+	onOpenGuide,
+}: SettingsContentProps) {
 	const theme = useAppStore((state) => state.theme);
 	const setTheme = useAppStore((state) => state.setTheme);
 	const storage = useAppStore((state) => state.storage);
@@ -292,6 +303,15 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 				<p className="text-xs leading-4 text-muted-foreground">
 					Pixel sorting lineage: inspired by Kim Asendorf&apos;s ASDFPixelSort.
 				</p>
+
+				<a
+					href={GUIDE_HASH}
+					className="inline-flex min-h-6 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					onClick={onOpenGuide}
+				>
+					<BookOpenIcon className="size-3.5 shrink-0" aria-hidden="true" />
+					<span>{GUIDE_SETTINGS_LINK}</span>
+				</a>
 
 				<ul className="flex flex-col gap-1.5">
 					{ABOUT_EXTERNAL_LINKS.map((link) => (

@@ -1,6 +1,7 @@
 export type AppRoute =
 	| {screen: 'library'}
 	| {screen: 'editor'; projectId: string}
+	| {screen: 'guide'}
 	| {screen: 'gallery'};
 
 export type HashRouterEnv = {
@@ -18,6 +19,10 @@ export function parseHashRoute(rawHash: string): AppRoute {
 	const normalized = withoutHash.startsWith('/')
 		? withoutHash
 		: `/${withoutHash}`;
+
+	if (normalized === '/guide') {
+		return {screen: 'guide'};
+	}
 
 	if (normalized === '/dev/gallery') {
 		return {screen: 'gallery'};
@@ -46,6 +51,10 @@ export function formatHashRoute(route: AppRoute): string {
 
 		case 'editor': {
 			return `#/p/${encodeURIComponent(route.projectId)}`;
+		}
+
+		case 'guide': {
+			return '#/guide';
 		}
 
 		case 'gallery': {

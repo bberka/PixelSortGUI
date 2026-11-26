@@ -248,6 +248,10 @@ describe('empty library', () => {
 
 	it('triggers the hidden file picker when Open images is activated', async () => {
 		const harness = await renderLibrary([]);
+		// The first-launch welcome card has a picker of its own (AC-F27).
+		await act(async () => {
+			await harness.store.getState().dismissWelcome();
+		});
 		const openButton = [
 			...harness.container.querySelectorAll<HTMLButtonElement>('button'),
 		].find((button) => button.textContent === 'Open images');

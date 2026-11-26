@@ -219,6 +219,12 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** The app covers many glitch and image effects rather than pixel sorting alone, so a broader product name fits better and `drift.bbay.dev` matches it. Because the app is unreleased, browser storage identifiers are renamed cleanly without a legacy migration. Pixel sorting remains the name of the technique.
 - **Revisit if:** Never; once `v0.1.0` ships, storage identifiers are frozen and migrated rather than renamed.
 
+### D32. In-app guide instead of a landing page (2026-11-26)
+
+- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch.
+- **Reason:** The first thing a user wants is to open a photo and get a result. A landing page adds a step on every visit and marketing copy that `DESIGN.md` section 1 rules out. An in-app guide is part of the offline precache, so it also works without a connection.
+- **Revisit if:** The owner wants a public page that explains Drift to people who have not opened it.
+
 ---
 
 ## Open questions for the owner

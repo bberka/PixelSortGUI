@@ -45,6 +45,11 @@ describe('parseHashRoute', () => {
 });
 
 describe('formatHashRoute', () => {
+	it('parses and formats the guide route', () => {
+		expect(parseHashRoute('#/guide')).toEqual({screen: 'guide'});
+		expect(formatHashRoute({screen: 'guide'})).toBe('#/guide');
+	});
+
 	it('formats library, editor (URI-encoded), and gallery routes', () => {
 		expect(formatHashRoute({screen: 'library'})).toBe('#/');
 		expect(formatHashRoute({screen: 'gallery'})).toBe(DEV_GALLERY_HASH);

@@ -255,15 +255,20 @@ test('keyboard: the first Tab reaches a visible control and focus follows the vi
 	await expect(exportButton).toBeFocused();
 	const exportBox = await exportButton.boundingBox();
 	await page.keyboard.press('Tab');
+	const guideButton = page.getByRole('button', {name: 'Guide', exact: true});
+	await expect(guideButton).toBeFocused();
+	const guideBox = await guideButton.boundingBox();
+	await page.keyboard.press('Tab');
 	const settingsButton = page.getByRole('button', {name: 'Settings'});
 	await expect(settingsButton).toBeFocused();
 	const settingsBox = await settingsButton.boundingBox();
-	if (!backBox || !exportBox || !settingsBox) {
+	if (!backBox || !exportBox || !guideBox || !settingsBox) {
 		throw new Error('All app bar controls must have a layout box');
 	}
 
 	expect(backBox.x).toBeLessThan(exportBox.x);
-	expect(exportBox.x).toBeLessThan(settingsBox.x);
+	expect(exportBox.x).toBeLessThan(guideBox.x);
+	expect(guideBox.x).toBeLessThan(settingsBox.x);
 });
 
 test('the app bar has no theme button on the library and editor screens', async ({

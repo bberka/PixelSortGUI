@@ -3,6 +3,7 @@ import {ArrowLeftIcon} from 'lucide-react';
 import {useAppStore} from './runtime-context.tsx';
 import {APP_BAR_ACTIONS} from './app-bar-actions.ts';
 import {Button} from '@/components/ui/button';
+import {formatHashRoute} from '@/state/router.ts';
 
 export function AppBarFrame({children}: {readonly children: ReactNode}) {
 	return (
@@ -16,7 +17,9 @@ export function AppBar() {
 	const route = useAppStore((state) => state.route);
 	const projectName = useAppStore((state) => state.activeProject?.name ?? null);
 	const closeProject = useAppStore((state) => state.closeProject);
+	const activeProjectId = useAppStore((state) => state.activeProjectId);
 	const isEditor = route.screen === 'editor';
+	const isGuide = route.screen === 'guide';
 	const actions = APP_BAR_ACTIONS.filter(
 		(action) => action.screen === route.screen,
 	);
@@ -31,6 +34,23 @@ export function AppBar() {
 					aria-label="Back to library"
 					onClick={() => {
 						void closeProject();
+					}}
+				>
+					<ArrowLeftIcon aria-hidden="true" />
+				</Button>
+			) : null}
+			{isGuide ? (
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-sm"
+					aria-label={activeProjectId ? 'Back to editor' : 'Back to library'}
+					onClick={() => {
+						globalThis.location.hash = formatHashRoute(
+							activeProjectId
+								? {screen: 'editor', projectId: activeProjectId}
+								: {screen: 'library'},
+						);
 					}}
 				>
 					<ArrowLeftIcon aria-hidden="true" />

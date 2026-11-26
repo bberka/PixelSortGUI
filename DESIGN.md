@@ -12,7 +12,7 @@ Drift is a darkroom-style still-photo utility. The user's image is the visual fo
 
 Rules every screen follows:
 
-- **No decoration or marketing copy.** No hero banners, gradients, background grids, onboarding tours, or explanatory subtitles that restate labels.
+- **No decoration or marketing copy.** No hero banners, gradients, background grids, onboarding tours, landing pages, or explanatory subtitles that restate labels. Help lives on the Guide screen (section 7.3); the only first-launch aid is one dismissible welcome card in the empty Library.
 - **No remote assets.** System fonts only, bundled `lucide-react` icons only. Zero network requests at runtime.
 - **Semantic tokens only.** Never write raw hex, `rgb()`, or Tailwind palette color utilities (`bg-zinc-900`, `text-blue-500`) in `.tsx` components. Use semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) mapped in `src/styles/app.css`.
 - **Same features on every screen size.** Phone, tablet, and desktop layouts expose the exact same first-release capabilities; only chrome placement and target sizing adapt. First-release acceptance is desktop only; phone and tablet widths are checked in a desktop browser for layout only.
@@ -174,7 +174,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-------------------------------------------------------------------+
-| Drift            [Open images]          [Settings] |  <- 48/52 px
+| Drift          [Import images] [Guide] [Settings] |  <- 48/52 px
 +-------------------------------------------------------------------+
 | [Optional banner: Storage unavailable]                            |
 +-------------------------------------------------------------------+
@@ -195,7 +195,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-----------------------------------------------------------------------------+
-| <- Drift project-name                             [Export] [Settings] |  48 px
+| <- Drift project-name                     [Export] [Guide] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
 | [Undo][Redo] | [Presets] | [Compare][Split]            | + Add effect       |  40 px toolbar
 +--------------------------------------------------------+ [=] Pixel sort [on]|  <- Stack
@@ -259,7 +259,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 +-------------------------------+  + safe-area-bottom
 ```
 
-- **App bar and toolbar:** The app bar has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Settings`) on phone width. Undo, Redo, Presets, and Compare/Split live in the editor toolbar directly above the canvas.
+- **App bar and toolbar:** The app bar has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width. Undo, Redo, Presets, and Compare/Split live in the editor toolbar directly above the canvas.
 - **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled switch/`"Off"` text, and tap-to-select; tapping the chip's `⋮` menu opens Move left, Move right, Duplicate, Remove. A pinned `+` chip opens Add effect.
 - **Phone bottom sheet:** Starts at **Half** detent (capped so the canvas keeps at least `40%` of viewport height while a parameter is being adjusted), and cycles or drags between **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half**, and **Expanded** (`80%` viewport height, dropping temporarily or remaining clear of the canvas when collapsed/half).
 - **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet and stack strip into a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
@@ -303,7 +303,8 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Desktop (`1440 × 900`):** Second tab in the right sidebar `Tabs` bar alongside Stack: `[Stack | History]`. Selecting `History` replaces the Stack + Parameters area with a full-height `ScrollArea` listing commits newest-first (`Initial` at bottom).
   - **Tablet (`820 × 1180`):** Second tab in the left column of the docked bottom panel (`[Stack | History]`).
   - **Phone (`390 × 844`):** `"History"` button in the editor toolbar, opening the History list in a `Sheet`.
-  - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render muted (`text-muted-foreground opacity-60`) to show they belong to the redo branch and will be discarded on a new commit. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state.
+  - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render their label in `text-muted-foreground`, with `"Redo step"` for screen readers, to show they belong to the redo branch and will be discarded on a new commit. No opacity is applied, because dimmed text fails the 4.5:1 contrast minimum. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state. The timestamp is the clock time for today's entries, and `"Yesterday"` or a short date for older ones.
+  - The phone `Sheet` (bottom in portrait, right in landscape) stays open after a jump, so several entries can be tried in a row.
 - **App changelog (F24):**
   - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
 - **Project files (F25):**
@@ -321,6 +322,15 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - Layout: `48 × 36 px` rounded thumbnail preview (or muted placeholder icon with `"No image selected"`), dimensions metadata (`W × H px`), `"Choose image"` outline button, and `"Clear"` icon button (`X`, shown when an image is set).
   - Clicking `"Choose image"` opens a `Popover` (desktop/tablet) / `Sheet` (phone) with two options: `"From device"` (opens native image file picker with F1 validation/50 MP flow) and `"From library"` (scrollable grid of existing library project thumbnails to reuse a stored `SourceRecord` without duplicating bytes).
   - If the referenced source is missing (`'missing-source'` warning), displays a destructive-text inline note `"Missing image"` beside `"Choose image"`.
+
+### 7.3 Guide screen and welcome card (F27)
+
+- **App bar:** a ghost icon `Button` with `CircleHelp` (`aria-label="Guide"`, tooltip `"Guide (?)"`) before Settings on the Library and Editor. On the Guide, a back arrow on the left and Settings on the right.
+- **Layout:** one `ScrollArea` for the page. At `>= 1024 px` a `224 px` contents column, sticky at the top, beside a text column of at most `68ch`. Below that, a sticky bar with a full-width outline `Button` `"Contents"` (`aria-expanded`) that opens the list; the list scrolls inside `60dvh`.
+- **Contents:** plain full-width buttons with hover fill on `--secondary`; `32 px` tall, `44 px` on coarse pointer. Activating one scrolls the section into view without animation and focuses its heading.
+- **Type:** page title `24 / 32` semibold (`h2`), section titles `18 / 24` semibold (`h3`), effect names `16 / 24` (`h4`), body `14 / 24`.
+- **Effects reference:** one bordered `--card` block per effect with a definition list of parameters, divided by `1 px` `--border`. Keys in the shortcut table use `kbd` with `--secondary` fill and the mono font.
+- **Welcome card:** `Card` at most `448 px` wide below the empty-state column: title `"Welcome to Drift"`, one line of text, outline `"Import a photo"`, ghost `"Read the guide"`, and a ghost icon button `"Dismiss welcome"` at the top right. Dismissing moves focus to the `"No projects yet"` heading.
 
 ## 8. Interaction: touch, pointer and keyboard
 
@@ -350,6 +360,7 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 
 | Shortcut | Scope | Action |
 |---|---|---|
+| `?` | Anywhere except text fields and open dialogs | Open the Guide (F27) |
 | `Ctrl+Z` / `Cmd+Z` | Editor | Undo last commit (AC-F9.1) |
 | `Ctrl+Shift+Z` / `Cmd+Shift+Z` / `Ctrl+Y` | Editor | Redo commit (AC-F9.1) |
 | `\` | Editor | Toggle Compare (tap) or peek Original (hold > 300 ms) (F11) |
@@ -367,7 +378,7 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 
 | State | Trigger | Presentation and exact copy | Actions |
 |---|---|---|---|
-| Empty library (AC-F2.1) | 0 projects stored | Centered column: heading `"No projects yet"`, note `"Images stay on this device."` | `"Open images"` (primary) |
+| Empty library (AC-F2.1) | 0 projects stored | Centered column: heading `"No projects yet"`, note `"Images stay on this device."` | `"Open images"` (primary); the welcome card on a first launch, afterwards the link `"New here? Read the guide"` (section 7.3) |
 | Empty effect stack | New project or all effects removed | Centered note in stack panel: `"No effects yet"` | `"Add effect"`, `"Browse presets"` |
 | Render in progress (AC-F8.3) | Preview render running > 300 ms | Thin `2 px` `--accent` progress bar pinned to top of canvas stage | Disappears on finish or cancel |
 | Full-resolution render (AC-F8.4) | Zoom > 1.25× settle proxy | Compact pill at bottom-left of canvas: `"Rendering full resolution"` | Disappears on finish or cancel (AC-F8.5) |
@@ -396,4 +407,4 @@ Target: **WCAG 2.2 Level AA** for all UI outside the user's photo (F19).
 - **Status announcements (AC-F19.3):** One visually hidden live region (`role="status" aria-live="polite" aria-atomic="true"`) announces `"Rendering"`, `"Rendered"`, `"Export finished: <file name>"`, and undo/redo results. Throttled so rapid `drag` renders do not spam assistive tech (announce on `settle` and `full` transitions).
 - **Pointer and coarse-pointer sizing:** Minimum `24 × 24 CSS px` interactive targets on desktop (`@media (pointer: fine)`), and minimum `44 × 44 CSS px` targets plus `16 px` font size on text/numeric inputs under `@media (pointer: coarse)` so responsive layouts stay ready for touch devices.
 - **Reduced motion (AC-F19.4):** Under `@media (prefers-reduced-motion: reduce)`, all sheet transitions, toast slides, zoom easing, and spinner/progress animations become instant state updates (`transition-duration: 0.01ms`).
-- **Automated verification (AC-F14.3, AC-F19.2):** CI runs Playwright with `@axe-core/playwright` checking zero serious/critical/moderate WCAG 2.2 AA violations on the Library, Editor, Export dialog, and Settings screens in both Light and True Black themes at `390 × 844`, `820 × 1180`, and `1440 × 900`.
+- **Automated verification (AC-F14.3, AC-F19.2):** CI runs Playwright with `@axe-core/playwright` checking zero serious/critical/moderate WCAG 2.2 AA violations on the Library, Editor, Export dialog, Settings, and Guide screens in both Light and True Black themes at `390 × 844`, `820 × 1180`, and `1440 × 900`.

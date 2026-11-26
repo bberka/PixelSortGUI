@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import {EditorSlot} from './editor-slots.tsx';
 import {Button} from '@/components/ui/button';
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
+import {HistoryPanel} from '@/features/history/history-panel.tsx';
 import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 
@@ -140,6 +142,10 @@ export function EditorScreen() {
 	);
 	const [phoneDetent, setPhoneDetent] = useState<PhoneSheetDetent>('half');
 	const [landscapeDrawerOpen, setLandscapeDrawerOpen] = useState(true);
+	const [panelTab, setPanelTab] = useState('stack');
+	// Phones open the history from the toolbar instead.
+	const showPanelTabs = isDesktop || isTablet;
+	const historyActive = showPanelTabs && panelTab === 'history';
 
 	const dragRef = useRef<{startY: number; startHeight: number} | null>(null);
 	const sheetDragRef = useRef<{
@@ -439,26 +445,84 @@ export function EditorScreen() {
 					</div>
 				) : null}
 
-				<div
+				<Tabs
 					className={cn(
-						'flex min-h-0 min-w-0 flex-1',
-						isTablet ? 'flex-row' : 'flex-col',
+						'min-h-0 min-w-0 flex-1 gap-0',
+						isTablet &&
+							'grid grid-cols-[260px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]',
 						((isTablet && tabletCollapsed) ||
 							(isPhoneLandscape && !landscapeDrawerOpen)) &&
 							'hidden',
 					)}
+					value={historyActive ? 'history' : 'stack'}
+					onValueChange={setPanelTab}
 				>
-					<EditorSlot
+					{showPanelTabs ? (
+						<div
+							className={cn(
+								'flex shrink-0 border-b border-border p-1.5',
+								isTablet && 'col-start-1 row-start-1 border-r',
+							)}
+						>
+							{/* Radix leaves the list itself tabbable, which traps Shift+Tab
+							    in Firefox, so only the selected tab is a tab stop. */}
+							<TabsList
+								tabIndex={-1}
+								aria-label="Effects views"
+								className="w-full group-data-[orientation=horizontal]/tabs:[@media(pointer:coarse)]:h-12"
+							>
+								<TabsTrigger value="stack" tabIndex={historyActive ? -1 : 0}>
+									Stack
+								</TabsTrigger>
+								<TabsTrigger value="history" tabIndex={historyActive ? 0 : -1}>
+									History
+								</TabsTrigger>
+							</TabsList>
+						</div>
+					) : null}
+
+					<TabsContent
+						forceMount
+						value="stack"
+						{...(showPanelTabs
+							? {tabIndex: -1}
+							: {
+									role: undefined,
+									tabIndex: undefined,
+									'aria-labelledby': undefined,
+								})}
 						className={cn(
-							isDesktop &&
-								'h-auto max-h-[38%] min-h-[72px] w-full shrink-0 border-b border-border',
-							isTablet && 'h-full w-[260px] shrink-0 border-r border-border',
-							(isPhonePortrait || isPhoneLandscape) &&
-								'h-12 w-full shrink-0 border-b border-border',
+							'flex min-h-0 min-w-0 flex-none flex-col',
+							isDesktop && 'max-h-[38%] min-h-[72px]',
+							isTablet && 'col-start-1 row-start-2',
+							historyActive && 'hidden',
 						)}
-						id="stack"
-						label="Effect stack"
-					/>
+					>
+						<EditorSlot
+							className={cn(
+								'flex-auto border-border',
+								isDesktop && 'w-full border-b',
+								isTablet && 'w-full border-r',
+								(isPhonePortrait || isPhoneLandscape) &&
+									'h-12 w-full flex-none border-b',
+							)}
+							id="stack"
+							label="Effect stack"
+						/>
+					</TabsContent>
+
+					{showPanelTabs ? (
+						<TabsContent
+							value="history"
+							tabIndex={-1}
+							className={cn(
+								'min-h-0 min-w-0',
+								isTablet && 'col-start-1 row-start-2 border-r border-border',
+							)}
+						>
+							<HistoryPanel />
+						</TabsContent>
+					) : null}
 
 					{isPhonePortrait ? (
 						<div
@@ -514,12 +578,16 @@ export function EditorScreen() {
 						</div>
 					) : (
 						<EditorSlot
-							className="min-h-0 flex-1"
+							className={cn(
+								'min-h-0 flex-1',
+								isTablet && 'col-start-2 row-span-2 row-start-1',
+								isDesktop && historyActive && 'hidden',
+							)}
 							id="params"
 							label="Parameters"
 						/>
 					)}
-				</div>
+				</Tabs>
 			</aside>
 		</div>
 	);

@@ -160,6 +160,7 @@ export type AppState = {
 	presets: UserPresetRecord[];
 	compareMode: CompareMode;
 	theme: ThemePreference;
+	welcomeDismissed: boolean;
 
 	storage: StorageStatus;
 	render: RenderStatus;
@@ -170,6 +171,7 @@ export type AppState = {
 		presets: UserPresetRecord[];
 		theme: ThemePreference;
 		compareMode: CompareMode;
+		welcomeDismissed?: boolean;
 		storageUnavailable: boolean;
 		route: AppRoute;
 		notice: string | null;
@@ -261,6 +263,7 @@ export type AppState = {
 	flushViewState(): Promise<void>;
 	setCompareMode(mode: CompareMode): Promise<void>;
 	setTheme(theme: ThemePreference): Promise<void>;
+	dismissWelcome(): Promise<void>;
 	updateExportSettings(settings: ExportSettings): Promise<ProjectRecord>;
 
 	// Hash navigation & teardown
@@ -861,6 +864,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		presets: [],
 		compareMode: 'toggle',
 		theme: 'system',
+		welcomeDismissed: false,
 
 		storage: {
 			storageUnavailable: false,
@@ -887,6 +891,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				presets: sortPresetsByName(payload.presets),
 				theme: payload.theme,
 				compareMode: payload.compareMode,
+				welcomeDismissed: payload.welcomeDismissed ?? false,
 				route: payload.route,
 				notice: payload.notice,
 				activeProjectId: activeProject?.id ?? null,
@@ -962,6 +967,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 							}));
 						}
 					});
+				}
+
+				if (!get().welcomeDismissed) {
+					// A first import ends the first launch, saved or not.
+					await get()
+						.dismissWelcome()
+						.catch(() => {});
 				}
 
 				const activate = input.setActive ?? true;
@@ -1942,6 +1954,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			}
 		},
 
+		async dismissWelcome() {
+			set({welcomeDismissed: true});
+			await repository.updateAppState({welcomeDismissed: true});
+		},
+
 		async updateExportSettings(settings) {
 			const active = requireActiveProject();
 			try {
@@ -1970,8 +1987,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			const parsed = parseHashRoute(routerEnv.getHash());
 			const current = get().route;
 
-			if (parsed.screen === 'gallery') {
-				if (current.screen !== 'gallery') {
+			// The guide and the dev gallery leave the open project as it is.
+			if (parsed.screen === 'gallery' || parsed.screen === 'guide') {
+				if (current.screen !== parsed.screen) {
 					await flushPendingCommitImpl();
 					await flushViewStateImpl();
 					set({route: parsed});

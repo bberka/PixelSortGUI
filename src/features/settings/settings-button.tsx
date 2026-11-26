@@ -58,7 +58,13 @@ export function SettingsDialog({
 					</SheetHeader>
 					<ScrollArea className="min-h-0 flex-1">
 						<div className="p-4">
-							<SettingsContent open={open} storageManager={storageManager} />
+							<SettingsContent
+								open={open}
+								storageManager={storageManager}
+								onOpenGuide={() => {
+									onOpenChange(false);
+								}}
+							/>
 						</div>
 					</ScrollArea>
 				</SheetContent>
@@ -80,7 +86,13 @@ export function SettingsDialog({
 				</DialogHeader>
 				<ScrollArea className="min-h-0 flex-1">
 					<div className="p-6">
-						<SettingsContent open={open} storageManager={storageManager} />
+						<SettingsContent
+							open={open}
+							storageManager={storageManager}
+							onOpenGuide={() => {
+								onOpenChange(false);
+							}}
+						/>
 					</div>
 				</ScrollArea>
 			</DialogContent>

@@ -657,6 +657,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/pixel-sort/  index.ts, select.ts, edges.ts, fill.ts
   effects/channel-shift.ts
   effects/channel-swap.ts
+  effects/slice-shift.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts
@@ -670,7 +671,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`; `channelSwap` (section 16.1) has landed since.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is in `v0.1.0`. Of it, only `channelSwap` and `sliceShift` (section 16.1) are implemented so far.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 

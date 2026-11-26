@@ -6,6 +6,10 @@ Use these words the same way in specs, code, UI copy, and pull requests. The spe
 
 A **line** is one straight path of pixels along the sort direction. A **run** is a maximal sequence of consecutive selected pixels in a line; runs never continue past the end of a line. An **interval** is a run, or a piece of a run when `maxLength` splits it, that the effect sorts or changes as one unit. Defined in [engine.md](docs/specs/engine.md#54-selection-runs-and-intervals). This repository does not use the word "span".
 
+## Slice
+
+A band of adjacent rows or columns that `sliceShift` moves as one.
+
 ## Sort key
 
 The number computed from each pixel (brightness, hue, saturation, one colour channel, and so on) that decides the order of pixels inside an interval.

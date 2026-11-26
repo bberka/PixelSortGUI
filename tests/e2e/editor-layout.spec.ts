@@ -361,7 +361,7 @@ test('phone bottom sheet cycles detents and landscape right drawer collapses cle
 	await page.getByRole('button', {name: 'Collapse effects drawer'}).click();
 	await expect
 		.poll(async () => Math.round((await aside.boundingBox())!.width))
-		.toBe(40);
+		.toBe(44);
 	const expandedCanvas = await page
 		.locator('section[aria-label="Canvas"]')
 		.boundingBox();
@@ -463,4 +463,88 @@ test('full editing flow at 390x844: open project, add effect, change parameter, 
 	await page.keyboard.press('Escape');
 	await expect(exportDialog).toHaveCount(0);
 	expect(consoleErrors).toEqual([]);
+});
+
+test('AC-F18.3: coarse pointer chrome controls meet 44x44 px without overflowing their headers or rail', async ({
+	browser,
+	browserName,
+}) => {
+	test.skip(
+		browserName !== 'chromium',
+		'Playwright isMobile (pointer: coarse) emulation is Chromium-only',
+	);
+
+	const context = await browser.newContext({
+		viewport: {width: 390, height: 844},
+		hasTouch: true,
+		isMobile: true,
+	});
+	const page = await context.newPage();
+
+	try {
+		await seedEditor(page, LAYOUT_VIEWPORTS[0], THEMES[0], ['pixelSort']);
+		const isCoarse = await page.evaluate(
+			() => globalThis.matchMedia('(pointer: coarse)').matches,
+		);
+		expect(isCoarse).toBe(true);
+
+		// 1. Phone portrait detent toggle is >= 44x44 and does not overlap params.
+		const detentButton = page.getByRole('button', {name: 'Expand parameters'});
+		const detentBox = (await detentButton.boundingBox())!;
+		const paramsBox = (await page
+			.locator('section[aria-label="Parameters"]')
+			.boundingBox())!;
+		expect(detentBox.width).toBeGreaterThanOrEqual(44);
+		expect(detentBox.height).toBeGreaterThanOrEqual(44);
+		expect(boxesOverlap(detentBox, paramsBox)).toBe(false);
+		await expect(detentButton).toHaveAttribute(
+			'aria-controls',
+			'editor-phone-params-panel',
+		);
+
+		// 2. Phone landscape drawer toggle is >= 44x44 and fits inside the collapsed rail.
+		await page.setViewportSize({width: 844, height: 390});
+		const collapseDrawer = page.getByRole('button', {
+			name: 'Collapse effects drawer',
+		});
+		const openToggleBox = (await collapseDrawer.boundingBox())!;
+		expect(openToggleBox.width).toBeGreaterThanOrEqual(44);
+		expect(openToggleBox.height).toBeGreaterThanOrEqual(44);
+		await collapseDrawer.click();
+
+		const expandDrawer = page.getByRole('button', {
+			name: 'Expand effects drawer',
+		});
+		const railBox = (await page
+			.locator('aside[aria-label="Effects"]')
+			.boundingBox())!;
+		const collapsedToggleBox = (await expandDrawer.boundingBox())!;
+		expect(collapsedToggleBox.width).toBeGreaterThanOrEqual(44);
+		expect(collapsedToggleBox.height).toBeGreaterThanOrEqual(44);
+		expect(railBox.width).toBeGreaterThanOrEqual(44);
+		expect(collapsedToggleBox.x + collapsedToggleBox.width).toBeLessThanOrEqual(
+			railBox.x + railBox.width + 1,
+		);
+
+		// 3. Tablet resize handle and collapse button are >= 44x44 and do not overlap stack/params.
+		await page.setViewportSize({width: 820, height: 1180});
+		const tabletCollapse = page.getByRole('button', {
+			name: 'Collapse effects panel',
+		});
+		const tabletResize = page.getByRole('slider', {
+			name: 'Resize effects panel',
+		});
+		const collapseBox = (await tabletCollapse.boundingBox())!;
+		const resizeBox = (await tabletResize.boundingBox())!;
+		const stackBox = (await page
+			.locator('section[aria-label="Effect stack"]')
+			.boundingBox())!;
+		expect(collapseBox.width).toBeGreaterThanOrEqual(44);
+		expect(collapseBox.height).toBeGreaterThanOrEqual(44);
+		expect(resizeBox.height).toBeGreaterThanOrEqual(44);
+		expect(boxesOverlap(collapseBox, stackBox)).toBe(false);
+		expect(boxesOverlap(resizeBox, stackBox)).toBe(false);
+	} finally {
+		await context.close();
+	}
 });

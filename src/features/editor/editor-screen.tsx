@@ -342,14 +342,16 @@ export function EditorScreen() {
 					isPhoneLandscape &&
 						(landscapeDrawerOpen
 							? 'w-[300px] border-l border-border'
-							: 'w-10 border-l border-border'),
+							: 'w-11 border-l border-border'),
 				)}
 			>
 				{isTablet ? (
 					<div
 						className={cn(
 							'flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3',
-							tabletCollapsed ? 'h-12 border-b-0' : 'h-7',
+							tabletCollapsed
+								? 'h-12 border-b-0'
+								: 'h-7 [@media(pointer:coarse)]:min-h-11',
 						)}
 					>
 						{tabletCollapsed ? (
@@ -366,7 +368,7 @@ export function EditorScreen() {
 								aria-valuenow={tabletHeight}
 								aria-valuetext={`${tabletHeight} px`}
 								tabIndex={0}
-								className="flex h-6 flex-1 cursor-row-resize touch-none items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+								className="flex h-6 flex-1 cursor-row-resize touch-none items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [@media(pointer:coarse)]:min-h-11"
 								onPointerDown={handleTabletSeparatorPointerDown}
 								onPointerMove={handleTabletSeparatorPointerMove}
 								onPointerUp={handleTabletSeparatorPointerUp}
@@ -403,10 +405,10 @@ export function EditorScreen() {
 				{isPhoneLandscape ? (
 					<div
 						className={cn(
-							'flex shrink-0 items-center border-b border-border bg-background px-1.5',
+							'flex shrink-0 items-center border-b border-border bg-background',
 							landscapeDrawerOpen
-								? 'h-7 justify-between'
-								: 'h-full flex-col justify-start border-b-0 py-1.5',
+								? 'h-7 justify-between px-1.5 [@media(pointer:coarse)]:min-h-11'
+								: 'h-full flex-col justify-start border-b-0 px-0 py-1.5',
 						)}
 					>
 						{landscapeDrawerOpen ? (
@@ -466,7 +468,9 @@ export function EditorScreen() {
 							<div
 								className={cn(
 									'flex shrink-0 touch-none items-center justify-between gap-2 border-b border-border bg-background px-3',
-									phoneDetent === 'collapsed' ? 'h-14 border-b-0' : 'h-7',
+									phoneDetent === 'collapsed'
+										? 'h-14 border-b-0'
+										: 'h-7 [@media(pointer:coarse)]:min-h-11',
 								)}
 								onPointerDown={handleSheetPointerDown}
 								onPointerUp={handleSheetPointerUp}
@@ -481,6 +485,7 @@ export function EditorScreen() {
 									size="icon-xs"
 									aria-label={detentButtonLabel(phoneDetent)}
 									aria-expanded={phoneDetent !== 'collapsed'}
+									aria-controls="editor-phone-params-panel"
 									onClick={() => {
 										setPhoneDetent((current) => nextDetent(current));
 									}}
@@ -493,14 +498,19 @@ export function EditorScreen() {
 									)}
 								</Button>
 							</div>
-							<EditorSlot
+							<div
+								id="editor-phone-params-panel"
 								className={cn(
-									'min-h-0 flex-1',
+									'flex min-h-0 flex-1 flex-col',
 									phoneDetent === 'collapsed' && 'hidden',
 								)}
-								id="params"
-								label="Parameters"
-							/>
+							>
+								<EditorSlot
+									className="min-h-0 flex-1"
+									id="params"
+									label="Parameters"
+								/>
+							</div>
 						</div>
 					) : (
 						<EditorSlot

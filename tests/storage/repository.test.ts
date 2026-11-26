@@ -71,6 +71,113 @@ const adapters: AdapterFactory[] = [
 
 for (const adapter of adapters) {
 	describe(`StorageRepository behavioural suite: ${adapter.name}`, () => {
+		it('keeps split side A through commit, undo, redo, duplicate and view saves, and drops it when empty', async () => {
+			const repo = await adapter.create();
+			const {project} = await repo.createProject({
+				name: 'split.png',
+				blob: makeBlob(41),
+				width: 40,
+				height: 30,
+			});
+			expect(project).not.toHaveProperty('stackA');
+			const main = makeStack([makeInstance('mainaaaa')]);
+			const side = makeStack([makeInstance('sideaaaa')]);
+
+			await repo.commitStack({
+				projectId: project.id,
+				stack: main,
+				selectedInstanceId: 'mainaaaa',
+				label: 'Add main',
+			});
+			const withSide = await repo.commitStack({
+				projectId: project.id,
+				stack: main,
+				selectedInstanceId: 'mainaaaa',
+				stackA: side,
+				selectedInstanceIdA: 'sideaaaa',
+				label: 'Add side',
+			});
+			expect(withSide.project.stackA).toEqual(side);
+			expect(withSide.entry.stackA).toEqual(side);
+
+			// A commit that says nothing about side A keeps it.
+			const kept = await repo.commitStack({
+				projectId: project.id,
+				stack: makeStack([]),
+				selectedInstanceId: null,
+				label: 'Clear main',
+			});
+			expect(kept.project.stackA).toEqual(side);
+			expect(kept.project.selectedInstanceIdA).toBe('sideaaaa');
+
+			await repo.undo(project.id);
+			const beforeSide = await repo.undo(project.id);
+			expect(beforeSide?.project).not.toHaveProperty('stackA');
+			expect(beforeSide?.project).not.toHaveProperty('selectedInstanceIdA');
+			expect(beforeSide?.project.stack).toEqual(main);
+			const redone = await repo.redo(project.id);
+			expect(redone?.project.stackA).toEqual(side);
+			expect(redone?.project.selectedInstanceIdA).toBe('sideaaaa');
+
+			await repo.updateViewState(
+				project.id,
+				{
+					...project.viewState,
+					splitOrientation: 'horizontal',
+					editSide: 'a',
+					splitPosition: 0.2,
+				},
+				'mainaaaa',
+				null,
+			);
+			const saved = await repo.getProject(project.id);
+			expect(saved?.viewState.splitOrientation).toBe('horizontal');
+			expect(saved?.viewState.editSide).toBe('a');
+			expect(saved?.stackA).toEqual(side);
+			expect(saved?.selectedInstanceIdA).toBeNull();
+
+			const copy = await repo.duplicateProject(project.id);
+			expect(copy.stackA).toEqual(side);
+			const copied = await repo.getHistory(copy.id);
+			expect(
+				copied.map((entry) => entry.stackA?.instances.length ?? 0),
+			).toEqual([0, 0, 1, 1]);
+
+			const emptied = await repo.commitStack({
+				projectId: project.id,
+				stack: main,
+				selectedInstanceId: 'mainaaaa',
+				stackA: makeStack([]),
+				selectedInstanceIdA: null,
+				label: 'Clear side',
+			});
+			expect(emptied.project).not.toHaveProperty('stackA');
+			expect(emptied.entry).not.toHaveProperty('stackA');
+			repo.close();
+		});
+
+		it('rejects a side A stack over the instance limit', async () => {
+			const repo = await adapter.create();
+			const {project} = await repo.createProject({
+				name: 'limit.png',
+				blob: makeBlob(42),
+				width: 40,
+				height: 30,
+			});
+			await expect(
+				repo.commitStack({
+					projectId: project.id,
+					stack: makeStack([]),
+					selectedInstanceId: null,
+					stackA: makeStack(
+						Array.from({length: 33}, (_, index) => makeInstance(`id${index}`)),
+					),
+					label: 'Too many',
+				}),
+			).rejects.toThrow(StorageValidationError);
+			repo.close();
+		});
+
 		it('creates, reads, lists (by openedAt desc), renames, and deletes projects', async () => {
 			let clock = 1000;
 			const repo = await adapter.create(() => {

@@ -1,22 +1,30 @@
-import {useEffect, useRef, type RefObject} from 'react';
-import {MoveHorizontalIcon} from 'lucide-react';
+import {useCallback, useEffect, useRef, type RefObject} from 'react';
+import {MoveHorizontalIcon, MoveVerticalIcon} from 'lucide-react';
 import {
 	clampSplitPosition,
 	formatSplitPercent,
 	stepSplitPosition,
 } from './compare-logic.ts';
+import type {SplitOrientation} from '@/storage/types.ts';
+import {cn} from '@/lib/utils';
 
 export type CompareOverlayProps = {
 	readonly stageRef: RefObject<HTMLDivElement | null>;
 	readonly showingOriginal: boolean;
 	readonly splitActive: boolean;
 	readonly splitPosition: number;
+	readonly orientation?: SplitOrientation;
+	readonly labelA?: string;
+	readonly labelB?: string;
 	readonly onDragSplit: (position: number) => void;
 	readonly onCommitSplit: (position: number) => void;
 };
 
+const PILL_CLASS =
+	'surface-overlay pointer-events-none absolute rounded-sm px-2 py-1 text-xs leading-4 font-medium';
+
 /**
- On-canvas compare labels ("Original" / "Edited") and the split-view divider.
+ On-canvas compare labels (one per split side) and the split-view divider.
  Pointer drags move the divider DOM node directly so no React re-render or
  app-store write occurs per pointer move.
  */
@@ -25,29 +33,38 @@ export function CompareOverlay({
 	showingOriginal,
 	splitActive,
 	splitPosition,
+	orientation = 'vertical',
+	labelA = 'Original',
+	labelB = 'Original',
 	onDragSplit,
 	onCommitSplit,
 }: CompareOverlayProps) {
+	const horizontal = orientation === 'horizontal';
 	const dividerRef = useRef<HTMLDivElement | null>(null);
 	const handleRef = useRef<HTMLDivElement | null>(null);
 	const pointerIdRef = useRef<number | null>(null);
 	const livePositionRef = useRef(clampSplitPosition(splitPosition));
 
-	const syncDividerDom = (position: number) => {
-		const clamped = clampSplitPosition(position);
-		livePositionRef.current = clamped;
-		const percent = formatSplitPercent(clamped);
-		if (dividerRef.current) {
-			dividerRef.current.style.left = `${clamped * 100}%`;
-		}
+	const syncDividerDom = useCallback(
+		(position: number) => {
+			const clamped = clampSplitPosition(position);
+			livePositionRef.current = clamped;
+			const percent = formatSplitPercent(clamped);
+			const divider = dividerRef.current;
+			if (divider) {
+				divider.style.left = horizontal ? '' : `${clamped * 100}%`;
+				divider.style.top = horizontal ? `${clamped * 100}%` : '';
+			}
 
-		if (!handleRef.current) {
-			return;
-		}
+			if (!handleRef.current) {
+				return;
+			}
 
-		handleRef.current.setAttribute('aria-valuenow', String(percent));
-		handleRef.current.setAttribute('aria-valuetext', `${percent}%`);
-	};
+			handleRef.current.setAttribute('aria-valuenow', String(percent));
+			handleRef.current.setAttribute('aria-valuetext', `${percent}%`);
+		},
+		[horizontal],
+	);
 
 	useEffect(() => {
 		if (pointerIdRef.current !== null) {
@@ -55,13 +72,13 @@ export function CompareOverlay({
 		}
 
 		syncDividerDom(splitPosition);
-	}, [splitPosition, splitActive, showingOriginal]);
+	}, [splitPosition, splitActive, showingOriginal, syncDividerDom]);
 
 	if (showingOriginal) {
 		return (
 			<div
 				data-slot="compare-label-original"
-				className="surface-overlay pointer-events-none absolute top-2 left-2 rounded-sm px-2 py-1 text-xs leading-4 font-medium"
+				className={cn(PILL_CLASS, 'top-2 left-2')}
 			>
 				Original
 			</div>
@@ -72,16 +89,17 @@ export function CompareOverlay({
 		return null;
 	}
 
-	const positionFromClientX = (clientX: number): number => {
-		const stage = stageRef.current;
-		if (!stage) {
+	const positionFromPointer = (event: React.PointerEvent): number => {
+		const rect = stageRef.current?.getBoundingClientRect();
+		const extent = horizontal ? rect?.height : rect?.width;
+		if (!rect || !extent) {
 			return livePositionRef.current;
 		}
 
-		const rect = stage.getBoundingClientRect();
-		return rect.width > 0
-			? clampSplitPosition((clientX - rect.left) / rect.width)
-			: livePositionRef.current;
+		const offset = horizontal
+			? event.clientY - rect.top
+			: event.clientX - rect.left;
+		return clampSplitPosition(offset / extent);
 	};
 
 	const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -96,7 +114,7 @@ export function CompareOverlay({
 			event.currentTarget.setPointerCapture(event.pointerId);
 		} catch {}
 
-		const next = positionFromClientX(event.clientX);
+		const next = positionFromPointer(event);
 		syncDividerDom(next);
 		onDragSplit(next);
 	};
@@ -107,7 +125,7 @@ export function CompareOverlay({
 		}
 
 		event.stopPropagation();
-		const next = positionFromClientX(event.clientX);
+		const next = positionFromPointer(event);
 		syncDividerDom(next);
 		onDragSplit(next);
 	};
@@ -135,6 +153,7 @@ export function CompareOverlay({
 			livePositionRef.current,
 			event.key,
 			event.shiftKey,
+			orientation,
 		);
 		if (next === null) {
 			return;
@@ -154,28 +173,43 @@ export function CompareOverlay({
 		tabIndex: 0,
 	};
 
+	const MoveIcon = horizontal ? MoveVerticalIcon : MoveHorizontalIcon;
+	const cursor = horizontal ? 'cursor-ns-resize' : 'cursor-ew-resize';
+
 	return (
 		<>
-			<div
-				data-slot="compare-label-original"
-				className="surface-overlay pointer-events-none absolute top-2 left-2 rounded-sm px-2 py-1 text-xs leading-4 font-medium"
-			>
-				Original
+			<div data-slot="split-label-a" className={cn(PILL_CLASS, 'top-2 left-2')}>
+				{labelA}
 			</div>
 			<div
-				data-slot="compare-label-edited"
-				className="surface-overlay pointer-events-none absolute top-2 right-2 rounded-sm px-2 py-1 text-xs leading-4 font-medium"
+				data-slot="split-label-b"
+				className={cn(
+					PILL_CLASS,
+					horizontal ? 'right-2 bottom-2' : 'top-2 right-2',
+				)}
 			>
-				Edited
+				{labelB}
 			</div>
 			<div
 				ref={dividerRef}
 				data-slot="split-divider"
-				style={{left: `${clamped * 100}%`}}
-				className="pointer-events-none absolute inset-y-0 z-10 -translate-x-1/2"
+				data-orientation={orientation}
+				style={
+					horizontal ? {top: `${clamped * 100}%`} : {left: `${clamped * 100}%`}
+				}
+				className={cn(
+					'pointer-events-none absolute z-10',
+					horizontal
+						? 'inset-x-0 -translate-y-1/2'
+						: 'inset-y-0 -translate-x-1/2',
+				)}
 			>
 				<div
-					className="pointer-events-auto flex h-full w-6 cursor-ew-resize touch-none items-center justify-center"
+					className={cn(
+						'pointer-events-auto flex touch-none items-center justify-center',
+						horizontal ? 'h-6 w-full' : 'h-full w-6',
+						cursor,
+					)}
 					onPointerDown={handlePointerDown}
 					onPointerMove={handlePointerMove}
 					onPointerUp={endPointer}
@@ -183,22 +217,28 @@ export function CompareOverlay({
 				>
 					<div
 						aria-hidden="true"
-						className="split-divider-line pointer-events-none h-full w-0.5"
+						className={cn(
+							'split-divider-line pointer-events-none',
+							horizontal ? 'h-0.5 w-full' : 'h-full w-0.5',
+						)}
 					/>
 					<div
 						ref={handleRef}
 						{...splitterAttrs}
-						aria-orientation="vertical"
+						aria-orientation={orientation}
 						aria-label="Compare split position"
 						aria-valuemin={0}
 						aria-valuemax={100}
 						aria-valuenow={percent}
 						aria-valuetext={`${percent}%`}
 						data-slot="split-divider-handle"
-						className="surface-overlay absolute flex size-11 cursor-ew-resize touch-none items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						className={cn(
+							'surface-overlay absolute flex size-11 touch-none items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+							cursor,
+						)}
 						onKeyDown={handleKeyDown}
 					>
-						<MoveHorizontalIcon aria-hidden="true" className="size-4" />
+						<MoveIcon aria-hidden="true" className="size-4" />
 					</div>
 				</div>
 			</div>

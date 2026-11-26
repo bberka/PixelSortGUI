@@ -17,6 +17,10 @@ import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {effectRegistry} from '@/engine/effects/index.ts';
 import {resolveInstance} from '@/engine/params.ts';
+import {
+	selectEditingSelectedId,
+	selectEditingStack,
+} from '@/state/split-sides.ts';
 import type {
 	EffectDefinition,
 	EffectInstance,
@@ -172,10 +176,8 @@ export function ParameterPanel({
 	registry = effectRegistry,
 	random = cryptoRandom,
 }: ParameterPanelProps = {}) {
-	const stack = useAppStore((state) => state.activeProject?.stack ?? null);
-	const selectedInstanceId = useAppStore(
-		(state) => state.activeProject?.selectedInstanceId ?? null,
-	);
+	const stack = useAppStore(selectEditingStack);
+	const selectedInstanceId = useAppStore(selectEditingSelectedId);
 	const debugView = useAppStore((state) => state.debugView);
 	const setDebugView = useAppStore((state) => state.setDebugView);
 	const resetInstance = useAppStore((state) => state.resetInstance);

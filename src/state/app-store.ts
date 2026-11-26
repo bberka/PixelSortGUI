@@ -23,9 +23,9 @@ import type {
 	RenderEvent,
 	SourceInfo,
 } from '../render/coordinator.ts';
-import {normalizeViewState} from '../storage/helpers.ts';
+import {normalizeViewState, withSideA} from '../storage/helpers.ts';
 import {
-	resolveStoredStack,
+	resolveProjectStacks,
 	type UnsupportedInstanceInfo,
 } from '../storage/migrations.ts';
 import {
@@ -44,6 +44,8 @@ import {
 	type HistoryEntryRecord,
 	type ProjectRecord,
 	type SourceRecord,
+	type SplitOrientation,
+	type SplitSide,
 	type StorageRepository,
 	type ThemePreference,
 	type ThumbnailRecord,
@@ -76,6 +78,18 @@ import {
 	type AppRoute,
 	type HashRouterEnv,
 } from './router.ts';
+import {createSideRenderer} from './side-renderer.ts';
+import {
+	EMPTY_STACK,
+	findInstanceSide,
+	otherSide,
+	projectInstanceIds,
+	selectEditingSide,
+	sideHistoryLabel,
+	sideLetter,
+	sideSelectedId,
+	sideStack,
+} from './split-sides.ts';
 import {useThemeStore} from './theme.ts';
 import {
 	createCanvasThumbnailGenerator,
@@ -129,6 +143,8 @@ export type AppStoreTimerEnv = {
 export type AppStoreDependencies = {
 	repository: StorageRepository;
 	coordinator: RenderCoordinator;
+	// Renders split side A. Absent: side A is not rendered.
+	createSideCoordinator?: () => RenderCoordinator;
 	registry?: EffectRegistry;
 	routerEnv?: HashRouterEnv;
 	timerEnv?: AppStoreTimerEnv;
@@ -163,7 +179,10 @@ export type AppState = {
 	welcomeDismissed: boolean;
 
 	storage: StorageStatus;
+	// Side B, the main stack.
 	render: RenderStatus;
+	// Split side A. Idle while that side is hidden or empty.
+	renderA: RenderStatus;
 
 	// Internal / restore hydration
 	hydrateFromRestore(payload: {
@@ -246,6 +265,14 @@ export type AppState = {
 	redo(): Promise<boolean>;
 	jumpToHistory(projectId: string, seq: number): Promise<boolean>;
 
+	// Split sides
+	setEditSide(side: SplitSide): Promise<void>;
+	setSplitOrientation(orientation: SplitOrientation): void;
+	copyToOtherSide(): Promise<void>;
+	swapSides(): Promise<void>;
+	setRenderViewScale(devicePixelsPerSourcePixel: number): void;
+	retryRender(): void;
+
 	// Presets
 	applyPreset(presetId: string): Promise<void>;
 	addPresetToStack(presetId: string): Promise<void>;
@@ -292,6 +319,65 @@ function createDefaultRenderStatus(): RenderStatus {
 		error: null,
 		failed: false,
 	};
+}
+
+function applyRenderEvent(
+	render: RenderStatus,
+	event: RenderEvent,
+): RenderStatus {
+	switch (event.type) {
+		case 'source': {
+			return {
+				...render,
+				source: event.source,
+				frame: event.source ? render.frame : undefined,
+				full: event.source ? render.full : undefined,
+			};
+		}
+
+		case 'frame': {
+			return {...render, frame: event.frame, error: null};
+		}
+
+		case 'full': {
+			return {...render, full: event.full};
+		}
+
+		case 'busy': {
+			return {
+				...render,
+				busy: {...render.busy, [event.level]: event.busy},
+				progress: event.busy
+					? render.progress
+					: {...render.progress, [event.level]: 0},
+			};
+		}
+
+		case 'progress': {
+			return {
+				...render,
+				progress: {...render.progress, [event.level]: event.fraction},
+			};
+		}
+
+		case 'error': {
+			return {...render, error: event.error, failed: event.failed};
+		}
+	}
+}
+
+function stackHas(stack: EffectStack, instanceId: string | undefined): boolean {
+	return stack.instances.some((item) => item.id === instanceId);
+}
+
+// The debug view, while its instance is on either side.
+function keepDebugView(
+	debugView: DebugViewTarget | null,
+	project: ProjectRecord,
+): DebugViewTarget | null {
+	return debugView && findInstanceSide(project, debugView.instanceId)
+		? debugView
+		: null;
 }
 
 export function createBrowserTimerEnv(): AppStoreTimerEnv {
@@ -445,6 +531,62 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	let detachRouter: (() => void) | null = null;
 	let detachLifecycle: (() => void) | null = null;
 	let disposed = false;
+	let unsubscribeSideA: (() => void) | null = null;
+	let lastSideInputs: readonly unknown[] = [];
+
+	const sideRenderer = createSideRenderer({
+		createCoordinator: deps.createSideCoordinator,
+		onEvent(event) {
+			store.setState((state) => ({
+				renderA: applyRenderEvent(state.renderA, event),
+			}));
+		},
+		onClose() {
+			store.setState({renderA: createDefaultRenderStatus()});
+		},
+	});
+
+	// Side A follows the state, so every path that changes it is covered.
+	const syncSideA = () => {
+		const {activeProject, activeSource, compareMode, debugView} =
+			store.getState();
+		const stack = activeProject?.stackA;
+		const {activeDrag} = transientStore.getState();
+		const drag =
+			stack && stackHas(stack, activeDrag?.instanceId) ? activeDrag : null;
+		const source =
+			activeSource && activeSource.sha256 === activeProject?.sourceHash
+				? activeSource
+				: null;
+		const visible = compareMode === 'split';
+		const inputs = [stack, source, visible, debugView, drag];
+		if (inputs.every((value, index) => value === lastSideInputs[index])) {
+			return;
+		}
+
+		lastSideInputs = inputs;
+		if (!visible || !source || !stack || stack.instances.length === 0) {
+			sideRenderer.sync(null);
+			return;
+		}
+
+		sideRenderer.sync({
+			source: {
+				key: source.sha256,
+				blob: source.blob,
+				width: source.width,
+				height: source.height,
+			},
+			request: {
+				stack: applyTransientDragToStack(stack, drag),
+				debug:
+					debugView && stackHas(stack, debugView.instanceId)
+						? debugView
+						: undefined,
+			},
+			dragging: drag !== null,
+		});
+	};
 
 	const clearViewStateTimer = () => {
 		if (viewStateTimer === undefined) {
@@ -480,10 +622,18 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		coordinator.setStack(
 			{
 				stack,
-				debug: debugView ?? undefined,
+				debug:
+					debugView && stackHas(stack, debugView.instanceId)
+						? debugView
+						: undefined,
 			},
 			dragging ? {dragging: true} : undefined,
 		);
+	};
+
+	const setRenderViewScale = (scale: number) => {
+		coordinator.setViewScale(scale);
+		sideRenderer.setViewScale(scale);
 	};
 
 	const syncCoordinatorViewScale = (
@@ -491,7 +641,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		devicePixelRatio?: number,
 	) => {
 		const dpr = devicePixelRatio ?? timerEnv.getDevicePixelRatio();
-		coordinator.setViewScale(viewState.zoom * dpr);
+		setRenderViewScale(viewState.zoom * dpr);
 	};
 
 	const maybeCaptureThumbnail = (frame: Frame) => {
@@ -503,8 +653,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		const {activeProject, debugView} = state;
 		if (
 			!activeProject ||
-			debugView !== null ||
-			transientStore.getState().activeDrag !== null
+			stackHas(activeProject.stack, debugView?.instanceId) ||
+			stackHas(
+				activeProject.stack,
+				transientStore.getState().activeDrag?.instanceId,
+			)
 		) {
 			return;
 		}
@@ -551,74 +704,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	};
 
 	const onCoordinatorEvent = (event: RenderEvent) => {
-		switch (event.type) {
-			case 'source': {
-				store.setState((state) => ({
-					render: {
-						...state.render,
-						source: event.source,
-						frame: event.source ? state.render.frame : undefined,
-						full: event.source ? state.render.full : undefined,
-					},
-				}));
-				break;
-			}
-
-			case 'frame': {
-				store.setState((state) => ({
-					render: {
-						...state.render,
-						frame: event.frame,
-						error: null,
-					},
-				}));
-				maybeCaptureThumbnail(event.frame);
-				break;
-			}
-
-			case 'full': {
-				store.setState((state) => ({
-					render: {
-						...state.render,
-						full: event.full,
-					},
-				}));
-				break;
-			}
-
-			case 'busy': {
-				store.setState((state) => ({
-					render: {
-						...state.render,
-						busy: {...state.render.busy, [event.level]: event.busy},
-						progress: event.busy
-							? state.render.progress
-							: {...state.render.progress, [event.level]: 0},
-					},
-				}));
-				break;
-			}
-
-			case 'progress': {
-				store.setState((state) => ({
-					render: {
-						...state.render,
-						progress: {...state.render.progress, [event.level]: event.fraction},
-					},
-				}));
-				break;
-			}
-
-			case 'error': {
-				store.setState((state) => ({
-					render: {
-						...state.render,
-						error: event.error,
-						failed: event.failed,
-					},
-				}));
-				break;
-			}
+		store.setState((state) => ({
+			render: applyRenderEvent(state.render, event),
+		}));
+		if (event.type === 'frame') {
+			maybeCaptureThumbnail(event.frame);
 		}
 	};
 
@@ -631,19 +721,24 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		return activeProject;
 	};
 
-	const commitNextStack = async (
-		nextStack: EffectStack,
-		selectedInstanceId: string | null,
+	// Writes both sides as one history entry.
+	const commitSides = async (
+		next: Pick<
+			ProjectRecord,
+			'stack' | 'selectedInstanceId' | 'stackA' | 'selectedInstanceIdA'
+		>,
 		label: string,
+		changesMain: boolean,
 	): Promise<ProjectRecord> => {
 		const active = requireActiveProject();
-		assertStackCapacity(nextStack.instances.length);
 
 		try {
 			const {project, entry} = await repository.commitStack({
 				projectId: active.id,
-				stack: nextStack,
-				selectedInstanceId,
+				stack: next.stack,
+				selectedInstanceId: next.selectedInstanceId,
+				stackA: next.stackA ?? EMPTY_STACK,
+				selectedInstanceIdA: next.selectedInstanceIdA ?? null,
 				label,
 			});
 
@@ -653,18 +748,19 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				.concat(entry)
 				.filter((item) => item.seq >= project.historyMinSeq);
 
-			const nextDebugView =
-				currentState.debugView &&
-				project.stack.instances.some(
-					(item) => item.id === currentState.debugView?.instanceId,
-				)
-					? currentState.debugView
-					: null;
+			const nextDebugView = keepDebugView(currentState.debugView, project);
+			const draggingMain = stackHas(
+				active.stack,
+				transientStore.getState().activeDrag?.instanceId,
+			);
 
-			transientStore.setState({activeDrag: null});
+			// The new stack lands before the drag overlay goes, so no render ever
+			// sees the old committed value.
 			store.setState((state) => {
+				// The open project's view state lives here: a save that started
+				// during the commit leaves the stored copy older.
 				const nextProject: ProjectRecord =
-					viewStateDirty && state.activeProject?.id === project.id
+					state.activeProject?.id === project.id
 						? {...project, viewState: state.activeProject.viewState}
 						: project;
 				return {
@@ -675,13 +771,74 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					debugView: nextDebugView,
 				};
 			});
+			transientStore.setState({activeDrag: null});
 
-			dispatchStackToCoordinator(project.stack, nextDebugView, false);
+			if (
+				changesMain ||
+				draggingMain ||
+				nextDebugView !== currentState.debugView
+			) {
+				dispatchStackToCoordinator(project.stack, nextDebugView, false);
+			}
+
 			return project;
 		} catch (error) {
+			transientStore.setState({activeDrag: null});
 			handleQuotaError(error);
 			throw error;
 		}
+	};
+
+	// The active project's two sides with one of them replaced.
+	const withSide = (
+		project: ProjectRecord,
+		side: SplitSide,
+		stack: EffectStack,
+		selectedInstanceId: string | null,
+	) =>
+		side === 'a'
+			? {
+					stack: project.stack,
+					selectedInstanceId: project.selectedInstanceId,
+					stackA: stack,
+					selectedInstanceIdA: selectedInstanceId,
+				}
+			: {
+					stack,
+					selectedInstanceId,
+					stackA: project.stackA,
+					selectedInstanceIdA: project.selectedInstanceIdA,
+				};
+
+	const commitNextStack = async (
+		side: SplitSide,
+		nextStack: EffectStack,
+		selectedInstanceId: string | null,
+		label: string,
+	): Promise<ProjectRecord> => {
+		const active = requireActiveProject();
+		assertStackCapacity(nextStack.instances.length);
+		return commitSides(
+			withSide(active, side, nextStack, selectedInstanceId),
+			sideHistoryLabel(label, side, store.getState().compareMode === 'split'),
+			side === 'b',
+		);
+	};
+
+	// The side, stack and instance an instance id belongs to.
+	const locateInstance = (project: ProjectRecord, instanceId: string) => {
+		const side = findInstanceSide(project, instanceId);
+		if (!side) {
+			return null;
+		}
+
+		const stack = sideStack(project, side);
+		return {
+			side,
+			stack,
+			selectedId: sideSelectedId(project, side),
+			target: stack.instances.find((item) => item.id === instanceId)!,
+		};
 	};
 
 	const applyHistoryStep = (
@@ -692,25 +849,25 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			return false;
 		}
 
-		const resolved = resolveStoredStack(result.project.stack, registry);
-		const nextProject: ProjectRecord = {
-			...active,
-			stack: resolved.stack,
-			selectedInstanceId: result.project.selectedInstanceId,
-			historyHeadSeq: result.project.historyHeadSeq,
-			historyMinSeq: result.project.historyMinSeq,
-			historyMaxSeq: result.project.historyMaxSeq,
-			updatedAt: result.project.updatedAt,
-		};
+		// The view state may have changed while the step was being written.
+		const latest = store.getState().activeProject;
+		const resolved = resolveProjectStacks(result.project, registry);
+		const nextProject = withSideA<ProjectRecord>(
+			{
+				...(latest?.id === active.id ? latest : active),
+				stack: resolved.project.stack,
+				selectedInstanceId: result.project.selectedInstanceId,
+				historyHeadSeq: result.project.historyHeadSeq,
+				historyMinSeq: result.project.historyMinSeq,
+				historyMaxSeq: result.project.historyMaxSeq,
+				updatedAt: result.project.updatedAt,
+			},
+			resolved.project.stackA,
+			result.project.selectedInstanceIdA,
+		);
 
 		const currentDebug = store.getState().debugView;
-		const nextDebugView =
-			currentDebug &&
-			nextProject.stack.instances.some(
-				(item) => item.id === currentDebug.instanceId,
-			)
-				? currentDebug
-				: null;
+		const nextDebugView = keepDebugView(currentDebug, nextProject);
 
 		transientStore.setState({activeDrag: null});
 		store.setState((state) => ({
@@ -722,9 +879,29 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			debugView: nextDebugView,
 		}));
 
-		dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
+		if (
+			nextDebugView !== currentDebug ||
+			canonicalStackJson(nextProject.stack) !== canonicalStackJson(active.stack)
+		) {
+			dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
+		}
 
 		return true;
+	};
+
+	const patchViewState = (patch: Partial<ViewState>) => {
+		const {activeProject} = store.getState();
+		if (!activeProject) {
+			return;
+		}
+
+		store.setState({
+			activeProject: {
+				...activeProject,
+				viewState: normalizeViewState({...activeProject.viewState, ...patch}),
+			},
+		});
+		scheduleViewStateSave();
 	};
 
 	const flushViewStateImpl = async (): Promise<void> => {
@@ -744,6 +921,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeProject.id,
 				activeProject.viewState,
 				activeProject.selectedInstanceId,
+				activeProject.selectedInstanceIdA,
 			);
 			if (store.getState().activeProjectId === updated.id) {
 				store.setState((state) => ({
@@ -796,7 +974,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		project: ProjectRecord,
 		requestId: number,
 	) => {
-		const resolved = resolveStoredStack(project.stack, registry);
+		const resolved = resolveProjectStacks(project, registry);
 		const [source, history, thumbnail] = await Promise.all([
 			repository.getSource(project.sourceHash),
 			repository.getHistory(project.id),
@@ -811,9 +989,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			return;
 		}
 
-		const hydratedProject: ProjectRecord = resolved.needsWriteBack
-			? {...project, stack: resolved.stack}
-			: project;
+		const hydratedProject = resolved.project;
 
 		lastThumbnailKey = thumbnail
 			? `${project.id}:${thumbnail.stackSignature}`
@@ -875,15 +1051,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			versionErrorMessage: null,
 		},
 		render: createDefaultRenderStatus(),
+		renderA: createDefaultRenderStatus(),
 
 		hydrateFromRestore(payload) {
 			const resolved = payload.activeProject
-				? resolveStoredStack(payload.activeProject.stack, registry)
+				? resolveProjectStacks(payload.activeProject, registry)
 				: null;
-			const activeProject =
-				payload.activeProject && resolved?.needsWriteBack
-					? {...payload.activeProject, stack: resolved.stack}
-					: payload.activeProject;
+			const activeProject = resolved?.project ?? null;
 
 			set((state) => ({
 				bootStatus: 'ready',
@@ -1226,41 +1400,38 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		async addEffect(type) {
 			await flushPendingCommitImpl();
 			const active = requireActiveProject();
-			assertStackCapacity(active.stack.instances.length + 1);
+			const side = selectEditingSide(get());
+			const stack = sideStack(active, side);
+			assertStackCapacity(stack.instances.length + 1);
 
-			const existingIds = new Set(
-				active.stack.instances.map((item) => item.id),
-			);
 			const instance = createEffectInstance(
 				type,
 				registry,
-				existingIds,
+				projectInstanceIds(active),
 				getRandomValues,
 			);
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: [...active.stack.instances, instance],
+				schemaVersion: stack.schemaVersion,
+				instances: [...stack.instances, instance],
 			};
 			const label = `Add ${getEffectLabel(instance, registry)}`;
-			await commitNextStack(nextStack, instance.id, label);
+			await commitNextStack(side, nextStack, instance.id, label);
 			return instance;
 		},
 
 		async removeEffect(instanceId) {
 			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const index = active.stack.instances.findIndex(
-				(item) => item.id === instanceId,
-			);
-			if (index === -1) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			if (!found) {
 				return;
 			}
 
-			const removed = active.stack.instances[index];
-			const remaining = active.stack.instances.filter(
+			const {side, stack, target: removed} = found;
+			const index = stack.instances.indexOf(removed);
+			const remaining = stack.instances.filter(
 				(item) => item.id !== instanceId,
 			);
-			let nextSelected = active.selectedInstanceId;
+			let nextSelected = found.selectedId;
 			if (nextSelected === instanceId) {
 				if (remaining.length === 0) {
 					nextSelected = null;
@@ -1271,10 +1442,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			}
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
+				schemaVersion: stack.schemaVersion,
 				instances: remaining,
 			};
 			await commitNextStack(
+				side,
 				nextStack,
 				nextSelected,
 				`Remove ${getEffectLabel(removed, registry)}`,
@@ -1284,7 +1456,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		async reorderEffect(fromIndex, toIndex) {
 			await flushPendingCommitImpl();
 			const active = requireActiveProject();
-			const {instances} = active.stack;
+			const side = selectEditingSide(get());
+			const stack = sideStack(active, side);
+			const {instances} = stack;
 			if (
 				fromIndex === toIndex ||
 				fromIndex < 0 ||
@@ -1300,12 +1474,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			nextInstances.splice(toIndex, 0, moved);
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
+				schemaVersion: stack.schemaVersion,
 				instances: nextInstances,
 			};
 			await commitNextStack(
+				side,
 				nextStack,
-				active.selectedInstanceId,
+				sideSelectedId(active, side),
 				`Reorder ${getEffectLabel(moved, registry)}`,
 			);
 		},
@@ -1313,33 +1488,33 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		async duplicateEffect(instanceId) {
 			await flushPendingCommitImpl();
 			const active = requireActiveProject();
-			const index = active.stack.instances.findIndex(
-				(item) => item.id === instanceId,
-			);
-			if (index === -1) {
+			const found = locateInstance(active, instanceId);
+			if (!found) {
 				throw new StorageValidationError(
 					`Effect instance "${instanceId}" not found`,
 				);
 			}
 
-			assertStackCapacity(active.stack.instances.length + 1);
-			const sourceInstance = active.stack.instances[index];
-			const existingIds = new Set(
-				active.stack.instances.map((item) => item.id),
-			);
+			const {side, stack, target: sourceInstance} = found;
+			assertStackCapacity(stack.instances.length + 1);
 			const duplicate = cloneInstanceWithNewId(
 				sourceInstance,
-				existingIds,
+				projectInstanceIds(active),
 				getRandomValues,
 			);
-			const nextInstances = [...active.stack.instances];
-			nextInstances.splice(index + 1, 0, duplicate);
+			const nextInstances = [...stack.instances];
+			nextInstances.splice(
+				stack.instances.indexOf(sourceInstance) + 1,
+				0,
+				duplicate,
+			);
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
+				schemaVersion: stack.schemaVersion,
 				instances: nextInstances,
 			};
 			await commitNextStack(
+				side,
 				nextStack,
 				duplicate.id,
 				`Duplicate ${getEffectLabel(sourceInstance, registry)}`,
@@ -1349,24 +1524,23 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		async setEffectEnabled(instanceId, enabled) {
 			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			if (!target || target.enabled === enabled) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			if (!found || found.target.enabled === enabled) {
 				return;
 			}
 
+			const {side, stack, target} = found;
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: active.stack.instances.map((item) =>
+				schemaVersion: stack.schemaVersion,
+				instances: stack.instances.map((item) =>
 					item.id === instanceId ? {...item, enabled} : item,
 				),
 			};
 			const verb = enabled ? 'Enable' : 'Disable';
 			await commitNextStack(
+				side,
 				nextStack,
-				active.selectedInstanceId,
+				found.selectedId,
 				`${verb} ${getEffectLabel(target, registry)}`,
 			);
 		},
@@ -1377,19 +1551,22 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				return;
 			}
 
-			const nextSelected =
-				instanceId !== null &&
-				activeProject.stack.instances.some((item) => item.id === instanceId)
-					? instanceId
-					: null;
-			if (activeProject.selectedInstanceId === nextSelected) {
+			const owner =
+				instanceId === null
+					? null
+					: findInstanceSide(activeProject, instanceId);
+			const side = owner ?? selectEditingSide(get());
+			const nextSelected = owner ? instanceId : null;
+			if (sideSelectedId(activeProject, side) === nextSelected) {
 				return;
 			}
 
 			set({
 				activeProject: {
 					...activeProject,
-					selectedInstanceId: nextSelected,
+					...(side === 'a'
+						? {selectedInstanceIdA: nextSelected}
+						: {selectedInstanceId: nextSelected}),
 				},
 			});
 			scheduleViewStateSave();
@@ -1401,13 +1578,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				return;
 			}
 
-			const validDebug =
-				debugView !== null &&
-				activeProject.stack.instances.some(
-					(item) => item.id === debugView.instanceId,
-				)
-					? debugView
-					: null;
+			const validDebug = keepDebugView(debugView, activeProject);
 			set({debugView: validDebug});
 			const effectiveStack = applyTransientDragToStack(
 				activeProject.stack,
@@ -1422,13 +1593,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				return;
 			}
 
-			const target = activeProject.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			if (!target) {
+			const found = locateInstance(activeProject, instanceId);
+			if (!found) {
 				return;
 			}
 
+			const {target} = found;
 			const definition = registry.get(target.type);
 			if (!definition) {
 				return;
@@ -1454,6 +1624,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				mix: prevDrag?.instanceId === instanceId ? prevDrag.mix : undefined,
 			};
 			transientStore.setState({activeDrag: nextDrag});
+			if (found.side === 'a') {
+				return;
+			}
 
 			const effectiveStack = applyTransientDragToStack(
 				activeProject.stack,
@@ -1473,15 +1646,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				await flushPendingCommitImpl();
 			}
 
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			if (!target) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			if (!found) {
 				transientStore.setState({activeDrag: null});
 				return;
 			}
 
+			const {side, stack, target} = found;
 			const definition = registry.get(target.type);
 			if (!definition) {
 				transientStore.setState({activeDrag: null});
@@ -1495,24 +1666,28 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				value,
 			);
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: active.stack.instances.map((item) =>
+				schemaVersion: stack.schemaVersion,
+				instances: stack.instances.map((item) =>
 					item.id === instanceId ? {...item, params: validated} : item,
 				),
 			};
 
-			transientStore.setState({activeDrag: null});
 			if (
 				!get().stackNeedsWriteBack &&
-				canonicalStackJson(nextStack) === canonicalStackJson(active.stack)
+				canonicalStackJson(nextStack) === canonicalStackJson(stack)
 			) {
-				coordinator.endDrag();
+				transientStore.setState({activeDrag: null});
+				if (side === 'b') {
+					coordinator.endDrag();
+				}
+
 				return;
 			}
 
 			await commitNextStack(
+				side,
 				nextStack,
-				active.selectedInstanceId,
+				found.selectedId,
 				label ??
 					formatParamCommitLabel(
 						definition.params[paramKey],
@@ -1556,10 +1731,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		dragMix(instanceId, mix) {
 			const {activeProject, debugView} = get();
-			if (
-				!activeProject ||
-				activeProject.stack.instances.every((item) => item.id !== instanceId)
-			) {
+			const side = activeProject && findInstanceSide(activeProject, instanceId);
+			if (!activeProject || !side) {
 				return;
 			}
 
@@ -1571,6 +1744,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				mix: normalized,
 			};
 			transientStore.setState({activeDrag: nextDrag});
+			if (side === 'a') {
+				return;
+			}
 
 			const effectiveStack = applyTransientDragToStack(
 				activeProject.stack,
@@ -1589,31 +1765,33 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				await flushPendingCommitImpl();
 			}
 
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			if (!target) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			if (!found) {
 				transientStore.setState({activeDrag: null});
 				return;
 			}
 
+			const {side, stack, target} = found;
 			const normalized = normalizeMix(mix);
-			transientStore.setState({activeDrag: null});
 			if (!get().stackNeedsWriteBack && target.mix === normalized) {
-				coordinator.endDrag();
+				transientStore.setState({activeDrag: null});
+				if (side === 'b') {
+					coordinator.endDrag();
+				}
+
 				return;
 			}
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: active.stack.instances.map((item) =>
+				schemaVersion: stack.schemaVersion,
+				instances: stack.instances.map((item) =>
 					item.id === instanceId ? {...item, mix: normalized} : item,
 				),
 			};
 			await commitNextStack(
+				side,
 				nextStack,
-				active.selectedInstanceId,
+				found.selectedId,
 				formatMixCommitLabel(normalized),
 			);
 		},
@@ -1650,38 +1828,34 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		async setBlend(instanceId, blend) {
 			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			if (!target) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			if (!found) {
 				return;
 			}
 
+			const {side, stack, target} = found;
 			const normalized = normalizeBlend(blend);
 			if (!get().stackNeedsWriteBack && target.blend === normalized) {
 				return;
 			}
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: active.stack.instances.map((item) =>
+				schemaVersion: stack.schemaVersion,
+				instances: stack.instances.map((item) =>
 					item.id === instanceId ? {...item, blend: normalized} : item,
 				),
 			};
 			await commitNextStack(
+				side,
 				nextStack,
-				active.selectedInstanceId,
+				found.selectedId,
 				formatBlendCommitLabel(normalized),
 			);
 		},
 
 		async resetParam(instanceId, paramKey) {
 			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
+			const target = locateInstance(requireActiveProject(), instanceId)?.target;
 			if (!target) {
 				return;
 			}
@@ -1702,22 +1876,20 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		async resetInstance(instanceId) {
 			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			if (!target) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			if (!found) {
 				return;
 			}
 
+			const {side, stack, target} = found;
 			const definition = registry.get(target.type);
 			if (!definition) {
 				return;
 			}
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: active.stack.instances.map((item) =>
+				schemaVersion: stack.schemaVersion,
+				instances: stack.instances.map((item) =>
 					item.id === instanceId
 						? {
 								...item,
@@ -1730,26 +1902,24 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				),
 			};
 			await commitNextStack(
+				side,
 				nextStack,
-				active.selectedInstanceId,
+				found.selectedId,
 				`Reset ${definition.label}`,
 			);
 		},
 
 		async commitInstanceParams(instanceId, params, label) {
 			await flushPendingCommitImpl();
-			const active = requireActiveProject();
-			const target = active.stack.instances.find(
-				(item) => item.id === instanceId,
-			);
-			const definition = target ? registry.get(target.type) : undefined;
-			if (!target || !definition) {
+			const found = locateInstance(requireActiveProject(), instanceId);
+			const definition = found ? registry.get(found.target.type) : undefined;
+			if (!found || !definition) {
 				return;
 			}
 
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: active.stack.instances.map((item) =>
+				schemaVersion: found.stack.schemaVersion,
+				instances: found.stack.instances.map((item) =>
 					item.id === instanceId
 						? {
 								...item,
@@ -1759,14 +1929,18 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						: item,
 				),
 			};
-			await commitNextStack(nextStack, active.selectedInstanceId, label);
+			await commitNextStack(found.side, nextStack, found.selectedId, label);
 		},
 
 		cancelDrag() {
 			clearKeyboardTimer();
+			const drag = transientStore.getState().activeDrag;
 			transientStore.setState({activeDrag: null, splitPosition: null});
 			const {activeProject, debugView} = get();
-			if (activeProject) {
+			if (
+				activeProject &&
+				!(drag && stackHas(sideStack(activeProject, 'a'), drag.instanceId))
+			) {
 				dispatchStackToCoordinator(activeProject.stack, debugView, false);
 			}
 		},
@@ -1802,9 +1976,72 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			);
 		},
 
+		async setEditSide(side) {
+			await flushPendingCommitImpl();
+			patchViewState({editSide: side});
+		},
+
+		setSplitOrientation(orientation) {
+			patchViewState({splitOrientation: orientation});
+		},
+
+		async copyToOtherSide() {
+			await flushPendingCommitImpl();
+			const active = requireActiveProject();
+			const from = selectEditingSide(get());
+			const to = otherSide(from);
+			const source = sideStack(active, from);
+			if (source.instances.length === 0) {
+				return;
+			}
+
+			const copy = cloneStackWithNewIds(
+				source,
+				new Set(source.instances.map((item) => item.id)),
+				getRandomValues,
+			);
+			const selectedIndex = source.instances.findIndex(
+				(item) => item.id === sideSelectedId(active, from),
+			);
+			const selected = copy.instances[Math.max(0, selectedIndex)]?.id ?? null;
+			await commitSides(
+				withSide(active, to, copy, selected),
+				`Copy ${sideLetter(from)} to ${sideLetter(to)}`,
+				to === 'b',
+			);
+		},
+
+		async swapSides() {
+			await flushPendingCommitImpl();
+			const active = requireActiveProject();
+			const sideA = sideStack(active, 'a');
+			if (sideA.instances.length + active.stack.instances.length === 0) {
+				return;
+			}
+
+			await commitSides(
+				{
+					stack: sideA,
+					selectedInstanceId: sideSelectedId(active, 'a'),
+					stackA: active.stack,
+					selectedInstanceIdA: active.selectedInstanceId,
+				},
+				'Swap sides',
+				true,
+			);
+		},
+
+		setRenderViewScale,
+
+		retryRender() {
+			coordinator.retry();
+			sideRenderer.retry();
+		},
+
 		async applyPreset(presetId) {
 			await flushPendingCommitImpl();
-			requireActiveProject();
+			const active = requireActiveProject();
+			const side = selectEditingSide(get());
 			const preset =
 				getBuiltinPreset(presetId) ??
 				get().presets.find((item) => item.id === presetId);
@@ -1814,11 +2051,14 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 			const nextStack = cloneStackWithNewIds(
 				preset.stack,
-				undefined,
+				new Set(
+					sideStack(active, otherSide(side)).instances.map((item) => item.id),
+				),
 				getRandomValues,
 			);
 			const selectedId = nextStack.instances[0]?.id ?? null;
 			await commitNextStack(
+				side,
 				nextStack,
 				selectedId,
 				`Apply preset ${preset.name}`,
@@ -1835,23 +2075,23 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				throw new StorageValidationError(`Preset "${presetId}" not found`);
 			}
 
+			const side = selectEditingSide(get());
+			const stack = sideStack(active, side);
 			assertStackCapacity(
-				active.stack.instances.length + preset.stack.instances.length,
-			);
-			const existingIds = new Set(
-				active.stack.instances.map((item) => item.id),
+				stack.instances.length + preset.stack.instances.length,
 			);
 			const cloned = cloneStackWithNewIds(
 				preset.stack,
-				existingIds,
+				projectInstanceIds(active),
 				getRandomValues,
 			);
 			const nextStack: EffectStack = {
-				schemaVersion: active.stack.schemaVersion,
-				instances: [...active.stack.instances, ...cloned.instances],
+				schemaVersion: stack.schemaVersion,
+				instances: [...stack.instances, ...cloned.instances],
 			};
-			const selectedId = cloned.instances[0]?.id ?? active.selectedInstanceId;
-			await commitNextStack(nextStack, selectedId, `Add ${preset.name}`);
+			const selectedId =
+				cloned.instances[0]?.id ?? sideSelectedId(active, side);
+			await commitNextStack(side, nextStack, selectedId, `Add ${preset.name}`);
 		},
 
 		async saveStackAsPreset(name) {
@@ -1860,7 +2100,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			try {
 				const created = await repository.createPreset({
 					name,
-					stack: cloneEffectStack(active.stack),
+					stack: cloneEffectStack(sideStack(active, selectEditingSide(get()))),
 				});
 				set((state) => ({
 					presets: sortPresetsByName([...state.presets, created]),
@@ -2049,6 +2289,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			disposed = true;
 			clearViewStateTimer();
 			clearKeyboardTimer();
+			unsubscribeSideA?.();
+			unsubscribeSideA = null;
+			sideRenderer.dispose();
 			detachCoordinator?.();
 			detachCoordinator = null;
 			detachRouter?.();
@@ -2057,6 +2300,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			detachLifecycle = null;
 		},
 	}));
+
+	const unsubscribeStore = store.subscribe(syncSideA);
+	const unsubscribeDrag = transientStore.subscribe(syncSideA);
+	unsubscribeSideA = () => {
+		unsubscribeStore();
+		unsubscribeDrag();
+	};
 
 	return {
 		store,

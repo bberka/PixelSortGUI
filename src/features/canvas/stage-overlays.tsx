@@ -3,6 +3,7 @@ import {RotateCwIcon} from 'lucide-react';
 import {ZoomControl} from './zoom-control.tsx';
 import {Button} from '@/components/ui/button';
 import {Progress} from '@/components/ui/progress';
+import {cn} from '@/lib/utils';
 
 export type StageOverlaysProps = {
 	readonly labelRef: RefObject<HTMLSpanElement | null>;
@@ -12,6 +13,8 @@ export type StageOverlaysProps = {
 	readonly progressVisible: boolean;
 	readonly progressFraction: number;
 	readonly renderingFull: boolean;
+	// The bottom-right corner holds a split side's label.
+	readonly renderingFullAtTop?: boolean;
 	readonly failed: boolean;
 	readonly onRetry: () => void;
 };
@@ -29,6 +32,7 @@ export function StageOverlays({
 	progressVisible,
 	progressFraction,
 	renderingFull,
+	renderingFullAtTop = false,
 	failed,
 	onRetry,
 }: StageOverlaysProps) {
@@ -52,7 +56,12 @@ export function StageOverlays({
 				/>
 			</div>
 			{renderingFull ? (
-				<div className="surface-overlay pointer-events-none absolute right-2 bottom-2 rounded-sm px-2 py-1 text-xs leading-4 font-medium">
+				<div
+					className={cn(
+						'surface-overlay pointer-events-none absolute right-2 rounded-sm px-2 py-1 text-xs leading-4 font-medium',
+						renderingFullAtTop ? 'top-2' : 'bottom-2',
+					)}
+				>
 					Rendering full resolution
 				</div>
 			) : null}

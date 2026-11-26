@@ -333,6 +333,7 @@ export function formatEffectCount(count: number): string {
 export type ReplaceEffectsDialogProps = {
 	readonly presetName: string | null;
 	readonly effectCount: number;
+	readonly sideName?: string;
 	readonly onOpenChange: (open: boolean) => void;
 	readonly onConfirm: () => void;
 	readonly onCloseAutoFocus: (event: Event) => void;
@@ -341,10 +342,12 @@ export type ReplaceEffectsDialogProps = {
 export function ReplaceEffectsDialog({
 	presetName,
 	effectCount,
+	sideName,
 	onOpenChange,
 	onConfirm,
 	onCloseAutoFocus,
 }: ReplaceEffectsDialogProps) {
+	const place = sideName ? `on side ${sideName}` : 'in this project';
 	return (
 		<AlertDialog open={presetName !== null} onOpenChange={onOpenChange}>
 			<AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
@@ -353,7 +356,7 @@ export function ReplaceEffectsDialog({
 					<AlertDialogDescription>
 						{presetName === null
 							? ''
-							: `Applying "${presetName}" removes the ${formatEffectCount(effectCount)} in this project. You can undo this.`}
+							: `Applying "${presetName}" removes the ${formatEffectCount(effectCount)} ${place}. You can undo this.`}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

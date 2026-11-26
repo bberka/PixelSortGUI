@@ -327,12 +327,10 @@ test('AC-F11.3: split view shows original on left and result on right, drags and
 	});
 	await expect(separator).toBeVisible();
 	await expect(separator).toHaveAttribute('aria-valuenow', '50');
-	await expect(page.locator('[data-slot="compare-label-original"]')).toHaveText(
+	await expect(page.locator('[data-slot="split-label-a"]')).toHaveText(
 		'Original',
 	);
-	await expect(page.locator('[data-slot="compare-label-edited"]')).toHaveText(
-		'Edited',
-	);
+	await expect(page.locator('[data-slot="split-label-b"]')).toHaveText('B');
 	await waitTwoFrames(page);
 
 	// Left of divider (0.45) matches original; right of divider (0.55) matches edited.

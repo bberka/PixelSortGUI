@@ -623,3 +623,49 @@ for (const {viewport, theme} of DIALOG_CASES) {
 		await expectNoHorizontalScroll(page, viewport);
 	});
 }
+
+// A scan only sees the state on screen, so the pointer and the focus are put on
+// the destructive button before each one.
+for (const theme of THEMES) {
+	test(`the Delete button keeps AA contrast at rest, on hover and on focus in ${theme.name} @a11y`, async ({
+		page,
+	}) => {
+		await openInTheme(page, theme, PROOF_VIEWPORTS[2]);
+		await seedLibraryProjects(page, ['Alpha']);
+		await openCardMenu(page, 'Alpha');
+		await page.getByRole('menuitem', {name: 'Delete'}).click();
+		const dialog = page.getByRole('alertdialog');
+		const button = dialog.getByRole('button', {name: 'Delete'});
+		const fill = async () =>
+			button.evaluate(
+				(element) => globalThis.getComputedStyle(element).backgroundColor,
+			);
+		// Colours fade in; a scan during the fade reads a colour in between.
+		const settled = async () => {
+			await expect
+				.poll(async () =>
+					dialog.evaluate(
+						(element) => element.getAnimations({subtree: true}).length,
+					),
+				)
+				.toBe(0);
+		};
+
+		await settled();
+		const rest = await fill();
+		await assertNoA11yViolations(page, {include: ['[role="alertdialog"]']});
+
+		await button.hover();
+		await expect.poll(fill).not.toBe(rest);
+		await settled();
+		await assertNoA11yViolations(page, {include: ['[role="alertdialog"]']});
+
+		await page.mouse.move(0, 0);
+		await expect.poll(fill).toBe(rest);
+		await page.keyboard.press('Tab');
+		await expect(button).toBeFocused();
+		await expect(button).toHaveCSS('outline-style', 'solid');
+		await settled();
+		await assertNoA11yViolations(page, {include: ['[role="alertdialog"]']});
+	});
+}

@@ -1,11 +1,13 @@
 // Reference-counted extra sources (persistence.md section 8.5, product.md F26).
 import {strToU8} from 'fflate';
-import {describe, expect, it} from 'vite-plus/test';
+import {describe, expect, it, vi} from 'vite-plus/test';
 import type {EffectInstance, EffectStack} from '../../src/engine/types.ts';
 import {
 	StorageQuotaError,
 	StorageValidationError,
 	backupNewBytes,
+	hashBlobSha256,
+	type NewSource,
 	type StorageRepository,
 } from '../../src/storage/index.ts';
 import {
@@ -69,6 +71,40 @@ async function commit(
 		label: 'Change',
 	});
 	return project;
+}
+
+// An image picked from the device, not stored yet.
+async function picked(seed: number, size = 4000 + seed): Promise<NewSource> {
+	const blob = new Blob([noise(size, seed)], {type: 'image/png'});
+	return {
+		sha256: await hashBlobSha256(blob),
+		blob,
+		mimeType: 'image/png',
+		...SOURCE_SIZE,
+	};
+}
+
+async function commitPicked(
+	repository: StorageRepository,
+	projectId: string,
+	stack: EffectStack,
+	newSource: NewSource,
+) {
+	return repository.commitStack({
+		projectId,
+		stack,
+		selectedInstanceId: null,
+		label: 'Blend image chosen',
+		newSource,
+	});
+}
+
+async function everything(repository: StorageRepository, id: string) {
+	return {
+		sizes: await repository.getSourceSizes(),
+		project: await repository.getProject(id),
+		history: await repository.getHistory(id),
+	};
 }
 
 function dropSource(manifest: Record<string, unknown>, sha256: string) {
@@ -207,6 +243,149 @@ for (const adapter of adapters) {
 				main.sourceHash,
 			]);
 			expect(await repository.cleanupOrphanedSources()).toBe(1);
+		});
+
+		it('stores a picked image with the commit that first uses it', async () => {
+			const {repository} = await adapter.create();
+			const main = await add(repository, 1);
+			const image = await picked(2);
+
+			const {project} = await commitPicked(
+				repository,
+				main.id,
+				blends(image.sha256),
+				image,
+			);
+
+			expect(project.referencedSourceHashes).toStrictEqual(
+				sorted(main.sourceHash, image.sha256),
+			);
+			expect(await repository.getSource(image.sha256)).toMatchObject({
+				byteLength: 4002,
+				mimeType: 'image/png',
+				...SOURCE_SIZE,
+			});
+			expect(await bytesOf(repository, image.sha256)).toStrictEqual(
+				noise(4002, 2),
+			);
+			// Referenced from the first moment, so a cleanup leaves it.
+			expect(await repository.cleanupOrphanedSources()).toBe(0);
+		});
+
+		it('keeps a picked image through a cleanup running beside it', async () => {
+			const {repository} = await adapter.create();
+			const main = await add(repository, 1);
+			const image = await picked(2);
+
+			await Promise.all([
+				repository.cleanupOrphanedSources(),
+				commitPicked(repository, main.id, blends(image.sha256), image),
+				repository.cleanupOrphanedSources(),
+			]);
+
+			expect(await repository.hasSource(image.sha256)).toBe(true);
+		});
+
+		it('keeps the stored record of a picked image that is already there', async () => {
+			let now = 1000;
+			const {repository} = await adapter.create({now: () => now++});
+			const main = await add(repository, 1);
+			const owner = await add(repository, 2);
+			const stored = await repository.getSource(owner.sourceHash);
+			const sizes = await repository.getSourceSizes();
+
+			await commitPicked(
+				repository,
+				main.id,
+				blends(owner.sourceHash),
+				await picked(2),
+			);
+
+			expect(await repository.getSourceSizes()).toStrictEqual(sizes);
+			expect(await repository.getSource(owner.sourceHash)).toMatchObject({
+				createdAt: stored!.createdAt,
+			});
+		});
+
+		it('stores nothing that neither stack refers to', async () => {
+			const {repository} = await adapter.create();
+			const main = await add(repository, 1);
+			const image = await picked(2);
+
+			await commitPicked(repository, main.id, stackOf(), image);
+
+			expect(await repository.hasSource(image.sha256)).toBe(false);
+		});
+
+		it.each([
+			{
+				reason: 'the image cap',
+				async stacks(repository: StorageRepository, id: string, image: string) {
+					const owners: string[] = [];
+					for (let seed = 10; seed < 18; seed++) {
+						owners.push((await add(repository, seed)).sourceHash);
+					}
+
+					await commit(repository, id, blends(...owners));
+					return {stack: blends(...owners, image)};
+				},
+				message: LIMIT,
+			},
+			{
+				reason: 'another image that is not stored',
+				async stacks(_: StorageRepository, __: string, image: string) {
+					return {stack: blends(image, 'e'.repeat(64))};
+				},
+				message: 'is not stored',
+			},
+			{
+				reason: 'an invalid transform',
+				async stacks(_: StorageRepository, __: string, image: string) {
+					return {
+						stack: blends(image),
+						transform: {
+							rotation: 45 as 90,
+							flipX: false,
+							flipY: false,
+							crop: null,
+							resize: null,
+						},
+					};
+				},
+				message: /./,
+			},
+		])(
+			'leaves no blob and no reference when $reason refuses the commit',
+			async ({stacks, message}) => {
+				const {repository} = await adapter.create();
+				const main = await add(repository, 1);
+				const image = await picked(2);
+				const next = await stacks(repository, main.id, image.sha256);
+				const before = await everything(repository, main.id);
+
+				await expect(
+					repository.commitStack({
+						...next,
+						projectId: main.id,
+						selectedInstanceId: null,
+						label: 'Blend image chosen',
+						newSource: image,
+					}),
+				).rejects.toThrow(message);
+
+				expect(await everything(repository, main.id)).toStrictEqual(before);
+				expect(await repository.hasSource(image.sha256)).toBe(false);
+			},
+		);
+
+		it('stores no image for a project that is gone', async () => {
+			const {repository} = await adapter.create();
+			const image = await picked(2);
+
+			await expect(
+				commitPicked(repository, 'missing', blends(image.sha256), image),
+			).rejects.toThrow('not found');
+			expect(await repository.getSourceSizes()).toStrictEqual({});
 		});
 
 		it('copies references to a duplicate', async () => {
@@ -606,6 +785,85 @@ for (const adapter of adapters) {
 }
 
 describe('IndexedDbRepository extra sources', () => {
+	it.each(['history', 'projects'])(
+		'rolls the picked blob back when writing %s fails after it',
+		async (failing) => {
+			const {repository, database} = await indexedDbSetup();
+			const main = await add(repository, 1);
+			const image = await picked(2);
+			const before = await everything(repository, main.id);
+			const prototype = Object.getPrototypeOf(
+				database.transaction('projects').objectStore('projects'),
+			) as IDBObjectStore;
+			const {put} = prototype;
+			const written: string[] = [];
+			const spy = vi.spyOn(prototype, 'put').mockImplementation(function (
+				this: IDBObjectStore,
+				...args
+			) {
+				if (this.name === failing) {
+					throw new DOMException('Disk full', 'QuotaExceededError');
+				}
+
+				written.push(this.name);
+				return put.apply(this, args);
+			});
+
+			try {
+				await expect(
+					commitPicked(repository, main.id, blends(image.sha256), image),
+				).rejects.toThrow(StorageQuotaError);
+			} finally {
+				spy.mockRestore();
+			}
+
+			// The blob had been written inside the transaction that failed.
+			expect(written).toContain('sources');
+			expect(await everything(repository, main.id)).toStrictEqual(before);
+			expect(await repository.cleanupOrphanedSources()).toBe(0);
+		},
+	);
+
+	it('checks the quota before storing a picked image, but not a stored one', async () => {
+		let quota = 1_000_000;
+		const {repository} = await indexedDbSetup({
+			storageManager: {estimate: async () => ({usage: 0, quota})},
+		});
+		const main = await add(repository, 1);
+		const owner = await add(repository, 2);
+		const image = await picked(3);
+		quota = 100;
+
+		await expect(
+			commitPicked(repository, main.id, blends(image.sha256), image),
+		).rejects.toThrow(StorageQuotaError);
+		expect(await repository.hasSource(image.sha256)).toBe(false);
+		await commitPicked(
+			repository,
+			main.id,
+			blends(owner.sourceHash),
+			await picked(2),
+		);
+	});
+
+	it('restores a missing image that is picked again', async () => {
+		const {repository, database} = await indexedDbSetup();
+		const main = await add(repository, 1);
+		const image = await picked(2);
+		await commitPicked(repository, main.id, blends(image.sha256), image);
+		database
+			.transaction('sources', 'readwrite')
+			.objectStore('sources')
+			.delete(image.sha256);
+		await vi.waitFor(async () => {
+			expect(await repository.hasSource(image.sha256)).toBe(false);
+		});
+
+		await commitPicked(repository, main.id, blends(image.sha256), image);
+
+		expect(await repository.hasSource(image.sha256)).toBe(true);
+	});
+
 	it('stores none of the extra images when an import runs out of quota', async () => {
 		const {repository} = await indexedDbSetup();
 		await seedBlended(repository);

@@ -46,5 +46,6 @@ describe('src/engine stays self-contained (engine.md section 1)', () => {
 		].map((match) => match[1]);
 		expect(staticImports).not.toContain('./pixel-sort/index.ts');
 		expect(staticImports).not.toContain('./channel-shift.ts');
+		expect(staticImports).not.toContain('./channel-swap.ts');
 	});
 });

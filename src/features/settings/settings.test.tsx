@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
+import {CHANGELOG_TEXT} from './changelog.generated.ts';
 import {SettingsButton} from './settings-button.tsx';
 import {
 	THIRD_PARTY_NOTICES,
@@ -340,5 +341,32 @@ describe('Settings view', () => {
 
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 		expect(dialog.textContent).not.toContain('Install app');
+	});
+
+	it('AC-F24.1: expands and collapses the bundled release notes', async () => {
+		const context = createTestStore();
+		mountSettings(context);
+		openSettingsDialog();
+		await flush();
+
+		const toggle = [...document.querySelectorAll('button')].find((button) =>
+			button.textContent?.includes('View changelog'),
+		)!;
+		expect(toggle.getAttribute('aria-expanded')).toBe('false');
+		expect(document.querySelector('#settings-changelog')).toBeNull();
+
+		act(() => {
+			toggle.click();
+		});
+		expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		expect(toggle.textContent).toContain('Hide changelog');
+		expect(
+			document.querySelector('#settings-changelog')?.textContent,
+		).toContain(CHANGELOG_TEXT);
+
+		act(() => {
+			toggle.click();
+		});
+		expect(document.querySelector('#settings-changelog')).toBeNull();
 	});
 });

@@ -42,6 +42,7 @@
 		"golden:update": "node scripts/golden-update.ts",
 		"gen:notices": "node scripts/gen-notices.ts",
 		"check:notices": "node scripts/gen-notices.ts --check",
+		"gen:changelog": "node scripts/gen-changelog.ts",
 		"clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('node_modules/.tmp', { recursive: true, force: true })\""
 	},
 	"dependencies": {

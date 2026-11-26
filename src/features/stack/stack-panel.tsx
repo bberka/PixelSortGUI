@@ -57,6 +57,7 @@ export function EffectStackPanel({
 	const selectEffect = useAppStore((state) => state.selectEffect);
 
 	const compact = usePhoneLayout();
+	const containerRef = useRef<HTMLDivElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
 	const [drag, setDrag] = useState<DragState | null>(null);
 
@@ -89,6 +90,33 @@ export function EffectStackPanel({
 		);
 		void reorderEffect(from, to).then(() => {
 			announce(`Moved ${label} to position ${to + 1} of ${instances.length}`);
+		});
+	};
+
+	const remove = (instance: EffectInstance, index: number) => {
+		const label = labelFor(
+			instance,
+			registry,
+			unsupportedById.get(instance.id),
+		);
+		const remainingCount = instances.length - 1;
+		const targetIndex = Math.min(index, remainingCount - 1);
+		void removeEffect(instance.id).then(() => {
+			announce(`Removed ${label}`);
+			// The row menu moves focus when it unmounts, so follow it in a later task.
+			globalThis.setTimeout(() => {
+				if (remainingCount === 0) {
+					containerRef.current
+						?.querySelector<HTMLButtonElement>(
+							'button[aria-label="Add effect"]',
+						)
+						?.focus();
+					return;
+				}
+
+				const targetRow = listRef.current?.children.item(targetIndex);
+				targetRow?.querySelector<HTMLButtonElement>('button')?.focus();
+			}, 0);
 		});
 	};
 
@@ -149,7 +177,10 @@ export function EffectStackPanel({
 			disabled={atLimit}
 			describedBy={atLimit ? limitNoteId : undefined}
 			onAdd={(type) => {
-				void addEffect(type);
+				const label = registry.get(type)?.label ?? type;
+				void addEffect(type).then(() => {
+					announce(`Added ${label}`);
+				});
 			}}
 		/>
 	);
@@ -157,6 +188,7 @@ export function EffectStackPanel({
 	if (instances.length === 0) {
 		return (
 			<div
+				ref={containerRef}
 				className={cn(
 					'flex h-full w-full items-center justify-center gap-2 px-2',
 					!compact && 'flex-col',
@@ -176,6 +208,7 @@ export function EffectStackPanel({
 
 	return (
 		<div
+			ref={containerRef}
 			className={cn(
 				'flex h-full min-h-0 w-full',
 				compact
@@ -239,7 +272,7 @@ export function EffectStackPanel({
 								void duplicateEffect(instance.id);
 							}}
 							onRemove={() => {
-								void removeEffect(instance.id);
+								remove(instance, index);
 							}}
 						/>
 					))}

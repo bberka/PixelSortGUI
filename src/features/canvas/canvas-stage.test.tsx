@@ -9,6 +9,7 @@ import {
 	WHEEL_COMMIT_MS,
 } from './canvas-stage.tsx';
 import type {AppRuntime} from '@/state/index.ts';
+import {LiveRegion} from '@/app/live-region.tsx';
 import {AppRuntimeProvider} from '@/app/runtime-context.tsx';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -57,6 +58,7 @@ async function mount(options: {withProject?: boolean} = {}): Promise<Mounted> {
 		root.render(
 			<AppRuntimeProvider value={{runtime: stubRuntime, bundle: test.bundle}}>
 				<CanvasStage />
+				<LiveRegion />
 			</AppRuntimeProvider>,
 		);
 	});
@@ -582,5 +584,37 @@ describe('canvas stage', () => {
 			vi.advanceTimersByTime(0);
 		});
 		expect(document.activeElement).toBe(zoomTrigger);
+	});
+
+	it('announces Rendering and Rendered on long settle and full transitions, ignoring fast drag renders', async () => {
+		const view = await mount();
+		const status = view.container.querySelector('[role="status"]');
+		expect(status?.getAttribute('aria-live')).toBe('polite');
+
+		// Rapid drag renders do not change the live region.
+		const beforeDrag = status?.textContent;
+		setRender(view.store, {busy: {drag: true}});
+		act(() => {
+			vi.advanceTimersByTime(100);
+		});
+		setRender(view.store, {busy: {drag: false}});
+		expect(status?.textContent).toBe(beforeDrag);
+
+		// A settle render lasting >= 300 ms announces Rendering then Rendered.
+		setRender(view.store, {busy: {settle: true}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS);
+		});
+		expect(status?.textContent).toBe('Rendering');
+
+		setRender(view.store, {busy: {settle: false}});
+		expect(status?.textContent).toBe('Rendered');
+
+		// A full-resolution render announces Rendering then Rendered immediately.
+		setRender(view.store, {busy: {full: true}});
+		expect(status?.textContent).toBe('Rendering');
+
+		setRender(view.store, {busy: {full: false}});
+		expect(status?.textContent).toBe('Rendered');
 	});
 });

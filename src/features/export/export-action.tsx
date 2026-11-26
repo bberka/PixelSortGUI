@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 import {DownloadIcon} from 'lucide-react';
 import {ExportDialog} from './export-dialog.tsx';
 import {useAppStore} from '@/app/runtime-context.tsx';
@@ -8,10 +8,12 @@ export function ExportAction() {
 	const hasProject = useAppStore((state) => state.activeProject !== null);
 	const [open, setOpen] = useState(false);
 	const [exporting, setExporting] = useState(false);
+	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	return (
 		<>
 			<Button
+				ref={triggerRef}
 				type="button"
 				variant="default"
 				size="sm"
@@ -29,6 +31,7 @@ export function ExportAction() {
 			</Button>
 			<ExportDialog
 				open={open}
+				returnFocusTo={triggerRef}
 				onOpenChange={setOpen}
 				onBusyChange={setExporting}
 			/>

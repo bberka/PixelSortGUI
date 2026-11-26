@@ -464,3 +464,42 @@ describe('unsupported effect instance', () => {
 		expect(rowElements()).toHaveLength(1);
 	});
 });
+
+describe('live announcements and focus restoration', () => {
+	it('announces adding and removing an effect and restores focus after removal', async () => {
+		const context = await setup();
+		mountPanel(context);
+
+		const triggerButton = container!.querySelector<HTMLButtonElement>(
+			'button[aria-label="Add effect"]',
+		);
+		expect(triggerButton).not.toBeNull();
+
+		act(() => {
+			triggerButton!.click();
+		});
+		await flush();
+
+		const pixelSortOption = [...document.querySelectorAll('button')].find(
+			(button) => button.textContent?.includes('Pixel sort'),
+		);
+		expect(pixelSortOption).toBeDefined();
+		act(() => {
+			pixelSortOption!.click();
+		});
+		await flush();
+
+		const status = container!.querySelector('[role="status"]');
+		expect(status?.textContent).toBe('Added Pixel sort');
+
+		await choose(await openMenu(0), 'Remove');
+		await new Promise((resolve) => {
+			globalThis.setTimeout(resolve, 10);
+		});
+
+		expect(status?.textContent).toBe('Removed Pixel sort');
+		expect(globalThis.document.activeElement?.getAttribute('aria-label')).toBe(
+			'Add effect',
+		);
+	});
+});

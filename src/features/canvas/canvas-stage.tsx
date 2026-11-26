@@ -28,6 +28,7 @@ import {
 	type Point,
 	type Size,
 } from './view.ts';
+import {announce} from '@/app/announcer.ts';
 import {
 	useAppRuntime,
 	useAppStore,
@@ -120,6 +121,32 @@ export function CanvasStage() {
 	const previewBusy = busy.drag || busy.settle;
 	const progressVisible = useDelayedFlag(previewBusy, PROGRESS_DELAY_MS);
 	const progressFraction = busy.settle ? progress.settle : progress.drag;
+	const announcedRenderRef = useRef(false);
+	const renderActive = (progressVisible && busy.settle) || busy.full;
+
+	// Announce long settle and full-resolution renders without flooding live
+	// announcements during rapid drag frames or sub-300 ms updates (AC-F19.3).
+	useEffect(() => {
+		if (projectId === null) {
+			announcedRenderRef.current = false;
+			return;
+		}
+
+		if (renderActive && !announcedRenderRef.current) {
+			announcedRenderRef.current = true;
+			announce('Rendering');
+			return;
+		}
+
+		if (busy.settle || busy.full || !announcedRenderRef.current) {
+			return;
+		}
+
+		announcedRenderRef.current = false;
+		if (!failed) {
+			announce('Rendered');
+		}
+	}, [busy.full, busy.settle, failed, projectId, renderActive]);
 
 	const draw = useCallback(() => {
 		const canvas = canvasRef.current;

@@ -3,6 +3,7 @@ import {expect, test, type Download, type Page} from '@playwright/test';
 import {decode as decodePng} from 'fast-png';
 import type {AppRuntime} from '../../src/state/index.ts';
 import {chooseImages, makeImage} from './import.ts';
+import {waitForSettleRender} from './settle.ts';
 import {DESKTOP_VIEWPORT, PROOF_VIEWPORTS} from './viewports.ts';
 
 type RuntimeGlobal = {
@@ -37,24 +38,6 @@ function trackErrorsAndNetwork(page: Page): {
 	});
 
 	return {consoleErrors, externalRequests};
-}
-
-async function waitForSettleRender(page: Page): Promise<void> {
-	await page.waitForFunction(async () => {
-		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
-		const booted = await runtime?.ready;
-		if (!booted || booted.status !== 'ready') {
-			return false;
-		}
-
-		const {render} = booted.bundle.store.getState();
-		return (
-			render.source !== undefined &&
-			render.frame?.level === 'settle' &&
-			!render.busy.settle &&
-			!render.busy.drag
-		);
-	});
 }
 
 async function readDownloadBytes(download: Download): Promise<Uint8Array> {

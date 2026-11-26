@@ -2,13 +2,13 @@ Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and image blend (F26) UI specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
-# PixelSortGUI design system
+# Drift design system
 
 Status: settled for first release, 2026-11-24. Companion specs: [product.md](docs/specs/product.md), [engine.md](docs/specs/engine.md), [persistence.md](docs/specs/persistence.md), [roadmap.md](docs/specs/roadmap.md), [decisions.md](docs/specs/decisions.md). Source of truth for CSS tokens in code: `src/styles/app.css`.
 
 ## 1. Design direction and principles
 
-PixelSortGUI is a darkroom-style still-photo utility. The user's image is the visual focus; the interface recedes into neutral monochrome chrome with one restrained accent reserved for active controls, slider tracks, progress indicators, and keyboard focus.
+Drift is a darkroom-style still-photo utility. The user's image is the visual focus; the interface recedes into neutral monochrome chrome with one restrained accent reserved for active controls, slider tracks, progress indicators, and keyboard focus.
 
 Rules every screen follows:
 
@@ -24,7 +24,7 @@ Two explicit themes: **Light** and **True Black** (pure `#000000` background for
 ### 2.1 Activation and zero-flash boot
 
 - `<html data-theme="system | light | dark">` controls the active theme.
-- An inline `<script>` in `index.html` reads `localStorage.getItem('psg:theme')` synchronously before CSS/JS loads and sets `document.documentElement.dataset.theme`, preventing any flash of the wrong theme on reload (AC-F14.2).
+- An inline `<script>` in `index.html` reads `localStorage.getItem('drift:theme')` synchronously before CSS/JS loads and sets `document.documentElement.dataset.theme`, preventing any flash of the wrong theme on reload (AC-F14.2).
 - Switching the OS appearance while `data-theme="system"` updates immediately via `@media (prefers-color-scheme: dark)` without reloading (AC-F14.1).
 
 ### 2.2 Semantic token table
@@ -174,7 +174,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-------------------------------------------------------------------+
-| PixelSortGUI            [Open images]          [Settings] |  <- 48/52 px
+| Drift            [Open images]          [Settings] |  <- 48/52 px
 +-------------------------------------------------------------------+
 | [Optional banner: Storage unavailable]                            |
 +-------------------------------------------------------------------+
@@ -195,7 +195,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-----------------------------------------------------------------------------+
-| <- PixelSortGUI project-name                             [Export] [Settings] |  48 px
+| <- Drift project-name                             [Export] [Settings] |  48 px
 +-----------------------------------------------------------------------------+
 | [Undo][Redo] | [Presets] | [Compare][Split]            | + Add effect       |  40 px toolbar
 +--------------------------------------------------------+ [=] Pixel sort [on]|  <- Stack
@@ -215,7 +215,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +---------------------------------------------------+
-| <- PixelSortGUI project-name  [Export] [Settings] |  52 px
+| <- Drift project-name  [Export] [Settings] |  52 px
 +---------------------------------------------------+
 | [Undo][Redo] | [Presets] | [Compare][Split]       |  40 px toolbar
 +---------------------------------------------------+
@@ -239,7 +239,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ```
 +-------------------------------+
-| <- PixelSortGUI    [Exp] [Set]|  52 px + safe-area-top
+| <- Drift    [Exp] [Set]|  52 px + safe-area-top
 +-------------------------------+
 | [Undo][Redo] | [Presets] ...  |  40 px toolbar
 +-------------------------------+
@@ -372,7 +372,7 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | Render in progress (AC-F8.3) | Preview render running > 300 ms | Thin `2 px` `--accent` progress bar pinned to top of canvas stage | Disappears on finish or cancel |
 | Full-resolution render (AC-F8.4) | Zoom > 1.25× settle proxy | Compact pill at bottom-left of canvas: `"Rendering full resolution"` | Disappears on finish or cancel (AC-F8.5) |
 | Worker crash (engine.md section 11) | 2nd worker crash within 60 s | Centered error card over canvas stage: `"Rendering stopped unexpectedly."` | `"Retry"`, `"Reset effects"` |
-| Insecure context (product.md section 4) | `!window.isSecureContext` | Full-screen blocking card: `"Secure connection required"` + `"Open PixelSortGUI over HTTPS or http://localhost so browser storage and offline features can work."` | none |
+| Insecure context (product.md section 4) | `!window.isSecureContext` | Full-screen blocking card: `"Secure connection required"` + `"Open Drift over HTTPS or http://localhost so browser storage and offline features can work."` | none |
 | Unsupported image format (AC-F1.3) | Browser cannot decode file | Error toast / dialog: `"Can't open <file name>: the browser can't read this image format."` | `"Dismiss"` |
 | Image too large (AC-F1.4) | Longest side > 16,384 px or file size > 200 MB | Error dialog: `"Image too large: the longest side is <N> px; the limit is 16,384 px."` (or file-size equivalent) | `"Dismiss"` |
 | Large image over 50 MP (AC-F1.5) | Image > 50 MP (50,000,000 px) within longest-side and file-size limits | `AlertDialog`: explains the 50 MP guaranteed maximum and that larger files may fail to export | `"Import at 50 MP"` (primary), `"Import anyway"` (secondary), `"Cancel"` |

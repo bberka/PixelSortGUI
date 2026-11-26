@@ -5,7 +5,7 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated with Milestone 7 (v0.2.0: F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with Milestone 8 (v0.3.0: F25, F17, F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
-# PixelSortGUI roadmap
+# Drift roadmap
 
 Status: settled for first release, 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [persistence.md](persistence.md), [../../DESIGN.md](../../DESIGN.md), [decisions.md](decisions.md). Workflow rules: [workflow.md](../agents/workflow.md), [roster.md](../agents/roster.md), [tooling.md](../agents/tooling.md).
 
@@ -20,7 +20,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 
 ## Milestone 0: Scaffolding, tooling, and CI
 
-**Goal:** Turn the empty repository into a working Vite+, pnpm, TypeScript (`tsgo -b`), React 19, Tailwind 4, shadcn, Zustand, XO, Vitest, Playwright, and GitHub Actions project per [tooling.md](../agents/tooling.md), with GitHub Pages deployment to `glitch.bbay.dev`.
+**Goal:** Turn the empty repository into a working Vite+, pnpm, TypeScript (`tsgo -b`), React 19, Tailwind 4, shadcn, Zustand, XO, Vitest, Playwright, and GitHub Actions project per [tooling.md](../agents/tooling.md), with GitHub Pages deployment to `drift.bbay.dev`.
 
 **Prerequisite:** Owner confirmation of optional guards (Q10 in [decisions.md](decisions.md#open-questions-for-the-owner)), or proceed with its documented default.
 
@@ -30,7 +30,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 | `T0.2` | Git hooks and agent-context budget: `scripts/git-hooks/protected-branch.sh`, `.hooks/pre-commit`, `.hooks/pre-push`, verify `.hooks/commit-msg` works under `vp hooks` `.hooks/_` dispatcher, `scripts/agent-context.ts` + `scripts/agent-context-budget.json` + unit test. | `docs/agents/tooling.md` | `T0.1` | `T0.3`, `T0.4`, `T0.5` | Gemini 4 Neon (Antigravity, low) | `sh .hooks/test-commit-msg.sh`, `vp run check:agent-context`, `vp test run` passes, test commit on `main` blocked. |
 | `T0.3` | CI and release workflows: `.github/workflows/test.yml` (jobs `lint`, `typecheck`, `unit`, `hooks`, `build`, gate `test`), `agent-context.yml`, `release.yml`, `scripts/release-version.ts` + test, `.github/dependabot.yml`. | `docs/agents/tooling.md` | `T0.1` | `T0.2`, `T0.4`, `T0.5` | Gemini 4 Neon (Antigravity, low) | `vp run version:next`, `vp test run`, GitHub Actions green on PR. |
 | `T0.4` | Playwright, axe-core, and proof tooling: `playwright.config.ts`, `@axe-core/playwright`, `scripts/proof-sheet.ts`, `scripts/publish-evidence.ts` (`vp run evidence`), `tests/e2e/smoke.spec.ts` verifying all 3 proof viewports render cleanly with zero console errors. | `docs/agents/tooling.md`, `DESIGN.md §10` | `T0.1` | `T0.2`, `T0.3`, `T0.5` | Gemini 4 Neon (Antigravity, medium) | Playwright smoke test passes at `390×844`, `820×1180`, `1440×900`; `vp run check` passes. |
-| `T0.5` | GitHub Pages deploy workflow: `.github/workflows/pages.yml` deploying `dist/` to GitHub Pages on custom domain `glitch.bbay.dev`, writing `CNAME` (`glitch.bbay.dev`) into the published output and verifying root-path (`base: '/'`) asset loading. | `docs/agents/tooling.md`, `product.md §4` | `T0.1` | `T0.2`, `T0.3`, `T0.4` | GPT Luna | Workflow validates cleanly, `dist/CNAME` contains `glitch.bbay.dev`, production build serves from `/` without broken paths. |
+| `T0.5` | GitHub Pages deploy workflow: `.github/workflows/pages.yml` deploying `dist/` to GitHub Pages on custom domain `drift.bbay.dev`, writing `CNAME` (`drift.bbay.dev`) into the published output and verifying root-path (`base: '/'`) asset loading. | `docs/agents/tooling.md`, `product.md §4` | `T0.1` | `T0.2`, `T0.3`, `T0.4` | GPT Luna | Workflow validates cleanly, `dist/CNAME` contains `drift.bbay.dev`, production build serves from `/` without broken paths. |
 
 ---
 
@@ -107,14 +107,14 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 
 ## Milestone 6: PWA offline, accessibility, E2E verification, and first release
 
-**Goal:** Ship full offline PWA support, verify WCAG 2.2 AA and every first-release acceptance criterion (`F1`–`F16`, `F18`–`F19`), and complete desktop browser sign-off and deploy to `glitch.bbay.dev` for `v0.1.0`.
+**Goal:** Ship full offline PWA support, verify WCAG 2.2 AA and every first-release acceptance criterion (`F1`–`F16`, `F18`–`F19`), and complete desktop browser sign-off and deploy to `drift.bbay.dev` for `v0.1.0`.
 
 | ID | Task | Spec sections | Depends on | Parallel with | Model tier | Verification |
 |---|---|---|---|---|---|---|
 | `T6.1` | PWA manifest, service worker, and install UI: configure `vite-plugin-pwa` (Workbox precache of app shell, workers, icons; `registerType: 'prompt'` so updates never auto-reload), `"Reload to update"` toast, `beforeinstallprompt` `"Install app"` menu item, zero third-party network check. | `product.md F15`, `DESIGN.md §7, §9` | `T4.2`, `S3` | `T6.2` | Gemini 4 Neon (Antigravity, medium) | Playwright offline test (AC-F15.1), zero external-origin network assertions (AC-F15.2), simulated SW update toast (AC-F15.3). |
 | `T6.2` | Accessibility test suite and fixes: Playwright + `@axe-core/playwright` suite covering Library, Editor, Export, and Settings × 2 themes × 3 viewports, full keyboard-only core loop test, live-region assertion test, and `prefers-reduced-motion: reduce` test. | `product.md F19`, `DESIGN.md §10` | `T5.7` | `T6.1` | Gemini 4 Neon (Antigravity, medium) | AC-F14.3 and AC-F19.1–AC-F19.4 green in CI (`vp run check:a11y`). |
 | `T6.3` | Full E2E acceptance test suite & independent review: automated Playwright coverage for `F1`–`F16`, `F18`–`F19` (including session reload, cross-reload undo, deterministic double-export pixel equality, and synthetic E2E fixture generated in code); independent diff review by GPT Luna. | `product.md §5` | `T6.1`, `T6.2` | none | Gemini 4 Neon (Antigravity, medium) + GPT Luna (review) | Full CI green; every first-release acceptance criterion mapped to an automated test or manual desktop checklist item. |
-| `T6.4` | Desktop acceptance & `v0.1.0` release: execute release checklist on the desktop browser matrix (product.md section 8: laptop Chromium 120+ and Firefox 128+), record p50/p95 timings, verify `https://glitch.bbay.dev` deploy (`CNAME`, root path), run manual `release.yml`. | `product.md §8`, `docs/agents/tooling.md` | `T0.5`, `T6.3` | none | Owner + Lead agent | Signed checklist recorded; `v0.1.0` deployed to `glitch.bbay.dev` and GitHub release published. |
+| `T6.4` | Desktop acceptance & `v0.1.0` release: execute release checklist on the desktop browser matrix (product.md section 8: laptop Chromium 120+ and Firefox 128+), record p50/p95 timings, verify `https://drift.bbay.dev` deploy (`CNAME`, root path), run manual `release.yml`. | `product.md §8`, `docs/agents/tooling.md` | `T0.5`, `T6.3` | none | Owner + Lead agent | Signed checklist recorded; `v0.1.0` deployed to `drift.bbay.dev` and GitHub release published. |
 
 ---
 
@@ -174,7 +174,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 | `T7.14` | IndexedDB v2 migration & store support for `SourceTransform`: bump `DB_VERSION = 2`, add `dbMigrations[1]`, persist `transform`, `effectiveWidth`, `effectiveHeight`, update `ThumbnailRecord.stackSignature` and history snapshots. | `persistence.md §8.1`, `product.md F20` | `T3.4`, `T7.13` | `T7.15` | Gemini 4 Neon (Antigravity, medium) | `fake-indexeddb` v1 -> v2 upgrade tests, preset-preserves-transform test (AC-F20.6), undo/redo transform tests. |
 | `T7.15` | Worker & coordinator geometry pipeline: wire `SourceTransform` into `preview.worker.ts`, `export.worker.ts`, `coordinator.ts`, stage cache key, Compare `original` alignment, and `ExportDialog` effective dimensions. | `engine.md §16.3`, `product.md F20` | `T3.1`, `T5.6`, `T7.13` | `T7.14` | Gemini 4 Neon (Antigravity, medium) | Worker & coordinator tests for AC-F20.1, AC-F20.5, and cache invalidation on crop change. |
 | `T7.16` | Geometry UI panel & on-canvas crop overlay: `src/features/transform/` (rotate/flip bar, aspect-ratio selector, interactive 8-handle crop overlay with keyboard nudging, resize px/% + lock + filter + 50 MP limit validation). | `product.md F20`, `DESIGN.md §7.2` | `T5.7`, `T7.14`, `T7.15` | none | Gemini 4 Neon (Antigravity, medium) | Playwright tests for AC-F20.1 to AC-F20.7; 3-viewport × 2-theme screenshots. |
-| `T7.17` | `v0.2.0` E2E verification & release: Playwright acceptance pass for `F20` to `F24`, independent review by the lead agent, bump `VERSION` to `2` (`v0.2.0`), deploy to `glitch.bbay.dev`. | `product.md §6` | `T7.2`, `T7.3`, `T7.6`–`T7.8`, `T7.10`–`T7.12`, `T7.16` | none | Gemini 4 Neon (Antigravity, medium) + lead agent (review) | Full CI green on Chromium and Firefox; `v0.2.0` published. |
+| `T7.17` | `v0.2.0` E2E verification & release: Playwright acceptance pass for `F20` to `F24`, independent review by the lead agent, bump `VERSION` to `2` (`v0.2.0`), deploy to `drift.bbay.dev`. | `product.md §6` | `T7.2`, `T7.3`, `T7.6`–`T7.8`, `T7.10`–`T7.12`, `T7.16` | none | Gemini 4 Neon (Antigravity, medium) + lead agent (review) | Full CI green on Chromium and Firefox; `v0.2.0` published. |
 
 ---
 
@@ -201,7 +201,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 | `T8.8` | IndexedDB v3 reference-counted extra sources: bump `DB_VERSION` (after `T7.14` v2), add `referencedSourceHashes` and `byReferencedSourceHash` multiEntry index, enforce 8-extra-source cap, update `deleteProject`/`cleanupOrphanedSources`, strip `'image'` params on `createPreset`, and wire extra-source inclusion into `project-file.ts` and `backup.ts` (`F25`/`F17`). | `persistence.md §8.5`, `product.md F26` | `T3.2`, `T7.14`, `T8.2`, `T8.4` | `T8.3`, `T8.5`, `T8.6`, `T8.7` | Gemini 4 Neon (Antigravity, low) | `fake-indexeddb` tests for AC-F26.3, AC-F26.4, AC-F26.6, AC-F26.7 (shared ref-count, undo retention, 8-image cap, preset stripping, `.glproj`/backup extra-source inclusion). |
 | `T8.9` | Worker and coordinator extra-source pipeline: extend `src/worker/{protocol,preview.worker,export.worker}.ts` and `src/render/coordinator.ts` (`loadExtraSource`/`unloadExtraSource`, 4 MP settle + drag proxies, cache invalidation on load, export decoding at target scale). | `engine.md §16.5`, `product.md F26` | `T3.1`, `T8.7`, `T8.8` | `T8.5`, `T8.6` | Gemini 4 Neon (Antigravity, medium) | Coordinator and worker unit tests for extra-source loading, drag-cap resize, cache invalidation, and export resolution scaling. |
 | `T8.10` | `ImageControl` parameter UI: `src/features/params/image-control.tsx`, update `param-control.tsx` and `format.ts` (thumbnail preview, dimensions, `"Choose image"` popover/sheet with `"From device"` F1 validation and `"From library"` source picker, `"Clear"`, `"Missing image"` warning). | `product.md F26`, `DESIGN.md §7.2` | `T4.3`, `T5.4`, `T8.8`, `T8.9` | `T8.6` | Gemini 4 Neon (Antigravity, medium) | Playwright tests for AC-F26.1 to AC-F26.7 (device pick, library pick dedup, clear, undo, keyboard accessibility); 3-viewport × 2-theme screenshots. |
-| `T8.11` | `v0.3.0` E2E verification and release: Playwright acceptance pass for `F25`, `F17`, and `F26` (including `.glproj` and backup round-trip of `imageBlend` projects, 50 MP offline check, quota-consistency test), independent review, bump `VERSION` to `3`, deploy to `glitch.bbay.dev`. | `product.md §6` | `T8.3`, `T8.6`, `T8.10` | none | Gemini 4 Neon (Antigravity, medium) + GPT Luna (review) | Full CI green on Chromium and Firefox; `v0.3.0` published. |
+| `T8.11` | `v0.3.0` E2E verification and release: Playwright acceptance pass for `F25`, `F17`, and `F26` (including `.glproj` and backup round-trip of `imageBlend` projects, 50 MP offline check, quota-consistency test), independent review, bump `VERSION` to `3`, deploy to `drift.bbay.dev`. | `product.md §6` | `T8.3`, `T8.6`, `T8.10` | none | Gemini 4 Neon (Antigravity, medium) + GPT Luna (review) | Full CI green on Chromium and Firefox; `v0.3.0` published. |
 
 ---
 

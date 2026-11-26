@@ -1,6 +1,6 @@
-# PixelSortGUI
+# Drift
 
-PixelSortGUI is an editor for glitch art and pixel sorting of still photos. It runs entirely in your browser, works offline, and needs no account. Your photos never leave your device. Projects are saved in browser storage.
+Drift is an editor for glitch art and pixel sorting of still photos. It runs entirely in your browser, works offline, and needs no account. Your photos never leave your device. Projects are saved in browser storage.
 
 ## What works today
 
@@ -32,7 +32,7 @@ The order of work is in [roadmap.md](docs/specs/roadmap.md) and the feature list
 
 ## Try it
 
-The planned address is https://glitch.bbay.dev. It is not live yet because its DNS record is not set up.
+The planned address is https://drift.bbay.dev. It is not live yet because its DNS record is not set up.
 
 To run it locally you need Node 22.18 or later (or 24.11 or later) and pnpm 12.15.0. The `vp` command comes from Vite+, which is a dev dependency, so `pnpm install` provides it. If `vp` is not on your path, put `pnpm exec` in front of the commands below.
 

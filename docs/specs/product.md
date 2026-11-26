@@ -5,13 +5,13 @@ Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low)
 Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
-# PixelSortGUI product spec
+# Drift product spec
 
 Status: settled for first release, 2026-11-24. Companion specs: [engine.md](engine.md), [persistence.md](persistence.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md), [decisions.md](decisions.md).
 
 ## 1. Purpose and users
 
-PixelSortGUI is an editor for pixel sorting and glitch effects on still photos. It runs in a browser, works offline, has no accounts and no server, and keeps every image and setting in the browser's own storage on the device.
+Drift is an editor for pixel sorting and glitch effects on still photos. It runs in a browser, works offline, has no accounts and no server, and keeps every image and setting in the browser's own storage on the device.
 
 Primary user: the owner, a person making glitch art from his own photos. Secondary users: anyone who opens the hosted static site. Assume one person per browser profile. There is no sharing, sync or collaboration. First-release acceptance targets desktop browsers; layouts stay responsive at phone, tablet and desktop widths for a later mobile port.
 
@@ -65,7 +65,7 @@ The library screen is the home screen. The editor screen shows one project at a 
   - desktop: 1024 CSS px and wider.
   All three layouts are built and checked at `390 × 844`, `820 × 1180`, and `1440 × 900` in a desktop browser so a later port needs no layout rework. Checking phone and tablet widths in a desktop browser tests layout only and does not reproduce mobile canvas, memory, or storage limits.
 - `vp run dev` starts the Vite dev server with hot reload. `vp run gui` builds the production app and serves it locally at `http://localhost:4173`, so the service worker and offline behaviour can be checked.
-- Built output is a static folder (`dist/`) hosted on GitHub Pages on the custom domain `glitch.bbay.dev`. The build must work when served from the domain root (`/`), and the published output includes a `CNAME` file containing `glitch.bbay.dev`.
+- Built output is a static folder (`dist/`) hosted on GitHub Pages on the custom domain `drift.bbay.dev`. The build must work when served from the domain root (`/`), and the published output includes a `CNAME` file containing `drift.bbay.dev`.
 
 Image size limits for the first release:
 

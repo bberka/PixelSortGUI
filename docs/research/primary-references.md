@@ -2,7 +2,7 @@ Written by Claude Haiku 5.5 (thinking medium), research subagent.
 
 # Primary references: pxlsort and pixel-sorter
 
-Research for the PixelSortGUI engine and product specs. Date of research: 2026-11-24.
+Research for the Drift engine and product specs. Date of research: 2026-11-24.
 
 ## 0. Method and tags
 

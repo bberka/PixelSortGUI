@@ -1,6 +1,6 @@
 Written by "GPT 6.0 Luna (thinking medium), research subagent"
 
-# PixelSortGUI engine architecture research
+# Drift engine architecture research
 
 **Research date requested:** 2026-11-24. **Verification status:** The initial draft was written without live web search; browser support versions, storage quotas, eviction rules, canvas limits, and encoder capabilities below were verified against live primary sources on 2026-11-24 (see **Verification pass** at the end). Performance targets in §3 remain proposed engineering targets, not measured benchmarks.
 

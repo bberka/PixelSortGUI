@@ -5,11 +5,11 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup/restore (F17), and multi-image blending (F26) decisions (D27 to D30) and open questions (Q16 to Q19) by Gemini 4 Neon (Antigravity, thought level low), specification subagent.
 
-# PixelSortGUI decisions and open questions
+# Drift decisions and open questions
 
 Status: settled for first release (one optional tooling question remains open), 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [persistence.md](persistence.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md).
 
-**Answer to native versus web:** Start web-first, not native-first. A static web app hosted on GitHub Pages (`glitch.bbay.dev`) and backed by a TypeScript Web Worker sorting engine satisfies the offline, local-only goals on desktop browsers without depending on GPU availability, and keeping the image engine pure TypeScript lets the same codebase be packaged later with Tauri (see D13 for the system-webview caveat).
+**Answer to native versus web:** Start web-first, not native-first. A static web app hosted on GitHub Pages (`drift.bbay.dev`) and backed by a TypeScript Web Worker sorting engine satisfies the offline, local-only goals on desktop browsers without depending on GPU availability, and keeping the image engine pure TypeScript lets the same codebase be packaged later with Tauri (see D13 for the system-webview caveat).
 
 ---
 
@@ -40,7 +40,7 @@ Status: settled for first release (one optional tooling question remains open), 
 ### D4. Persistence and storage architecture (confirmed by spike S3, 2026-11-24)
 
 - **Options considered:** (a) IndexedDB as primary catalog and blob store + `localStorage` theme mirror; (b) OPFS for blobs + IndexedDB for metadata; (c) File System Access API handles referencing files on disk.
-- **Choice:** IndexedDB (`pixelsortgui`) for all source blobs, projects, thumbnails, history, presets, and app state, with SHA-256 source deduplication, parameter-snapshot history (up to 200 undoable commits), and a single `localStorage` key (`psg:theme`) for zero-flash theme boot.
+- **Choice:** IndexedDB (`drift`) for all source blobs, projects, thumbnails, history, presets, and app state, with SHA-256 source deduplication, parameter-snapshot history (up to 200 undoable commits), and a single `localStorage` key (`drift:theme`) for zero-flash theme boot.
 - **Spike S3 result (2026-11-24):** Confirmed in headless Chromium `159.0.8154.6` and Firefox `159.0` on one Linux desktop machine ([spike-s3-persistence.md](../research/spike-s3-persistence.md)): `Blob` round-trips up to 50 MiB, transaction rollback/mid-write kill safety, v1→v2 migration/`VersionError`, offline reload, and Chromium `QuotaExceededError` rollback all passed. Caveats: `navigator.storage.persist()` does not settle in Firefox until the user answers the prompt (never awaited on import/startup), `estimate().usageDetails` is absent in Firefox, real Firefox Private Browsing and native `persist()`/`QuotaExceededError` need manual checks, and nothing was tested on phones.
 - **Reason:** IndexedDB works uniformly across Chromium and Firefox (and best-effort Safari) with atomic transactions and schema upgrades. File System Access pickers are Chromium-only and handles can be revoked. OPFS shares the exact same origin quota and eviction rules as IndexedDB, so adding a second persistence system for v1 adds recovery complexity without solving eviction.
 - **Revisit if:** Future video/animation workflows or large painted mask layers require streaming random-access scratch files where worker-side OPFS `FileSystemSyncAccessHandle` measurably cuts peak RAM.
@@ -118,7 +118,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D16. Hosting and custom domain (formerly Q3, settled 2026-11-24)
 
-- **Choice:** **GitHub Pages** on the custom domain **`glitch.bbay.dev`**. The production build (`dist/`) must work when served from the domain root (`/`), and the deploy writes a `CNAME` file containing `glitch.bbay.dev` into the published output (`docs/agents/tooling.md`, roadmap `T0.5`).
+- **Choice:** **GitHub Pages** on the custom domain **`drift.bbay.dev`** (renamed from the initial subdomain in D31). The production build (`dist/`) must work when served from the domain root (`/`), and the deploy writes a `CNAME` file containing `drift.bbay.dev` into the published output (`docs/agents/tooling.md`, roadmap `T0.5`).
 
 ### D17. First-release platforms, browser floor, and reference device (formerly Q5 and Q6, settled 2026-11-24)
 
@@ -212,6 +212,12 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Choice:** Option (b) (`persistence.md` §8.5, `engine.md` §16.5).
 - **Reason:** Reusing `sources` lets users pick existing library images without duplicating bytes, keeps undo history lightweight while retaining blobs referenced only by undo entries, bounds preview worker proxy RAM to `<= 160 MiB` (8 extra sources at 4 MP settle + 1 MP drag), and prevents user presets from pinning blobs or carrying broken hashes across devices.
 - **Revisit if:** Multi-image collages routinely need more than 8 distinct secondary sources and worker proxy LRU eviction is added.
+
+### D31. Product rename to Drift and domain change to drift.bbay.dev (2026-11-26)
+
+- **Choice:** Rename the product to **Drift**, move the custom domain to **`drift.bbay.dev`**, and rename package and unreleased browser storage identifiers (`drift` package name and IndexedDB database; `drift:theme`, `drift:tablet-panel-height`, and `drift:tablet-panel-collapsed` `localStorage` keys).
+- **Reason:** The app covers many glitch and image effects rather than pixel sorting alone, so a broader product name fits better and `drift.bbay.dev` matches it. Because the app is unreleased, browser storage identifiers are renamed cleanly without a legacy migration. Pixel sorting remains the name of the technique.
+- **Revisit if:** Never; once `v0.1.0` ships, storage identifiers are frozen and migrated rather than renamed.
 
 ---
 

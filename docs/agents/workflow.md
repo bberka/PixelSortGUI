@@ -29,7 +29,7 @@ Done when a reader with no other context could do the task and could tell when i
 
 ## 2. Branch and worktree
 
-- One worktree per subagent task, so parallel tasks never share a working directory. Create it from the up-to-date default branch: `git worktree add ../PixelSortGUI-<topic> -b <type>/<topic> origin/main`. With T3 Code, `delegate_task` with `isolation: "worktree"` does this.
+- One worktree per subagent task, so parallel tasks never share a working directory. Create it from the up-to-date default branch: `git worktree add ../drift-<topic> -b <type>/<topic> origin/main`. With T3 Code, `delegate_task` with `isolation: "worktree"` does this.
 - Branch name is `<type>/<short-topic>`, lowercase, hyphens. Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`.
 - Never commit on or push to `main`. The `pre-commit` hook refuses it once the hooks land (see [tooling.md](tooling.md)).
 - Hooks are configured per repository clone and apply to every worktree. Once scaffolding exists, run `pnpm install` in a new worktree before the first commit (planned).

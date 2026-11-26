@@ -9,17 +9,17 @@ Source projects, read only, on 2026-11-24:
 
 Both use Vite+ (`vp`), pnpm 12, Tailwind 4, shadcn (new-york style, Radix), React 19, and an `AGENTS.md` that is a short map into `docs/agents/`. Their commit history shows the same owner, with agents opening most PRs. Secrets, tokens and hostnames are left out below. Secrets are named only.
 
-A later agent can set up PixelSortGUI from this file alone. "Quoted" blocks are copied from the source files.
+A later agent can set up Drift from this file alone. "Quoted" blocks are copied from the source files.
 
 ## 0. Findings that change the setup
 
-1. `vp run <name>` runs a `package.json` script or a task under `run.tasks` in `vite.config.ts`. One name cannot come from both. Neither source project defines `run.tasks`. Both only forward `vp run x` to package.json scripts. PixelSortGUI needs `vp run dev` and `vp run gui`, so section 5 shows both options.
+1. `vp run <name>` runs a `package.json` script or a task under `run.tasks` in `vite.config.ts`. One name cannot come from both. Neither source project defines `run.tasks`. Both only forward `vp run x` to package.json scripts. Drift needs `vp run dev` and `vp run gui`, so section 5 shows both options.
 2. `vp dev` is a built-in command and is not the same as `vp run dev`. The built-in `vp dev` ignores a `dev` script. So `vp run dev` and `vp run gui` must be defined explicitly. Source: `node_modules/vite-plus/docs/guide/run.md` in TabLodge.
 3. Neither project has a real `commit-msg` hook. Both have only the generated stub under `.hooks/_/` or `.husky/_/`. Neither project enforces a ban on `Co-authored-by` trailers in a hook.
    - TabLodge has the rule in prose: `AGENTS.md` and `docs/agents/workflow.md`.
    - TabLodge's `unslop-git` skill (rule git-7) also says to delete AI-tool trailers.
    - mediastash has nothing on the topic.
-   - PixelSortGUI must add the hook itself (section 11).
+   - Drift must add the hook itself (section 11).
 4. Only TabLodge has a PR template (`.github/pull_request_template.md`), with a `## Model` section. mediastash has no template. Its `pr` skill writes Summary, Evidence and Merge Danger, and its `file-pr` skill ends the description with the model and harness.
 5. Linting differs. TabLodge uses XO (ESLint based) with Prettier through XO. mediastash uses `vp lint` (oxlint) with no formatter. The new project wants XO, so TabLodge is the model.
 6. T3 Code `t3.json` exists only in mediastash.
@@ -57,7 +57,7 @@ Style of the files: terse, articles dropped ("Never commit on or push to master 
 
 ### 1.2 Hard rules, TabLodge `AGENTS.md`
 
-Full text of the rule bullets, because PixelSortGUI should start from these:
+Full text of the rule bullets, because Drift should start from these:
 
 > - Never commit on or push to `master` or `main`; work on `<type>/<short-topic>` branch, open pull request.
 > - Commits name human author only. Pull request names model.
@@ -259,7 +259,7 @@ Required PR sections (TabLodge, `validation.md` "Pull request body lists"): Spec
 
 Naming the model: TabLodge's `## Model` section ("product and exact model ID, with what each model did when several contributed", for example `Claude Sonnet 5.5 (claude-sonnet-5-5)`). mediastash `file-pr` skill: end the description with `Created with <model> in <harness>.` and include subagent models.
 
-The user's global instructions (`~/.pi/agent/AGENTS.md`) set a different report for PR bodies: Summary, Evidence, Merge Danger (Door, Blast Radius, Watch after merge), written with the `pr` skill. Neither repo contradicts that. The PixelSortGUI template should keep `## Model` and also keep a place for Evidence and Merge Danger.
+The user's global instructions (`~/.pi/agent/AGENTS.md`) set a different report for PR bodies: Summary, Evidence, Merge Danger (Door, Blast Radius, Watch after merge), written with the `pr` skill. Neither repo contradicts that. The Drift template should keep `## Model` and also keep a place for Evidence and Merge Danger.
 
 ### 2.5 Review steps
 
@@ -380,7 +380,7 @@ Recommendation: TabLodge's `vp hooks` setup, because the new project is Vite+ an
 
 ### 4.2 `package.json` (TabLodge root)
 
-Header fields: `"private": true`, `"type": "module"`, `engines`, `packageManager`. Scripts (the ones PixelSortGUI should copy or adapt):
+Header fields: `"private": true`, `"type": "module"`, `engines`, `packageManager`. Scripts (the ones Drift should copy or adapt):
 
 ```json
 "prepare": "vp hooks enable --hooks-dir .hooks",
@@ -501,7 +501,7 @@ mediastash root `vite.config.ts` only has a `lint` block (oxlint): `ignorePatter
 Shape of the file (about 300 lines). Parts to copy, in order:
 
 1. Imports `xoReact from 'eslint-config-xo-react'`, `type {XoConfigItem} from 'xo'`.
-2. A local rule `local/no-comments` built from `scripts/comment-policy.ts`. It bans all comments except directives with a reason. Files in `scripts/comment-baseline.json` are exempt, and CI runs a ratchet (`scripts/comment-ratchet.ts`, 2026-11-21) so a PR cannot add comments or leave a baseline stale. Optional for PixelSortGUI: only copy if "Write no code comments" stays a rule.
+2. A local rule `local/no-comments` built from `scripts/comment-policy.ts`. It bans all comments except directives with a reason. Files in `scripts/comment-baseline.json` are exempt, and CI runs a ratchet (`scripts/comment-ratchet.ts`, 2026-11-21) so a PR cannot add comments or leave a baseline stale. Optional for Drift: only copy if "Write no code comments" stays a rule.
 3. `ignores`: `dist/**`, `release/**`, `docs/**`, `**/dist/**`, `.agents/**`, `.claude/worktrees/**`, `skills-lock.json`, test fixtures.
 4. `{prettier: true}`.
 5. `...(xoReact({prettier: true}) as XoConfigItem[])` and `{files: ['**/*.tsx'], settings: {react: {version: 'detect'}}}`.
@@ -568,7 +568,7 @@ Facts to remember from `node_modules/vite-plus/docs/guide/run.md`:
 - `vp` global CLI on this machine is 1.4.0. The project's local `vite-plus` 1.6.0 takes over inside a project.
 - `vp dev`, `vp build`, `vp test`, `vp lint`, `vp check`, `vp preview`, `vp pack` are built-ins. `vp run dev` and the others run a script or task of the same name.
 
-How PixelSortGUI should define `dev` and `gui` (option A, recommended, because tasks get caching and `dependsOn` and the file already exists):
+How Drift should define `dev` and `gui` (option A, recommended, because tasks get caching and `dependsOn` and the file already exists):
 
 ```ts
 import {defineConfig} from 'vite-plus';
@@ -599,7 +599,7 @@ This sketch is untested. `run.tasks` fields come from the Vite+ docs read above,
 | `agent-context.yml` | `pull_request` (opened, synchronize, reopened, labeled, unlabeled) | Size budget (see 1.4) |
 | `pages.yml` ("Website") | `pull_request`, `repository_dispatch: tablodge-release-published`, `workflow_dispatch` | Builds the Astro site. Only a release dispatch or manual run deploys to GitHub Pages (`pages: write`, `id-token: write`). No `paths` filter so the required check always reports. |
 | `release.yml` | `workflow_dispatch` only, on the default branch | Described in 6.4 |
-| `store-publish.yml` | `repository_dispatch`, `workflow_dispatch` (inputs `version`, `store`), `schedule` cron `17 */6 * * *` | Chrome Web Store and Firefox Add-ons submission with retry. Secret names: `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, variable `CWS_PUBLISHER_ID`, `AMO_JWT_ISSUER`, `AMO_JWT_SECRET`. Not relevant to PixelSortGUI. |
+| `store-publish.yml` | `repository_dispatch`, `workflow_dispatch` (inputs `version`, `store`), `schedule` cron `17 */6 * * *` | Chrome Web Store and Firefox Add-ons submission with retry. Secret names: `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, variable `CWS_PUBLISHER_ID`, `AMO_JWT_ISSUER`, `AMO_JWT_SECRET`. Not relevant to Drift. |
 | `mobile.yml` | `push`/`pull_request` with a `paths` filter | Debug APK, artifact kept 14 days. Not relevant. |
 | `sync-server.yml` | `push` to master, `pull_request`, `workflow_dispatch`, with paths | Docker image to GHCR. Not relevant. |
 
@@ -684,13 +684,13 @@ Both use [ZeroVer](https://0ver.org): `0.<minor>.<patch>`.
   5. Create the GitHub release (`Media Stash <version>`) only after all deploys succeed. A failed run leaves a tag, and a retry still deploys.
   6. Sets `APP_VERSION` in `packages/config/src/index.ts` at build time (the source is not edited in git).
 
-For PixelSortGUI the useful part is the VERSION to tag logic and the "only create the release after deploy" order. A static web app needs one deploy job.
+For Drift the useful part is the VERSION to tag logic and the "only create the release after deploy" order. A static web app needs one deploy job.
 
 ### 6.5 Deployment targets
 
 - TabLodge: GitHub Pages for the Astro site (Pages source must be set to GitHub Actions once), GitHub Releases for ZIPs and APK, GHCR for the Docker image, Chrome Web Store and Firefox Add-ons, Cloudflare Worker via a prebuilt `worker.js` and a `release` branch.
 - mediastash: Cloudflare Pages (web app, landing, admin, status) and a Cloudflare Worker with D1, through `wrangler`. Secrets resolved in a `Resolve Cloudflare auth` step (the composite action `.github/actions/cloudflare-auth`). Secret values are not recorded here.
-- PixelSortGUI is a client-side app, so it needs no server. GitHub Pages (TabLodge's `pages.yml` pattern) or Cloudflare Pages (mediastash's pattern) both fit. The choice is open (see section 11).
+- Drift is a client-side app, so it needs no server. GitHub Pages (TabLodge's `pages.yml` pattern) or Cloudflare Pages (mediastash's pattern) both fit. The choice is open (see section 11).
 
 ### 6.6 Required checks
 
@@ -769,7 +769,7 @@ TabLodge runs axe-core on every page in both themes plus keyboard workflows (`sc
 
 Dates from `git log`: mediastash started 2026-07-03, TabLodge 2026-10-25. Their agent docs have the same shape, and both budget scripts were first committed on 2026-11-20 and 2026-11-21.
 
-| Topic | TabLodge | mediastash | Newer or more deliberate | Recommendation for PixelSortGUI |
+| Topic | TabLodge | mediastash | Newer or more deliberate | Recommendation for Drift |
 | --- | --- | --- | --- | --- |
 | Lint and format | XO plus Prettier (since 2026-10-25) | oxlint through `vp lint`, no formatter | TabLodge (the owner asked for XO) | XO, because the new project requires it. |
 | Git hooks | `vp hooks` with `.hooks/` (2026-10-25, pre-commit 2026-11-14) | Husky 9 (2026-10-15) | TabLodge | `vp hooks`, because no extra dependency and same tool as the rest. Add mediastash's protected-branch helper and em dash check. |
@@ -795,7 +795,7 @@ Dates from `git log`: mediastash started 2026-07-03, TabLodge 2026-10-25. Their 
 - The `.delta/`, `.omo/`, `.testagent/`, `.codegraph/` and `.playwright-mcp/` directories in the mediastash root are agent scratch space. Do not copy them. `.delta/` holds nested worktree copies of the repo.
 - `.unslop/` is described as git-ignored in TabLodge `validation.md`, but it is not in the first 40 lines of that `.gitignore`. Add it to the new `.gitignore` explicitly.
 
-## 11. Proposed setup for PixelSortGUI
+## 11. Proposed setup for Drift
 
 Single app at the repository root (no `apps/`), pnpm, Vite+ 1.6, XO, Tailwind 4, shadcn. "Model" names the source project. Files marked "write later" belong to phases after this one. This phase wrote only this research file.
 

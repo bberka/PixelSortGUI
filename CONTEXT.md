@@ -1,4 +1,4 @@
-# Context: PixelSortGUI vocabulary
+# Context: Drift vocabulary
 
 Use these words the same way in specs, code, UI copy, and pull requests. The specs in `docs/specs/` fix the exact detail; where a spec defines a term differently, the spec wins and this file should be corrected.
 

@@ -284,6 +284,39 @@ test.describe('lazy utif2 chunk (AC-F21.6)', () => {
 	});
 });
 
+test('TIFF export works offline once the app is precached (AC-F21.6)', async ({
+	page,
+	context,
+}) => {
+	await gotoLibrary(page);
+	await chooseImages(page, [
+		await makeImage(page, {name: 'a.png', width: 40, height: 30}),
+	]);
+	await expect(
+		page.getByRole('region', {name: 'Canvas', exact: true}),
+	).toBeVisible();
+	await page.evaluate(async () => {
+		await navigator.serviceWorker.ready;
+	});
+	// The first load is not controlled by the new service worker.
+	await page.reload({waitUntil: 'load'});
+	await expect
+		.poll(async () =>
+			page.evaluate(() => navigator.serviceWorker.controller !== null),
+		)
+		.toBe(true);
+
+	await context.setOffline(true);
+	try {
+		await page.reload({waitUntil: 'load'});
+		await openExport(page);
+		const tiff = await download(page, 'TIFF');
+		expect([...tiff.subarray(0, 4)]).toEqual([0x4d, 0x4d, 0, 42]);
+	} finally {
+		await context.setOffline(false);
+	}
+});
+
 for (const viewport of PROOF_VIEWPORTS) {
 	test(`the export dialog offers BMP and TIFF at ${viewport.name} @a11y`, async ({
 		page,

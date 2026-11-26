@@ -197,6 +197,26 @@ function webpChunkTypes(bytes: Uint8Array): string[] {
 	return chunks;
 }
 
+async function expectStoredSizeLimit(page: Page, maxFileSizeKb: number | null) {
+	await expect
+		.poll(async () =>
+			page.evaluate(async () => {
+				const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+				const booted = await runtime!.ready;
+				if (booted.status !== 'ready') {
+					throw new Error('Not ready');
+				}
+
+				const {store, repository} = booted.bundle;
+				const stored = await repository.getProject(
+					store.getState().activeProject!.id,
+				);
+				return stored?.exportSettings.maxFileSizeKb ?? null;
+			}),
+		)
+		.toBe(maxFileSizeKb);
+}
+
 async function decodeImageInPage(
 	page: Page,
 	bytes: Uint8Array,
@@ -818,6 +838,7 @@ test('AC-F12.8 & AC-F12.9: size-limited export fits within target and persists l
 		width: 1200,
 		height: 900,
 		effects: ['pixelSort'],
+		withExifJpeg: true,
 	});
 	await page.getByRole('button', {name: 'Export'}).click();
 	const dialog = page.getByRole('dialog', {name: 'Export'});
@@ -839,6 +860,7 @@ test('AC-F12.8 & AC-F12.9: size-limited export fits within target and persists l
 	]);
 	const bytes = await readDownloadBytes(download);
 	expect(bytes.byteLength).toBeLessThanOrEqual(50 * 1024);
+	assertJpegHasNoExif(bytes);
 	await expect(dialog.locator('[data-slot="export-summary"]')).toBeVisible();
 
 	// Close and reopen the dialog: the custom 50 KB limit is remembered.
@@ -849,4 +871,52 @@ test('AC-F12.8 & AC-F12.9: size-limited export fits within target and persists l
 	await expect(
 		dialog.locator('[data-slot="export-size-limit-value"]'),
 	).toHaveText('≤ 50 KB');
+});
+
+test('AC-F12.9: a custom limit, a preset and Off are each restored after a reload', async ({
+	page,
+}) => {
+	await seedProject(page, {name: 'LimitReload', width: 320, height: 240});
+	const dialog = page.getByRole('dialog', {name: 'Export'});
+	const limit = dialog.getByRole('radiogroup', {name: 'Limit file size'});
+	const openExport = async () => {
+		await page.getByRole('button', {name: 'Export'}).click();
+		await expect(dialog).toBeVisible();
+	};
+
+	const reopenAfterReload = async () => {
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		await page.reload();
+		await openExport();
+	};
+
+	await openExport();
+	await limit.getByRole('radio', {name: 'Custom'}).click();
+	const maxSize = dialog.getByRole('spinbutton', {name: 'Max size'});
+	await maxSize.fill('750');
+	await maxSize.press('Enter');
+	await expectStoredSizeLimit(page, 750);
+	await reopenAfterReload();
+	await expect(limit.getByRole('radio', {name: 'Custom'})).toHaveAttribute(
+		'aria-checked',
+		'true',
+	);
+	await expect(maxSize).toHaveValue('750');
+
+	await limit.getByRole('radio', {name: '2 MB'}).click();
+	await expectStoredSizeLimit(page, 2048);
+	await reopenAfterReload();
+	await expect(limit.getByRole('radio', {name: '2 MB'})).toHaveAttribute(
+		'aria-checked',
+		'true',
+	);
+
+	await limit.getByRole('radio', {name: 'Off'}).click();
+	await expectStoredSizeLimit(page, null);
+	await reopenAfterReload();
+	await expect(limit.getByRole('radio', {name: 'Off'})).toHaveAttribute(
+		'aria-checked',
+		'true',
+	);
 });

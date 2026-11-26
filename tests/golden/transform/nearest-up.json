@@ -1,0 +1,24 @@
+{
+	"input": "bands-80x80",
+	"transform": {
+		"rotation": 0,
+		"flipX": false,
+		"flipY": false,
+		"crop": {
+			"x": 3,
+			"y": 5,
+			"width": 31,
+			"height": 27
+		},
+		"resize": {
+			"width": 77,
+			"height": 68,
+			"filter": "nearest"
+		}
+	},
+	"stack": {
+		"schemaVersion": 1,
+		"instances": []
+	},
+	"scale": 1
+}

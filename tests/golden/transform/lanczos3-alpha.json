@@ -1,0 +1,19 @@
+{
+	"input": "alpha-32x32",
+	"transform": {
+		"rotation": 0,
+		"flipX": false,
+		"flipY": false,
+		"crop": null,
+		"resize": {
+			"width": 45,
+			"height": 13,
+			"filter": "lanczos3"
+		}
+	},
+	"stack": {
+		"schemaVersion": 1,
+		"instances": []
+	},
+	"scale": 1
+}

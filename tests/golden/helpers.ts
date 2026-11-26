@@ -4,6 +4,10 @@ import {decode, encode} from 'fast-png';
 import {effectRegistry} from '../../src/engine/effects/index.ts';
 import {renderStack} from '../../src/engine/pipeline.ts';
 import {boxDownscale} from '../../src/engine/resample.ts';
+import {
+	applyTransform,
+	type SourceTransform,
+} from '../../src/engine/transform.ts';
 import type {EffectStack, RgbaImage} from '../../src/engine/types.ts';
 import {
 	getSyntheticFixture,
@@ -12,6 +16,8 @@ import {
 
 export type GoldenCaseSpec = {
 	input: SyntheticFixtureName;
+	// Applied to the input before scaling and the stack (engine.md section 16.3).
+	transform?: SourceTransform;
 	stack: EffectStack;
 	scale: number;
 	debug?: {instanceId: string; view: 'selection'};
@@ -62,7 +68,10 @@ export function listGoldenCases(root = GOLDEN_ROOT): GoldenCaseEntry[] {
 export async function renderGoldenCase(
 	spec: GoldenCaseSpec,
 ): Promise<RgbaImage> {
-	const source = getSyntheticFixture(spec.input);
+	const fixture = getSyntheticFixture(spec.input);
+	const source = spec.transform
+		? applyTransform(fixture, spec.transform)
+		: fixture;
 	const sourceWidth = source.width;
 	const sourceHeight = source.height;
 	const targetWidth = Math.max(1, Math.floor(sourceWidth * spec.scale));

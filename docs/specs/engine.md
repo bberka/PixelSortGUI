@@ -675,7 +675,7 @@ scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-upda
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap`, `sliceShift` and `posterize` (section 16.1) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap`, `sliceShift` and `posterize` (section 16.1) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`), which no storage, worker or UI code uses yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 

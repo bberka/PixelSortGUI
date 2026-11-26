@@ -329,6 +329,11 @@ test.describe('on a touch phone', () => {
 		await page.getByRole('button', {name: 'Show all controls'}).tap();
 		await expect(page.getByRole('button', {name: 'Reset all'})).toBeVisible();
 		await assertNoA11yViolations(page);
+
+		await toolbar(page).getByRole('button', {name: 'Transform'}).tap();
+		await expect(page.getByRole('button', {name: 'Apply crop'})).toBeInViewport(
+			{ratio: 1},
+		);
 	});
 
 	test('AC-F18.7: nothing names a key on a touch screen', async ({page}) => {

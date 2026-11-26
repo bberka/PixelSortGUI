@@ -2,6 +2,7 @@
 // backup codec shares. It runs in the archive worker: the main thread must
 // import only its types.
 import {Zip, ZipDeflate, ZipPassThrough} from 'fflate';
+import {projectSourceHashes} from './extra-sources.ts';
 import {repairProjectGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	ProjectFileError,
@@ -274,11 +275,12 @@ export async function writeProjectFile(
 		const bySha = new Map(
 			input.sources.map((source) => [source.sha256, source]),
 		);
-		const primary = bySha.get(project.sourceHash);
-		if (!primary) {
+		const needed = projectSourceHashes(project, history);
+		if (needed.some((hash) => !bySha.has(hash))) {
 			throw saveError('missing-source', name);
 		}
 
+		const primary = bySha.get(project.sourceHash)!;
 		bySha.delete(project.sourceHash);
 
 		const {thumbnail} = input;
@@ -450,10 +452,13 @@ async function readContents(
 		project.historyMaxSeq = 0;
 	}
 
-	if (!matchPrimarySource(manifest, project)) {
-		throw openError('missing-source', {
-			path: `sources/${manifest.primarySourceHash}`,
-		});
+	matchPrimarySource(manifest, project);
+	const listed = new Set(manifest.sources.map((source) => source.sha256));
+	const unlisted = projectSourceHashes(project, history).find(
+		(hash) => !listed.has(hash),
+	);
+	if (unlisted) {
+		throw openError('missing-source', {path: `sources/${unlisted}`});
 	}
 
 	const sourceEntries = manifest.sources.map((source) => {

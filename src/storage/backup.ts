@@ -150,7 +150,7 @@ export async function writeBackup(
 		ids.add(payload.id);
 
 		let totalSourceBytes = 0;
-		for (const hash of backupSourceHashes(payload)) {
+		for (const hash of backupSourceHashes(payload, history)) {
 			const source = stored.get(hash);
 			if (!source) {
 				throw exportError('export-missing-source', name);

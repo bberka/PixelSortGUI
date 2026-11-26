@@ -59,60 +59,63 @@ describe('Database schema migrations and VersionError handling', () => {
 		expect((await repoV1.getSchemaInfo())?.dbVersion).toBe(1);
 		repoV1.close();
 
-		const dbV3 = await openDatabase({
+		const dbV4 = await openDatabase({
 			indexedDB: idb,
-			version: 3,
+			version: 4,
 			migrations: {
 				...dbMigrations,
-				2(database) {
+				3(database) {
 					if (!database.objectStoreNames.contains('masks')) {
 						database.createObjectStore('masks', {keyPath: 'id'});
 					}
+
+					return undefined;
 				},
 			},
 		});
-		const repoV3 = new IndexedDbRepository(dbV3);
+		const repoV4 = new IndexedDbRepository(dbV4);
 		try {
-			expect(dbV3.objectStoreNames.contains('masks')).toBe(true);
-			expect((await repoV3.getSchemaInfo())?.dbVersion).toBe(3);
-			const existing = await repoV3.getProject(created.project.id);
+			expect(dbV4.objectStoreNames.contains('masks')).toBe(true);
+			expect((await repoV4.getSchemaInfo())?.dbVersion).toBe(4);
+			const existing = await repoV4.getProject(created.project.id);
 			expect(existing?.name).toBe('LegacyProject');
 		} finally {
-			repoV3.close();
+			repoV4.close();
 		}
 	});
 
 	it('throws StorageVersionError when opening a database written by a newer schema version without deleting it', async () => {
 		const idb = new IDBFactory();
 
-		const dbV3 = await openDatabase({
+		const dbV4 = await openDatabase({
 			indexedDB: idb,
-			version: 3,
+			version: 4,
 			migrations: {
 				...dbMigrations,
-				2(database) {
+				3(database) {
 					database.createObjectStore('masks', {keyPath: 'id'});
+					return undefined;
 				},
 			},
 		});
-		const repoV3 = new IndexedDbRepository(dbV3);
-		const created = await repoV3.createProject({
+		const repoV4 = new IndexedDbRepository(dbV4);
+		const created = await repoV4.createProject({
 			name: 'NewerVersionProject.png',
 			blob: new Blob([new Uint8Array([9, 8, 7])], {type: 'image/png'}),
 			width: 100,
 			height: 100,
 		});
-		repoV3.close();
+		repoV4.close();
 
-		await expect(openDatabase({indexedDB: idb, version: 2})).rejects.toThrow(
+		await expect(openDatabase({indexedDB: idb, version: 3})).rejects.toThrow(
 			StorageVersionError,
 		);
-		await expect(openStorage({indexedDB: idb, version: 2})).rejects.toThrow(
+		await expect(openStorage({indexedDB: idb, version: 3})).rejects.toThrow(
 			StorageVersionError,
 		);
 
-		const reopenedV3 = await openDatabase({indexedDB: idb, version: 3});
-		const verifyRepo = new IndexedDbRepository(reopenedV3);
+		const reopenedV4 = await openDatabase({indexedDB: idb, version: 4});
+		const verifyRepo = new IndexedDbRepository(reopenedV4);
 		try {
 			const intact = await verifyRepo.getProject(created.project.id);
 			expect(intact?.name).toBe('NewerVersionProject');

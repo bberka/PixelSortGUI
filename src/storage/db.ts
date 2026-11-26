@@ -1,4 +1,5 @@
 import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
+import {addSourceReferences, referencedSourceHashes} from './extra-sources.ts';
 import {resolveStoredGeometry} from './geometry.ts';
 import {
 	DB_NAME,
@@ -10,27 +11,50 @@ import {
 	type SchemaInfoRecord,
 } from './types.ts';
 
+// Record rewrites that outlast the migration call. `done` starts the next
+// migration, so two never rewrite a record at once.
+export type DbMigrationStep = (done: () => void) => void;
+
 export type DbMigration = (
 	database: IDBDatabase,
 	transaction: IDBTransaction,
-) => void;
+) => DbMigrationStep | undefined;
 
-// Rewrites every record of a store inside the upgrade transaction.
-function updateEach<T>(
+// Visits every record of a store inside the upgrade transaction. An error thrown
+// here aborts the upgrade.
+function forEachRecord(
 	transaction: IDBTransaction,
 	storeName: string,
-	update: (record: T) => T,
+	visit: (cursor: IDBCursorWithValue) => void,
+	done: () => void,
 ): void {
 	const request = transaction.objectStore(storeName).openCursor();
 	request.addEventListener('success', () => {
 		const cursor = request.result;
 		if (!cursor) {
+			done();
 			return;
 		}
 
-		cursor.update(update(cursor.value as T));
+		visit(cursor);
 		cursor.continue();
 	});
+}
+
+function updateEach<T>(
+	transaction: IDBTransaction,
+	storeName: string,
+	update: (record: T) => T,
+	done: () => void,
+): void {
+	forEachRecord(
+		transaction,
+		storeName,
+		(cursor) => {
+			cursor.update(update(cursor.value as T));
+		},
+		done,
+	);
 }
 
 export const dbMigrations: Readonly<Record<number, DbMigration>> = {
@@ -75,10 +99,12 @@ export const dbMigrations: Readonly<Record<number, DbMigration>> = {
 				keyPath: 'key',
 			});
 		}
+
+		return undefined;
 	},
 	// Geometry transforms (persistence.md section 8.1).
-	1(_database, transaction) {
-		updateEach<ProjectRecord>(transaction, STORE_NAMES.projects, (project) => {
+	1: (_database, transaction) => (done) => {
+		const updateProject = (project: ProjectRecord) => {
 			const {effectiveWidth, effectiveHeight, transform} =
 				resolveStoredGeometry(
 					project.sourceWidth,
@@ -93,12 +119,54 @@ export const dbMigrations: Readonly<Record<number, DbMigration>> = {
 				effectiveWidth,
 				effectiveHeight,
 			};
-		});
-		updateEach<HistoryEntryRecord>(transaction, STORE_NAMES.history, (entry) =>
+		};
+
+		const updateEntry = (entry: HistoryEntryRecord) =>
 			entry.transform === undefined
 				? {...entry, transform: IDENTITY_TRANSFORM}
-				: entry,
-		);
+				: entry;
+
+		updateEach(transaction, STORE_NAMES.projects, updateProject, () => {
+			updateEach(transaction, STORE_NAMES.history, updateEntry, done);
+		});
+	},
+	// Reference-counted extra sources (persistence.md section 8.5).
+	2(_database, transaction) {
+		transaction
+			.objectStore(STORE_NAMES.projects)
+			.createIndex('byReferencedSourceHash', 'referencedSourceHashes', {
+				multiEntry: true,
+			});
+
+		return (done) => {
+			// By project id, the sources its history uses.
+			const inHistory = new Map<string, Set<string>>();
+			const collect = (cursor: IDBCursorWithValue) => {
+				const entry = cursor.value as HistoryEntryRecord;
+				inHistory.set(
+					entry.projectId,
+					addSourceReferences(entry, inHistory.get(entry.projectId)),
+				);
+			};
+
+			forEachRecord(transaction, STORE_NAMES.history, collect, () => {
+				updateEach<ProjectRecord>(
+					transaction,
+					STORE_NAMES.projects,
+					(project) => {
+						const used = referencedSourceHashes(project, []);
+						const earlier = inHistory.get(project.id) ?? [];
+						return {
+							...project,
+							referencedSourceHashes: [
+								...new Set([...used, ...earlier]),
+							].toSorted(),
+						};
+					},
+					done,
+				);
+			});
+		};
 	},
 };
 
@@ -138,23 +206,38 @@ export function openDatabase(
 				return;
 			}
 
-			for (let current = event.oldVersion; current < version; current++) {
-				const migrate = migrations[current];
-				if (migrate) {
-					migrate(database, transaction);
+			const writeSchemaInfo = () => {
+				if (!database.objectStoreNames.contains(STORE_NAMES.meta)) {
+					return;
 				}
-			}
 
-			if (!database.objectStoreNames.contains(STORE_NAMES.meta)) {
-				return;
-			}
-
-			const schemaInfo: SchemaInfoRecord = {
-				key: 'schemaInfo',
-				dbVersion: version,
-				migratedAt: Date.now(),
+				const schemaInfo: SchemaInfoRecord = {
+					key: 'schemaInfo',
+					dbVersion: version,
+					migratedAt: Date.now(),
+				};
+				transaction.objectStore(STORE_NAMES.meta).put(schemaInfo);
 			};
-			transaction.objectStore(STORE_NAMES.meta).put(schemaInfo);
+
+			const migrateFrom = (current: number) => {
+				if (current >= version) {
+					writeSchemaInfo();
+					return;
+				}
+
+				const next = () => {
+					migrateFrom(current + 1);
+				};
+
+				const step = migrations[current]?.(database, transaction);
+				if (step) {
+					step(next);
+				} else {
+					next();
+				}
+			};
+
+			migrateFrom(event.oldVersion);
 		});
 
 		request.addEventListener('success', () => {

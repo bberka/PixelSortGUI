@@ -4,6 +4,7 @@ import {probeImageDimensions} from '../codec/decode.ts';
 import {getAppVersionLabel} from '../lib/app-version.ts';
 import {MAX_THUMBNAIL_SIDE} from '../state/thumbnail.ts';
 import type {openProjectFile, saveProjectFile} from './archive-client.ts';
+import {referencedSourceHashes} from './extra-sources.ts';
 import {resolveStoredGeometry} from './geometry.ts';
 import {withSideA} from './helpers.ts';
 import {ProjectFileError, projectOpenMessage} from './project-file-error.ts';
@@ -36,7 +37,8 @@ export type ProjectTransferDependencies = {
 
 export type ProjectSnapshot = {
 	project: ProjectRecord;
-	source: SourceRecord | undefined;
+	// The stored ones among those the file needs.
+	sources: SourceRecord[];
 	// `undefined` leaves undo history out of the file.
 	history: HistoryEntryRecord[] | undefined;
 	thumbnail: ThumbnailRecord | undefined;
@@ -56,7 +58,7 @@ export type PreparedImport = {
 };
 
 export async function writeProjectArchive(
-	{project, source, history, thumbnail}: ProjectSnapshot,
+	{project, sources, history, thumbnail}: ProjectSnapshot,
 	{signal, onProgress}: ExportProjectOptions,
 	{projectArchive}: ProjectTransferDependencies,
 ): Promise<ProjectFileOutput> {
@@ -64,7 +66,7 @@ export async function writeProjectArchive(
 	return save(
 		{
 			project,
-			sources: source ? [source] : [],
+			sources,
 			history,
 			thumbnail: thumbnail?.blob,
 			appVersion: getAppVersionLabel(),
@@ -203,7 +205,7 @@ export function buildProjectRecords(
 		payload.sourceHeight,
 		payload.transform,
 	);
-	const project = withSideA<ProjectRecord>(
+	const project = withSideA<Omit<ProjectRecord, 'referencedSourceHashes'>>(
 		{
 			...payload,
 			id: projectId,
@@ -231,7 +233,10 @@ export function buildProjectRecords(
 	);
 
 	return {
-		project,
+		project: {
+			...project,
+			referencedSourceHashes: referencedSourceHashes(project, history),
+		},
 		history,
 		// An empty signature matches no stack, so the next render replaces it.
 		thumbnail: thumbnail && {

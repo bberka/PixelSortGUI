@@ -207,13 +207,13 @@ function buildPreview(
 		contents.sources.map((source) => [source.sha256, source.byteLength]),
 	);
 	return {
-		projects: contents.projects.map(({project}) => {
+		projects: contents.projects.map(({project, history}) => {
 			const {effectiveWidth, effectiveHeight} = resolveStoredGeometry(
 				project.sourceWidth,
 				project.sourceHeight,
 				project.transform,
 			);
-			const sourceHashes = backupSourceHashes(project);
+			const sourceHashes = backupSourceHashes(project, history);
 			return {
 				id: project.id,
 				name: project.name,
@@ -394,7 +394,9 @@ function sourcesOf(
 	projects: readonly BackupProjectContents[],
 ): BackupContents['sources'] {
 	const hashes = new Set(
-		projects.flatMap(({project}) => backupSourceHashes(project)),
+		projects.flatMap(({project, history}) =>
+			backupSourceHashes(project, history),
+		),
 	);
 	return contents.sources.filter((source) => hashes.has(source.sha256));
 }

@@ -10,6 +10,7 @@ Updated with cloud backup and sync (section 11) by Claude Sonnet 5.5 (apx, high 
 Updated with the project file reader, save errors and archive modules (section 8.3) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 Updated with single-project save and import in the repository and app store (section 8.3.5) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 Updated with the backup size limit, validation, commit rules and modules (section 8.4) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
+Updated with database version 3 and reference-counted extra sources (section 8.5) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift persistence spec
 
@@ -29,12 +30,12 @@ Origin Private File System (OPFS) and the File System Access API are not used as
 
 ## 2. Database and object stores
 
-Database name: `drift`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` in `v0.3.0` per section 8.5).
+Database name: `drift`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` for `v0.3.0` per section 8.5).
 
 | Store | Key path | Indexes | Contents and sizing notes |
 |---|---|---|---|
-| `sources` | `sha256` | `byCreatedAt` (`createdAt`) | Original compressed image `Blob`s, deduplicated by SHA-256 hex digest. Never modified after insert. |
-| `projects` | `id` | `byOpenedAt` (`openedAt`), `bySourceHash` (`sourceHash`) | Lightweight project records (metadata, current `EffectStack`, `viewState`, `exportSettings`, history pointer). Kept under ~10 KB each so 100 projects load in one fast read. |
+| `sources` | `sha256` | `byCreatedAt` (`createdAt`) | Original compressed image `Blob`s, deduplicated by SHA-256 hex digest. Project sources and extra blend sources share the store (section 8.5). Never modified after insert. |
+| `projects` | `id` | `byOpenedAt` (`openedAt`), `bySourceHash` (`sourceHash`), `byReferencedSourceHash` (`referencedSourceHashes`, `multiEntry`) | Lightweight project records (metadata, current `EffectStack`, `viewState`, `exportSettings`, history pointer). Kept under ~10 KB each so 100 projects load in one fast read. |
 | `thumbnails` | `projectId` | none | Rendered result thumbnails (longest side ≤ 512 px, ~20 to 60 KB each). Separated from `projects` so library load and scroll decode thumbnails lazily (AC-F2.6). |
 | `history` | `['projectId', 'seq']` | `byProjectId` (`projectId`) | Per-project committed `EffectStack` snapshots. Separated from `projects` so opening the library never reads history rows (AC-F3.7). |
 | `presets` | `id` | `byNameLower` (`nameLower`) | User-created global presets (`id` prefixed `user:`). Built-in presets (`builtin:<slug>`) ship in code and are never stored here. |
@@ -81,6 +82,7 @@ type ProjectRecord = {
 	id: string; // UUID v4 from crypto.randomUUID()
 	name: string; // trimmed, 1..120 characters
 	sourceHash: string; // foreign key to sources.sha256
+	referencedSourceHashes: string[]; // every source this project and its history use, sorted (section 8.5)
 	sourceWidth: number; // copied from SourceRecord for fast library card rendering
 	sourceHeight: number; // copied from SourceRecord for fast library card rendering
 	transform: SourceTransform; // crop, rotation, flip and resize (engine.md section 16.3, section 8.1)
@@ -143,7 +145,7 @@ type AppStateRecord = {
 
 type SchemaInfoRecord = {
 	key: 'schemaInfo';
-	dbVersion: number; // 2
+	dbVersion: number; // 3
 	migratedAt: number; // Unix epoch ms
 };
 ```
@@ -153,6 +155,8 @@ Field invariants enforced before every write:
 - `ProjectRecord.name`: trimmed of leading and trailing whitespace; must be 1 to 120 characters. On import, strip the last file extension (if any); if the remaining stem is empty, default to `"Untitled"`, and truncate to 120 characters.
 - `UserPresetRecord.name`: trimmed, 1 to 80 characters.
 - `stack.instances.length` and `stackA.instances.length`: at most 32 each (product.md F4, engine.md 2.2).
+- `stack` and `stackA` together name at most 8 distinct extra sources (section 8.5).
+- `referencedSourceHashes`: sorted, without repeats, and always holds `sourceHash` (section 8.5).
 - `stackA` and `selectedInstanceIdA` are removed from a record when side A has no instances.
 - `viewState.splitOrientation` and `viewState.editSide`: any other value is removed.
 - `viewState.splitPosition`: clamped to `[0, 1]`.
@@ -169,7 +173,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 |---|---|---|---|
 | Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack`, the identity `transform`, effective size equal to the source size, `historyHeadSeq: 0`, and default `viewState` (`fitMode: 'fit'`, `zoom: 1`, centred at `(width / 2, height / 2)`, `splitPosition: 0.5`); insert `history` entry `(projectId, 0)` with label `"Initial"`; in a multi-file import, set `meta.appState.activeProjectId` to the first imported project. |
 | Drag slider / dial / divider | none | Never during drag | Transient value updates worker preview only. |
-| Commit stack change (F4, F5, F10) | `projects`, `history` | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `historyMaxSeq`, `updatedAt`). Every entry snapshots both sides and the transform, so one history covers all of them. A stack commit keeps the project's transform, which includes applying a preset (AC-F20.6). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
+| Commit stack change (F4, F5, F10) | `projects`, `history` (reads `sources`) | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `historyMaxSeq`, `referencedSourceHashes`, `updatedAt`). The commit is refused, with nothing written, when it breaks an extra-source rule of section 8.5. Every entry snapshots both sides and the transform, so one history covers all of them. A stack commit keeps the project's transform, which includes applying a preset (AC-F20.6). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
 | Commit geometry change (F20) | `projects`, `history` | Immediate | The stack commit transaction with a new `transform` and the stacks unchanged: one history entry labelled per section 8.2. |
 | Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `updatedAt`); an entry without `stackA` empties side A. Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
 | Jump to history entry (F23) | `projects` | Immediate (0 ms debounce) | Read the `HistoryEntryRecord` at the chosen `seq` and update `ProjectRecord` as undo does; later entries stay until the next commit (section 8.2). |
@@ -183,7 +187,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Open project file (F25) | `sources`, `projects`, `history`, `thumbnails`, `meta` | Immediate per file | Validates the whole file first, then writes one atomic transaction (section 8.3.5). Ends the first launch and triggers the automatic persistence request, as an image import does (section 7.3). |
 | Export backup (F17) | none (reads only) | On request | Reads the chosen records in one `readonly` transaction, then writes the ZIP in the archive worker (section 8.4). |
 | Import backup (F17) | `sources`, `projects`, `history`, `thumbnails`, `presets`, `meta` | On confirmation | Validates the whole file first, then stores new sources and commits everything else in one transaction (section 8.4.4). |
-| Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
+| Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; for each hash in its `referencedSourceHashes`, deletes the `sources` record when no remaining project refers to it (AC-F2.5, section 8.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
 | Dismiss the effect introduction or first import (F27) | `meta` | Immediate | Sets `meta.appState.welcomeDismissed = true`. The field is optional, so no database version change. |
@@ -212,15 +216,16 @@ Behaviour:
 
 ### 5.3 Orphaned source cleanup
 
-If a previous crash or interrupted run leaves a `sources` record with zero referencing projects in `projects.index('bySourceHash')`, a low-priority cleanup pass during idle startup deletes the unreferenced `sources` record so dead blobs do not consume quota.
+If a `sources` record has no referencing project (an interrupted run, or an extra source whose last history entry was dropped by a commit), a low-priority cleanup pass during idle startup deletes it so dead blobs do not consume quota. A source is referenced when any project names it in `byReferencedSourceHash` or `bySourceHash` (section 8.5).
 
 ## 6. Schema versioning and migration
 
 Three independent version numbers govern stored data:
 
-1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `2`):**
+1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `3`):**
    - Managed inside `IDBOpenDBRequest.onupgradeneeded`.
-   - Each bump from `v` to `v + 1` runs a pure, sequential upgrade function `dbMigrations[v]` inside the versionchange transaction, updating `meta.schemaInfo` at the end.
+   - Each bump from `v` to `v + 1` runs a sequential upgrade function `dbMigrations[v]` inside the versionchange transaction, updating `meta.schemaInfo` at the end. A migration that rewrites records returns a step, and the next migration starts only when that step has finished, so two migrations never rewrite a record at once.
+   - An upgrade is all or nothing: when any request or migration fails, the transaction aborts, the database stays at its old version with its old data, and the app falls back as in section 5.1.
    - Upgrades never discard user projects, source blobs, or presets.
    - If the stored database has a version **higher** than the running app's `dbVersion` (for example, after a deployment rollback), `indexedDB.open` fails with `VersionError`. The app must **never** delete or downgrade the database; it shows a blocking message asking the user to reload to the latest version.
 
@@ -478,9 +483,9 @@ Single-project import runs in two phases: **strict validation first** (zero Inde
 |---|---|
 | File > 1 GB, or any entry exceeds its uncompressed cap (16 MB JSON, 2 MB thumbnail, 200 MB per source) | `"Can't open <file name>: the project file is too large (limit is 1 GB, or 200 MB per image)."` |
 | Not a valid ZIP, truncated stream, decompression error, an unsafe or duplicate entry path, an encrypted entry, or an unsupported compression method | `"Can't open <file name>: the file is damaged or not a valid project archive."` |
-| Missing `manifest.json` or `project.json`, invalid JSON, `manifest.kind !== 'project'`, no `manifest.formatVersion`, or invalid required field types/ranges (`name` not 1..120 chars, `stack.instances.length > 32`, a `sourceHash` or source size that differs from the primary source entry, invalid `history.json` when `includesHistory` is true: not 1..201 entries with consecutive `seq` values matching the project's head, min and max) | `"Can't open <file name>: missing or invalid project metadata."` |
+| Missing `manifest.json` or `project.json`, invalid JSON, `manifest.kind !== 'project'`, no `manifest.formatVersion`, or invalid required field types/ranges (`name` not 1..120 chars, `stack.instances.length > 32`, more than 8 extra sources in the stacks of the project or of one history entry, a `sourceHash` or source size that differs from the primary source entry, invalid `history.json` when `includesHistory` is true: not 1..201 entries with consecutive `seq` values matching the project's head, min and max) | `"Can't open <file name>: missing or invalid project metadata."` |
 | `manifest.formatVersion` is present and is not an integer, or is `> PROJECT_FORMAT_VERSION` | `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."` |
-| Any entry listed in `manifest.sources` (or `primarySourceHash`) is missing from the ZIP | `"Can't open <file name>: missing image data (<path>)."` |
+| Any entry listed in `manifest.sources` (or `primarySourceHash`) is missing from the ZIP, or the project or its history uses a hash that `manifest.sources` does not list (`<path>` is then `sources/<sha256>`) | `"Can't open <file name>: missing image data (<path>)."` |
 | Computed SHA-256 of any `sources/*` entry does not match its declared `sha256` (or `byteLength` mismatches) | `"Can't open <file name>: image data is damaged (<path>)."` |
 | Any newly imported source cannot be decoded or has a side > 16,384 px | `"Can't open <file name>: embedded image is unreadable or exceeds 16,384 px."` |
 | Pre-flight quota check (`checkQuotaForImport` on bytes of sources not already in `sources`) fails, or transaction throws `QuotaExceededError` | Open `"Storage is full"` dialog (`src/app/storage-full-dialog.tsx`); zero records written. |
@@ -498,7 +503,7 @@ The import step then checks each source in this order:
 | Condition | Exact user-facing error message |
 |---|---|
 | A source over 200 MB, a JSON entry over 16 MB, or a file over 1 GB | `"Can't save <project name>: the project is too large for a project file (limit is 1 GB, or 200 MB per image)."` |
-| A source the project refers to is not available | `"Can't save <project name>: its image data is missing."` |
+| A source the file would need (section 8.5) is not available | `"Can't save <project name>: its image data is missing."` |
 | The stored project or history breaks the rules above | `"Can't save <project name>: its stored data is invalid."` |
 
 An invalid stored transform does not stop a save: it is written as the repaired value (section 8.1). A file being opened is never repaired (section 8.3.3).
@@ -637,13 +642,13 @@ Phase 1 reads its JSON documents through `BackupReader.read(path)` (`src/storage
 | Not a valid ZIP, truncated stream, decompression failure, an unsafe or duplicate entry path, an encrypted entry, or an unsupported compression method | `"Can't import backup: the file is damaged or not a valid ZIP archive."` |
 | Missing or invalid `manifest.json`, `presets.json`, `settings.json`, or any `project.json` / `history.json` (rules below) | `"Can't import backup: missing or invalid manifest."` |
 | `backupVersion` or `projectFormatVersion` is present and is not an integer, or is above the supported version (`<v>` is that value) | `"Can't import backup: format version <v> is newer than this app supports. Update the app and try again."` |
-| Missing source entry, or a project whose source is not listed in `manifest.sources` | `"Can't import backup: missing image data (<path>)."` |
+| Missing source entry, or a project or history entry that uses a source not listed in `manifest.sources` | `"Can't import backup: missing image data (<path>)."` |
 | SHA-256 or byte-length mismatch on a source entry | `"Can't import backup: image data is damaged (<path>)."` |
 | A new source does not decode, or has a side over 16,384 px | `"Can't import backup: embedded image is unreadable or exceeds 16,384 px."` |
 
 The checks run in this order: file size, ZIP structure and entry caps, `manifest.json` (`kind`, then the two versions, then the rest), presets and settings, each project, the sources, the thumbnails, then the decode checks. A newer file is therefore reported as newer even when the rest of it has a shape this version does not know.
 
-Metadata is invalid when, among the field rules of section 8.3: `kind` is not `'backup'`; a version is below 1; a project `id` is not 1 to 64 letters, digits, `_` or `-`, or repeats; `path`, `historyPath` or `thumbnailPath` is not the layout path for that `id`; `historyPath` is `null` while `includesHistory` is true, or the reverse; the manifest's `id`, `name`, `sourceHash`, source size or `updatedAt` differ from `project.json`; a source size differs from its source entry; a preset `id` is not `user:` followed by 1 to 64 of those characters, or repeats; a preset breaks the field invariants of section 3; or `presetCount` is not the number of presets (`0` without presets). `nameLower` is derived from `name`, never read from the file.
+Metadata is invalid when, among the field rules of section 8.3: `kind` is not `'backup'`; a version is below 1; a project `id` is not 1 to 64 letters, digits, `_` or `-`, or repeats; `path`, `historyPath` or `thumbnailPath` is not the layout path for that `id`; `historyPath` is `null` while `includesHistory` is true, or the reverse; the manifest's `id`, `name`, `sourceHash`, source size or `updatedAt` differ from `project.json`; a source size differs from its source entry; a preset `id` is not `user:` followed by 1 to 64 of those characters, or repeats; the stacks of a project or of one history entry name more than 8 extra sources; a preset breaks the field invariants of section 3; or `presetCount` is not the number of presets (`0` without presets). `nameLower` is derived from `name`, never read from the file.
 
 **Export error messages:**
 
@@ -658,7 +663,7 @@ Metadata is invalid when, among the field rules of section 8.3: `kind` is not `'
 
 Import writes in four strict phases so the library can **never** end up with a project pointing to a missing source or half-deleted local data:
 
-1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources referenced by the user's checked projects that are not already in `sources`. When it is above 0, run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`. The in-memory fallback uses no browser storage and skips the check.
+1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources (primary and extra) referenced by the user's checked projects that are not already in `sources`. When it is above 0, run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`. The in-memory fallback uses no browser storage and skips the check.
 2. **Stage new source blobs:** Insert each missing `SourceRecord` into `sources`, one transaction each, tracking `insertedHashes` and checking for Cancel between and during blobs. If anything fails here, including `QuotaExceededError` or Cancel, delete every inserted source that no project refers to, leave all existing projects, presets and settings untouched, and show `"Storage is full"` for a quota error (close silently on Cancel).
 3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['sources', 'projects', 'history', 'thumbnails', 'presets', 'meta']`. Decide what to write from the records read inside this transaction, not from the preview. Insert again any needed source that has gone missing since phase 2 (a startup cleanup in another tab may delete a source no project refers to yet). Cancel aborts the transaction.
    - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs, names and timestamps), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings. Unchecked or absent presets still clear the local ones, as the confirmation says.
@@ -681,7 +686,9 @@ The summary counts what was written: `"Imported <N> project(s) and <M> preset(s)
 - `StorageRepository.importBackup(inspection, selection, options)` runs the four phases. `selection` is `{mode: 'merge' | 'replace', projectIds, presets, settings}`. A project id that is not in the backup throws `StorageValidationError`. File errors throw `BackupError` with the message above; quota failures throw `StorageQuotaError`.
 - The app store's `exportBackup` and `inspectBackup` first save a pending keyboard commit and view state, so the file and the statuses include every edit. `importBackup` does the same, then reloads projects, presets and settings from storage, applies an imported theme (which syncs `localStorage` `drift:theme`) and compare mode, and sets the summary as the notice. After a Replace it closes the open project and returns to the Library; after a Merge the open project stays open. A quota error opens the `"Storage is full"` dialog. An import that writes a project ends the first launch and triggers the automatic persistence request (section 7.3).
 
-**Extra sources (F26): left to `T8.8`.** A backup holds only each project's primary source, as a project file does. `backupSourceHashes(project)` in `src/storage/backup-format.ts` is the one place that names the sources a project needs; the estimate, the writer, the reader's reference check, the preview and the import all go through it. `T8.8` must extend it (and give it the history entries) with the `image` parameters of section 8.5, make `totalSourceBytes` their sum, load those records on export, decode-check them on import, and switch the staging cleanup of phase 2 to the `byReferencedSourceHash` index.
+**Extra sources (F26).** `backupSourceHashes(project, history)` in `src/storage/backup-format.ts` is the one place that names the sources a project needs: the primary source, then every other source of `stack`, `stackA` and the history entries written (section 8.5). The writer, the reader's reference check, the preview and the import all go through it, and `totalSourceBytes` is the sum over it. `estimateBackupBytes` takes only project records, so with history included it counts each record's `referencedSourceHashes`. The staging cleanup of phases 2 to 4 keeps every source any project refers to.
+
+Presets are read and written with their `image` parameters empty (section 8.5).
 
 **30-day backup reminder decision:** The earlier 30-day Library backup reminder banner (and `lastBackupAt` / `backupReminderDismissedAt` fields on `AppStateRecord`) is **removed** (see [decisions.md](decisions.md)). Desktop browser storage is durable across sessions and `navigator.storage.persist()` is requested automatically after the first import; a time-based nag banner conflicts with `DESIGN.md` §1.
 
@@ -691,21 +698,35 @@ When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies
 
 ### 8.5 Multi-image source reference counting and GC (F26)
 
-When `F26` (`imageBlend`) lands, a project can reference up to **8** additional `SourceRecord`s alongside its primary `sourceHash`, both in its current `stack` and `stackA` and in its retained `history` entries. Extra sources live in the existing `sources` store (zero new object stores) and share SHA-256 deduplication with primary sources.
+A project can use up to **8** extra `SourceRecord`s beside its primary `sourceHash` in its current `stack` and `stackA`, and its retained `history` entries can use more. Extra sources live in the existing `sources` store (no new object store) and share SHA-256 deduplication with primary sources. The rules are in `src/storage/extra-sources.ts`, and both adapters use them.
 
-- **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`, after F20's v2; or v2 / `dbMigrations[1]` if `F26` ships ahead of `F20`):**
-  - Add `referencedSourceHashes: string[]` to `ProjectRecord`: a sorted, deduplicated array containing `project.sourceHash` plus every valid 64-char SHA-256 found in any `kind: 'image'` parameter of `project.stack`, `project.stackA` and all retained `history` entries for that project.
-  - Create a `multiEntry: true` index `byReferencedSourceHash` on `projects` keyed on `referencedSourceHashes`.
-  - Migration `dbMigrations[2]` iterates existing `projects` and sets `referencedSourceHashes = [project.sourceHash]` where missing, and updates `meta.schemaInfo.dbVersion = 3`.
-- **Maintaining `referencedSourceHashes`:**
-  - `createProject`, `duplicateProject`, `commitStack`, and project/backup import compute `referencedSourceHashes` inside the same `readwrite` transaction. Because a project holds at most 201 lightweight JSON history entries, scanning them takes under 1 ms.
-  - Adding an extra image to a project checks the 8-distinct-extra-source cap (counting distinct non-empty `image` hashes in `project.stack` and `project.stackA` excluding `project.sourceHash`). If exceeded, reject with `"A project can use at most 8 extra blend images."`
-- **Reference-counted deletion and orphan GC:**
-  - `deleteProject(id)` deletes the project, its history, and its thumbnail, then for every hash `h` in `existing.referencedSourceHashes`, checks `projectsStore.index('byReferencedSourceHash').count(h)` and deletes `sourcesStore.delete(h)` whenever count is `0`.
-  - `cleanupOrphanedSources()` checks `byReferencedSourceHash` instead of `bySourceHash` so secondary images referenced only by `imageBlend` or undo history are never evicted.
-  - When a `commitStack` prunes old history entries that held the last reference to an extra source, `cleanupOrphanedSources()` frees that blob on idle startup (or immediately if `referencedSourceHashes` shrank and count dropped to `0`).
-- **User presets:** `createPreset` strips any `kind: 'image'` parameter value to `''` before saving so presets never pin source blobs or carry broken hashes across devices.
-- **Project files (`F25`) and backups (`F17`):** Exporting a project collects all hashes in `project.sourceHash` + `project.stack` + `project.stackA` (+ `history` entries when `includesHistory` is true) and writes each unique source once into `sources/<sha256>.<ext>` and `manifest.sources`.
+**What counts as a reference.** Every effect parameter whose value is a string of 64 lowercase hex digits, in any instance, enabled or not. A `kind: 'image'` parameter holds exactly that or `''` ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)), and no other parameter kind stores such a string. The rule does not consult the effect registry, so an effect this build does not know, or knows only in an older version, still keeps its images.
+
+**Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`):**
+
+1. `ProjectRecord` adds `referencedSourceHashes: string[]`: sorted and without repeats, holding `sourceHash` and every reference of `stack`, `stackA` and all retained `history` entries of the project. History entries have no field of their own.
+2. Create the `multiEntry` index `byReferencedSourceHash` on `projects`, keyed on `referencedSourceHashes`.
+3. Backfill every project from its stacks and history inside the versionchange transaction. A version 2 build could already store a project that uses extra sources (opened from a file another build saved), so `[sourceHash]` alone would let cleanup delete them. A damaged stack is skipped, never fatal.
+4. Update `meta.schemaInfo` to `dbVersion: 3`. `sources`, `history`, `thumbnails`, `presets` and the rest of `meta` are untouched. `MemoryStorageAdapter` writes the same field.
+
+The upgrade is one-way: a build that knows only version 2 cannot open a version 3 database (section 6).
+
+**Maintaining `referencedSourceHashes`:** `createProject`, `duplicateProject`, `commitStack`, `saveProjectStack` and project and backup import compute it from what they write, in the same `readwrite` transaction. A project holds at most 201 small history entries, so scanning them is cheap. `undo`, `redo` and `jumpToHistory` only copy a retained entry into the current stacks, so they leave it as it is.
+
+**Rules a stack write must meet** (`commitStack` and `saveProjectStack`; a refused write throws `StorageValidationError` and changes nothing):
+
+- **Cap:** `stack` and `stackA` together name at most 8 distinct extra sources; `sourceHash` does not count. The write is refused with `"A project can use at most 8 extra blend images."` when the result is over 8 and adds a source the current stacks did not name. Removing one is always possible.
+- **Stored:** a source the project did not refer to before must be in `sources`. A reference the project already holds is not checked again, so a project with a missing image stays editable.
+
+**Reference-counted deletion and orphan cleanup.** A source is referenced while any project has it in `byReferencedSourceHash`, or as its `sourceHash` in `bySourceHash`.
+
+- `deleteProject(id)` deletes the project, its history and its thumbnail, then deletes each source of its `referencedSourceHashes` that is no longer referenced. `sourceDeleted` in the result says whether the primary source went.
+- `cleanupOrphanedSources()` deletes only unreferenced sources, so extra images used only by `imageBlend` or by undo history are never evicted.
+- A commit that drops the last history entry using a source (a discarded redo branch, or the 201-entry cap) updates `referencedSourceHashes` and leaves the blob for the cleanup at the next idle startup.
+
+**User presets:** `createPreset` sets every parameter that holds a reference to `''` before saving, so presets never pin source blobs or carry hashes to another device. Backup export and import do the same to presets.
+
+**Project files (F25) and backups (F17):** an export collects `sourceHash` and the references of `stack`, `stackA` and, when history is included, the history entries, and writes each source once into `sources/<sha256>.<ext>` and `manifest.sources`. An export without history leaves out sources that only history uses. An import stores the sources in the transaction (`.glproj`) or phases (backup) it already uses, and computes `referencedSourceHashes` for the records it writes.
 
 ## 9. Restore sequence on startup
 
@@ -713,7 +734,7 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
 
 1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('drift:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
 2. **Step 1 (Secure context gate):** Check `window.isSecureContext`. If `false`, render the secure-context error screen (DESIGN.md section 9) and stop (product.md section 4).
-3. **Step 2 (Open database):** Open IndexedDB `drift` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` in `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
+3. **Step 2 (Open database):** Open IndexedDB `drift` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` for `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
    - If `VersionError` (stored DB is newer than app): render the blocking reload/update screen and stop.
    - If any other error: instantiate `MemoryStorageAdapter`, set `storageUnavailable = true`, and continue (AC-F16.4).
 4. **Step 3 (Fast metadata read):** Run one `readonly` transaction across `['meta', 'projects', 'presets']` to load:
@@ -748,6 +769,7 @@ src/storage/
   repository.ts        IndexedDB implementation (atomic transactions, ref-counted delete, history pruning)
   memory-adapter.ts    In-memory fallback when IndexedDB is unavailable
   quota.ts             estimate(), persist(), pre-flight quota check
+  extra-sources.ts     Source references, the 8-image cap and preset stripping (section 8.5)
   project-file.ts      .glproj writer and reader (section 8.3)
   project-format.ts    .glproj types, limits, validation and format migrations
   project-file-error.ts  Error codes and exact messages, free of fflate
@@ -763,6 +785,8 @@ src/storage/
 tests/storage/
   repository.test.ts   CRUD, SHA-256 dedup, ref-counted delete, 201-entry history cap, atomicity
   migrations.test.ts   DB version upgrades, EffectStack and EffectInstance write-back, unknown effects
+  db-v3-upgrade.test.ts  Version 2 to 3 upgrade, backfill and rollback (section 8.5)
+  extra-sources.test.ts  AC-F26.3, F26.4, F26.6 and F26.7 and archive round trips against both adapters
   restore.test.ts      Route resolution, deleted-project hash, fallback to MemoryStorageAdapter
   project-file.test.ts  .glproj round trip, errors, caps, progress and cancel
   zip-reader.test.ts   Archive structure, ZIP64 and unsafe paths

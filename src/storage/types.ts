@@ -13,7 +13,7 @@ import type {
 import type {ArchiveOptions, ProjectFileOutput} from './project-format.ts';
 
 export const DB_NAME = 'drift';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const STORE_NAMES = {
 	sources: 'sources',
@@ -86,6 +86,9 @@ export type ProjectRecord = {
 	id: string;
 	name: string;
 	sourceHash: string;
+	// `sourceHash` and every extra source of the stacks and the history, sorted
+	// (persistence.md section 8.5).
+	referencedSourceHashes: string[];
 	sourceWidth: number;
 	sourceHeight: number;
 	// Crop, rotation, flip and resize (persistence.md section 8.1).

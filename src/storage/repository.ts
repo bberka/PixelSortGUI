@@ -18,6 +18,13 @@ import {
 	type BackupSelection,
 	type BackupTransferDependencies,
 } from './backup-transfer.ts';
+import {
+	addedSourceReferences,
+	missingSourceError,
+	projectSourceHashes,
+	referencedSourceHashes,
+	stripSourceReferences,
+} from './extra-sources.ts';
 import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	createDefaultAppState,
@@ -221,6 +228,81 @@ function readIndexDescending<T>(index: IDBIndex): Promise<T[]> {
 	});
 }
 
+async function readHistory(
+	transaction: IDBTransaction,
+	projectId: string,
+): Promise<HistoryEntryRecord[]> {
+	return (await requestToPromise(
+		transaction
+			.objectStore(STORE_NAMES.history)
+			.index('byProjectId')
+			.getAll(projectId),
+	)) as HistoryEntryRecord[];
+}
+
+// The stored ones among `hashes`, in their order.
+async function readSources(
+	transaction: IDBTransaction,
+	hashes: Iterable<string>,
+): Promise<SourceRecord[]> {
+	const sources: SourceRecord[] = [];
+	for (const sha256 of hashes) {
+		const source = (await requestToPromise(
+			transaction.objectStore(STORE_NAMES.sources).get(sha256),
+		)) as SourceRecord | undefined;
+		if (source) {
+			sources.push(source);
+		}
+	}
+
+	return sources;
+}
+
+async function requireSources(
+	transaction: IDBTransaction,
+	hashes: readonly string[],
+): Promise<void> {
+	for (const sha256 of hashes) {
+		const count = await requestToPromise(
+			transaction.objectStore(STORE_NAMES.sources).count(sha256),
+		);
+		if (count === 0) {
+			throw missingSourceError(sha256);
+		}
+	}
+}
+
+// Deletes those of the sources that no project refers to, and returns them
+// (persistence.md section 8.5). The transaction covers sources and projects.
+async function deleteUnreferencedSources(
+	transaction: IDBTransaction,
+	hashes: Iterable<string>,
+): Promise<string[]> {
+	const projects = transaction.objectStore(STORE_NAMES.projects);
+	const indexes = [
+		projects.index('byReferencedSourceHash'),
+		projects.index('bySourceHash'),
+	];
+	const deleted: string[] = [];
+	for (const sha256 of hashes) {
+		let references = 0;
+		for (const index of indexes) {
+			references += await requestToPromise(index.count(sha256));
+		}
+
+		if (references !== 0) {
+			continue;
+		}
+
+		await requestToPromise(
+			transaction.objectStore(STORE_NAMES.sources).delete(sha256),
+		);
+		deleted.push(sha256);
+	}
+
+	return deleted;
+}
+
 export type IndexedDbRepositoryOptions = ProjectTransferDependencies &
 	BackupTransferDependencies & {
 		storageManager?: StorageManagerLike;
@@ -343,16 +425,7 @@ export class IndexedDbRepository implements StorageRepository {
 					[STORE_NAMES.sources, STORE_NAMES.projects],
 					'readwrite',
 					async (tx) => {
-						const bySourceHash = tx
-							.objectStore(STORE_NAMES.projects)
-							.index('bySourceHash');
-						for (const sha256 of hashes) {
-							if ((await requestToPromise(bySourceHash.count(sha256))) === 0) {
-								await requestToPromise(
-									tx.objectStore(STORE_NAMES.sources).delete(sha256),
-								);
-							}
-						}
+						await deleteUnreferencedSources(tx, hashes);
 					},
 				),
 			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
@@ -511,6 +584,7 @@ export class IndexedDbRepository implements StorageRepository {
 					id: projectId,
 					name,
 					sourceHash: sha256,
+					referencedSourceHashes: [sha256],
 					sourceWidth: input.width,
 					sourceHeight: input.height,
 					transform: IDENTITY_TRANSFORM,
@@ -692,8 +766,10 @@ export class IndexedDbRepository implements StorageRepository {
 					existing.sourceHeight,
 					existing.transform,
 				);
+				const historyRows = await readHistory(tx, id);
 				const copy: ProjectRecord = {
 					...existing,
+					referencedSourceHashes: referencedSourceHashes(existing, historyRows),
 					id: newId,
 					name: createDuplicateProjectName(existing.name),
 					viewState: createDefaultViewState(
@@ -706,9 +782,6 @@ export class IndexedDbRepository implements StorageRepository {
 				};
 				await requestToPromise(projectsStore.put(copy));
 
-				const historyRows = (await requestToPromise(
-					historyStore.index('byProjectId').getAll(id),
-				)) as HistoryEntryRecord[];
 				for (const row of historyRows) {
 					await requestToPromise(
 						historyStore.put({
@@ -749,7 +822,6 @@ export class IndexedDbRepository implements StorageRepository {
 				const projectsStore = tx.objectStore(STORE_NAMES.projects);
 				const historyStore = tx.objectStore(STORE_NAMES.history);
 				const thumbnailsStore = tx.objectStore(STORE_NAMES.thumbnails);
-				const sourcesStore = tx.objectStore(STORE_NAMES.sources);
 				const metaStore = tx.objectStore(STORE_NAMES.meta);
 
 				const existing = (await requestToPromise(projectsStore.get(id))) as
@@ -777,16 +849,14 @@ export class IndexedDbRepository implements StorageRepository {
 					);
 				}
 
-				const remainingRefs = await requestToPromise(
-					projectsStore.index('bySourceHash').count(existing.sourceHash),
+				const removed = await deleteUnreferencedSources(
+					tx,
+					existing.referencedSourceHashes,
 				);
-				let sourceDeleted = false;
-				if (remainingRefs === 0) {
-					await requestToPromise(sourcesStore.delete(existing.sourceHash));
-					sourceDeleted = true;
-				}
-
-				return {deleted: true, sourceDeleted};
+				return {
+					deleted: true,
+					sourceDeleted: removed.includes(existing.sourceHash),
+				};
 			},
 		);
 	}
@@ -814,21 +884,17 @@ export class IndexedDbRepository implements StorageRepository {
 					throw new StorageNotFoundError(`Project "${projectId}" not found`);
 				}
 
-				const source = (await requestToPromise(
-					tx.objectStore(STORE_NAMES.sources).get(project.sourceHash),
-				)) as SourceRecord | undefined;
 				const history = includeHistory
-					? ((await requestToPromise(
-							tx
-								.objectStore(STORE_NAMES.history)
-								.index('byProjectId')
-								.getAll(projectId),
-						)) as HistoryEntryRecord[])
+					? await readHistory(tx, projectId)
 					: undefined;
+				const sources = await readSources(
+					tx,
+					projectSourceHashes(project, history),
+				);
 				const thumbnail = (await requestToPromise(
 					tx.objectStore(STORE_NAMES.thumbnails).get(projectId),
 				)) as ThumbnailRecord | undefined;
-				return {project, source, history, thumbnail};
+				return {project, sources, history, thumbnail};
 			},
 		);
 		return writeProjectArchive(snapshot, options, this.#transfer);
@@ -946,12 +1012,7 @@ export class IndexedDbRepository implements StorageRepository {
 				const items: Array<BackupInput['projects'][number]> = [];
 				for (const [index, project] of projects.entries()) {
 					const history = includesHistory
-						? ((await requestToPromise(
-								tx
-									.objectStore(STORE_NAMES.history)
-									.index('byProjectId')
-									.getAll(project.id),
-							)) as HistoryEntryRecord[])
+						? await readHistory(tx, project.id)
 						: undefined;
 					const thumbnail = (await requestToPromise(
 						tx.objectStore(STORE_NAMES.thumbnails).get(project.id),
@@ -963,17 +1024,14 @@ export class IndexedDbRepository implements StorageRepository {
 					});
 				}
 
-				const sources: SourceRecord[] = [];
-				for (const hash of new Set(
-					projects.flatMap((project) => backupSourceHashes(project)),
-				)) {
-					const source = (await requestToPromise(
-						tx.objectStore(STORE_NAMES.sources).get(hash),
-					)) as SourceRecord | undefined;
-					if (source) {
-						sources.push(source);
-					}
-				}
+				const sources = await readSources(
+					tx,
+					new Set(
+						items.flatMap(({project, history}) =>
+							backupSourceHashes(project, history),
+						),
+					),
+				);
 
 				const presets =
 					(options.includePresets ?? true)
@@ -1054,7 +1112,7 @@ export class IndexedDbRepository implements StorageRepository {
 
 		return runTransaction(
 			this.#db,
-			[STORE_NAMES.projects, STORE_NAMES.history],
+			[STORE_NAMES.projects, STORE_NAMES.history, STORE_NAMES.sources],
 			'readwrite',
 			async (tx) => {
 				const projectsStore = tx.objectStore(STORE_NAMES.projects);
@@ -1069,8 +1127,13 @@ export class IndexedDbRepository implements StorageRepository {
 					);
 				}
 
-				// Validated first, so a rejected transform leaves history alone.
+				// Validated first, so a rejected commit leaves history alone.
 				const geometry = commitGeometry(existing, input.transform);
+				const stackA = input.stackA ?? existing.stackA;
+				await requireSources(
+					tx,
+					addedSourceReferences(existing, {stack: input.stack, stackA}),
+				);
 				await requestToPromise(
 					historyStore.delete(
 						this.#keyRange.bound(
@@ -1081,7 +1144,6 @@ export class IndexedDbRepository implements StorageRepository {
 				);
 
 				const nextSeq = existing.historyHeadSeq + 1;
-				const stackA = input.stackA ?? existing.stackA;
 				const selectedInstanceIdA =
 					input.selectedInstanceIdA === undefined
 						? existing.selectedInstanceIdA
@@ -1129,6 +1191,10 @@ export class IndexedDbRepository implements StorageRepository {
 					stackA,
 					selectedInstanceIdA,
 				);
+				updated.referencedSourceHashes = referencedSourceHashes(
+					updated,
+					await readHistory(tx, input.projectId),
+				);
 				await requestToPromise(projectsStore.put(updated));
 
 				return {project: updated, entry};
@@ -1145,7 +1211,7 @@ export class IndexedDbRepository implements StorageRepository {
 		const now = this.#now();
 		return runTransaction(
 			this.#db,
-			STORE_NAMES.projects,
+			[STORE_NAMES.projects, STORE_NAMES.history, STORE_NAMES.sources],
 			'readwrite',
 			async (tx) => {
 				const projectsStore = tx.objectStore(STORE_NAMES.projects);
@@ -1155,6 +1221,10 @@ export class IndexedDbRepository implements StorageRepository {
 					throw new StorageNotFoundError(`Project "${id}" not found`);
 				}
 
+				await requireSources(
+					tx,
+					addedSourceReferences(existing, {stack, stackA: existing.stackA}),
+				);
 				const updated: ProjectRecord = {
 					...existing,
 					stack,
@@ -1164,6 +1234,10 @@ export class IndexedDbRepository implements StorageRepository {
 							: selectedInstanceId,
 					updatedAt: now,
 				};
+				updated.referencedSourceHashes = referencedSourceHashes(
+					updated,
+					await readHistory(tx, id),
+				);
 				await requestToPromise(projectsStore.put(updated));
 				return updated;
 			},
@@ -1197,12 +1271,7 @@ export class IndexedDbRepository implements StorageRepository {
 			STORE_NAMES.history,
 			'readonly',
 			async (tx) => {
-				const rows = (await requestToPromise(
-					tx
-						.objectStore(STORE_NAMES.history)
-						.index('byProjectId')
-						.getAll(projectId),
-				)) as HistoryEntryRecord[];
+				const rows = await readHistory(tx, projectId);
 				return rows.toSorted((a, b) => a.seq - b.seq);
 			},
 		);
@@ -1359,7 +1428,7 @@ export class IndexedDbRepository implements StorageRepository {
 			id: `user:${generateId()}`,
 			name,
 			nameLower: name.toLocaleLowerCase('en'),
-			stack: input.stack,
+			stack: stripSourceReferences(input.stack),
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -1502,26 +1571,10 @@ export class IndexedDbRepository implements StorageRepository {
 			[STORE_NAMES.sources, STORE_NAMES.projects],
 			'readwrite',
 			async (tx) => {
-				const sourcesStore = tx.objectStore(STORE_NAMES.sources);
-				const bySourceHash = tx
-					.objectStore(STORE_NAMES.projects)
-					.index('bySourceHash');
 				const keys = (await requestToPromise(
-					sourcesStore.getAllKeys(),
+					tx.objectStore(STORE_NAMES.sources).getAllKeys(),
 				)) as string[];
-
-				let removed = 0;
-				for (const sha256 of keys) {
-					const refCount = await requestToPromise(bySourceHash.count(sha256));
-					if (refCount !== 0) {
-						continue;
-					}
-
-					await requestToPromise(sourcesStore.delete(sha256));
-					removed++;
-				}
-
-				return removed;
+				return (await deleteUnreferencedSources(tx, keys)).length;
 			},
 		);
 	}

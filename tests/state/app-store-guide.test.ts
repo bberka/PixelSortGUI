@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vite-plus/test';
 import {createTestStore, makeTestBlob} from './fixtures.ts';
 
-describe('guide route and welcome card (F27)', () => {
+describe('guide route and effect introduction (F27)', () => {
 	it('keeps the open project while the guide is shown', async () => {
 		const harness = createTestStore();
 		const {store, routerEnv} = harness;
@@ -20,7 +20,7 @@ describe('guide route and welcome card (F27)', () => {
 		expect(store.getState().activeProjectId).toBe(id);
 	});
 
-	it('stores the dismissed welcome card', async () => {
+	it('stores the dismissed introduction', async () => {
 		const {store, repository} = createTestStore();
 		expect(store.getState().welcomeDismissed).toBe(false);
 
@@ -31,7 +31,7 @@ describe('guide route and welcome card (F27)', () => {
 		expect(appState.welcomeDismissed).toBe(true);
 	});
 
-	it('dismisses the welcome card on the first import', async () => {
+	it('dismisses the introduction on the first import', async () => {
 		const {store, repository} = createTestStore();
 
 		await store.getState().importImage({

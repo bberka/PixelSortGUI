@@ -173,7 +173,7 @@ describe('startup restore sequence (persistence.md section 9)', () => {
 		result.bundle.dispose();
 	});
 
-	it('step 4: keeps #/guide and restores the dismissed welcome card state', async () => {
+	it('step 4: keeps #/guide and restores the dismissed introduction state', async () => {
 		const repository = new MemoryStorageAdapter();
 		await repository.updateAppState({welcomeDismissed: true});
 		const routerEnv = createFakeRouterEnv('#/guide');

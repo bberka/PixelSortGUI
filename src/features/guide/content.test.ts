@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vite-plus/test';
-import {GUIDE_SECTIONS, SHORTCUTS} from './content.ts';
+import {GUIDE_SECTIONS, LANDING, SHORTCUTS} from './content.ts';
 import {isGuideShortcut} from './navigation.ts';
 import {arrowDelta} from '@/features/transform/crop-math.ts';
 import {stepSplitPosition} from '@/features/canvas/compare-logic.ts';
@@ -31,6 +31,13 @@ describe('guide content', () => {
 	it('uses unique section ids', () => {
 		const ids = GUIDE_SECTIONS.map((section) => section.id);
 		expect(new Set(ids).size).toBe(ids.length);
+	});
+
+	it('tips only keys that the shortcut table lists', () => {
+		const listed = SHORTCUTS.flatMap((item) => item.keys);
+		for (const {key: tip} of LANDING.shortcuts) {
+			expect(listed).toContain(tip);
+		}
 	});
 
 	it('lists only editor keys that a handler reacts to, and all view keys', () => {

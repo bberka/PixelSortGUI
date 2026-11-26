@@ -10,13 +10,16 @@ const title = (page: Page) =>
 const guideButton = (page: Page) =>
 	page.getByRole('banner').getByRole('button', {name: 'Guide', exact: true});
 
-const welcome = (page: Page) =>
-	page.getByRole('region', {name: 'Welcome to Drift'});
+const introduction = (page: Page) =>
+	page.getByRole('region', {name: 'See what Drift does'});
 
 async function gotoLibrary(page: Page) {
 	await page.goto('/');
 	await expect(
-		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
 	).toBeVisible();
 }
 
@@ -194,30 +197,57 @@ for (const viewport of NARROW_VIEWPORTS) {
 	});
 }
 
-test('the welcome card appears once and stays dismissed after reload (AC-F27.7)', async ({
+test('the effect introduction appears once and stays dismissed after reload (AC-F27.7)', async ({
 	page,
 }) => {
 	await gotoLibrary(page);
-	await expect(welcome(page)).toBeVisible();
-	await expect(
-		welcome(page).getByRole('button', {name: 'Import a photo'}),
-	).toBeEnabled();
-	await expect(
-		welcome(page).getByRole('link', {name: 'Read the guide'}),
-	).toBeVisible();
+	await expect(introduction(page)).toBeVisible();
 
-	await welcome(page).getByRole('button', {name: 'Dismiss welcome'}).click();
-	await expect(welcome(page)).toBeHidden();
-	// The card hides before the write finishes, and a reload cancels a write
+	await introduction(page)
+		.getByRole('button', {name: 'Dismiss introduction'})
+		.click();
+	await expect(introduction(page)).toBeHidden();
+	await expect(
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
+	).toBeFocused();
+	// The section hides before the write finishes, and a reload cancels a write
 	// still in flight.
 	await expect.poll(async () => storedWelcomeDismissed(page)).toBe(true);
 
 	await page.reload();
-	const link = page.getByRole('link', {name: 'New here? Read the guide'});
+	const link = page.getByRole('link', {name: 'Read the guide'});
 	await expect(link).toBeVisible();
-	await expect(welcome(page)).toBeHidden();
+	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();
+	await expect(page.getByRole('button', {name: 'Try a sample'})).toBeEnabled();
+	await expect(introduction(page)).toBeHidden();
 	await link.click();
 	await expect(title(page)).toBeVisible();
+});
+
+test('a first import removes the introduction for good (AC-F27.7)', async ({
+	page,
+}) => {
+	await gotoLibrary(page);
+	await expect(introduction(page)).toBeVisible();
+	await importSyntheticProject(page, 'First');
+	await page.getByRole('button', {name: 'Back to library'}).click();
+	await page.getByRole('button', {name: 'Actions for First'}).click();
+	await page.getByRole('menuitem', {name: 'Delete'}).click();
+	await page
+		.getByRole('alertdialog')
+		.getByRole('button', {name: 'Delete'})
+		.click();
+
+	await expect(
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
+	).toBeVisible();
+	await expect(introduction(page)).toHaveCount(0);
 });
 
 test('#/guide loads offline with no external request (AC-F27.6)', async ({
@@ -261,7 +291,7 @@ test('#/guide loads offline with no external request (AC-F27.6)', async ({
 
 for (const theme of ['light', 'dark'] as const) {
 	for (const viewport of PROOF_VIEWPORTS) {
-		test(`@a11y guide and welcome card are clean in ${theme} at ${viewport.width}x${viewport.height} (AC-F27.8)`, async ({
+		test(`@a11y guide and empty library are clean in ${theme} at ${viewport.width}x${viewport.height} (AC-F27.8)`, async ({
 			page,
 		}) => {
 			await page.addInitScript((selected) => {
@@ -270,7 +300,7 @@ for (const theme of ['light', 'dark'] as const) {
 			await page.setViewportSize(viewport);
 
 			await gotoLibrary(page);
-			await expect(welcome(page)).toBeVisible();
+			await expect(introduction(page)).toBeVisible();
 			await hasNoHorizontalScroll(page);
 			await assertNoA11yViolations(page);
 

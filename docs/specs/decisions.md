@@ -222,7 +222,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D32. In-app guide instead of a landing page (2026-11-26)
 
-- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch.
+- **Choice:** No separate marketing landing page in front of the app; the app keeps opening straight to the Library. Help is an in-app Guide at `#/guide` (`product.md F27`), with a one-time welcome card on the first launch (since replaced by the introduction on the empty Library, D38).
 - **Reason:** The first thing a user wants is to open a photo and get a result. A landing page adds a step on every visit and marketing copy that `DESIGN.md` section 1 rules out. An in-app guide is part of the offline precache, so it also works without a connection.
 - **Revisit if:** The owner wants a public page that explains Drift to people who have not opened it.
 
@@ -260,6 +260,13 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Choice:** Every click shows a result message with advice for the browser family, a request unanswered after 5 s releases the button, and the private window sentence is always shown but worded as a condition (`persistence.md` sections 5.2 and 7.3).
 - **Reason:** Chromium and Safari refuse silently, so an unchanged line looked broken. Private mode cannot be detected reliably (quota size gives false positives), and an unconditional statement read as a detection result.
 - **Revisit if:** Browsers expose a reliable private mode signal.
+
+### D38. The empty Library is the landing screen (2026-11-26)
+
+- **Request:** "improve the landing page".
+- **Choice:** The empty Library becomes an in-app landing screen (`product.md` F2): a hero, a drop zone with one set of actions, a sample project and four effect previews. It replaces the v0.2.0 welcome card, whose job (shown once, dismissible, gone after the first import) the effect previews now do. D32 stands: there is no page in front of the app. The sample picture is drawn by code and the previews are rendered in the browser by the effect engine.
+- **Reason:** The empty screen was mostly blank and asked for a photo twice. Someone without a photo at hand could not see what the app does. Generating the sample and its previews adds no binary assets, works offline from the precached code and always matches the current engine.
+- **Revisit if:** The previews noticeably delay the first launch, or the owner wants a public page for people who have not opened the app.
 
 ---
 

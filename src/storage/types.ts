@@ -135,7 +135,7 @@ export type AppStateRecord = {
 	activeProjectId: string | null;
 	theme: ThemePreference;
 	compareMode: CompareMode;
-	// Absent in records written before the welcome card existed.
+	// Absent in records written before the first-launch introduction existed.
 	welcomeDismissed?: boolean;
 };
 

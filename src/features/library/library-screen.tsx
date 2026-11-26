@@ -8,14 +8,11 @@ import {
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
-import {GUIDE_EMPTY_LIBRARY_LINK} from '@/features/guide/content.ts';
-import {GUIDE_HASH} from '@/features/guide/navigation.ts';
-import {WelcomeCard} from '@/features/guide/welcome-card.tsx';
-import {ImportImagesButton} from '@/features/import/import-images-button.tsx';
 import {
 	DeleteProjectDialog,
 	RenameProjectDialog,
 } from '@/features/library/card-dialogs.tsx';
+import {EmptyLibrary} from '@/features/library/empty-library.tsx';
 import {
 	currentMinute,
 	orderProjectsByOpenedAt,
@@ -39,8 +36,6 @@ export function LibraryScreen() {
 	const renameProject = useAppStore((state) => state.renameProject);
 	const duplicateProject = useAppStore((state) => state.duplicateProject);
 	const deleteProject = useAppStore((state) => state.deleteProject);
-	const welcomeDismissed = useAppStore((state) => state.welcomeDismissed);
-	const dismissWelcome = useAppStore((state) => state.dismissWelcome);
 
 	const ordered = useMemo(() => orderProjectsByOpenedAt(projects), [projects]);
 	const minute = useSyncExternalStore(subscribeToMinute, currentMinute);
@@ -81,39 +76,7 @@ export function LibraryScreen() {
 	}, []);
 
 	if (ordered.length === 0) {
-		return (
-			<div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 p-3 sm:p-4 lg:p-6">
-				<div className="flex max-w-[36ch] flex-col items-center gap-3 text-center">
-					<h2
-						ref={emptyHeadingRef}
-						tabIndex={-1}
-						className="text-lg leading-6 font-semibold"
-					>
-						No projects yet
-					</h2>
-					<p className="text-sm text-muted-foreground">
-						Images stay on this device.
-					</p>
-					<ImportImagesButton />
-					{welcomeDismissed ? (
-						<a
-							href={GUIDE_HASH}
-							className="inline-flex min-h-6 items-center text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
-						>
-							{GUIDE_EMPTY_LIBRARY_LINK}
-						</a>
-					) : null}
-				</div>
-				{welcomeDismissed ? null : (
-					<WelcomeCard
-						onDismiss={() => {
-							void dismissWelcome();
-							emptyHeadingRef.current?.focus();
-						}}
-					/>
-				)}
-			</div>
-		);
+		return <EmptyLibrary headingRef={emptyHeadingRef} />;
 	}
 
 	const confirmRename = (project: ProjectRecord, name: string) => {

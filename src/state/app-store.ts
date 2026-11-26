@@ -25,6 +25,17 @@ import type {
 	SourceInfo,
 } from '../render/coordinator.ts';
 import {renderSourceFor} from '../render/render-source.ts';
+import type {
+	BackupOptions,
+	BackupOutput,
+	ExportBackupOptions,
+} from '../storage/backup-format.ts';
+import {
+	backupImportSummary,
+	type BackupImportResult,
+	type BackupInspection,
+	type BackupSelection,
+} from '../storage/backup-transfer.ts';
 import {
 	geometryForWrite,
 	repairProjectGeometry,
@@ -271,6 +282,18 @@ export type AppState = {
 		fileName: string,
 		options?: ImportProjectOptions,
 	): Promise<CreateProjectResult>;
+
+	// Backup and restore. Export and inspection see every edit made so far, and
+	// all of them reject as the repository method of the same name does.
+	exportBackup(options?: ExportBackupOptions): Promise<BackupOutput>;
+	getSourceSizes(): Promise<Record<string, number>>;
+	inspectBackup(file: Blob, options?: BackupOptions): Promise<BackupInspection>;
+	// Reloads the library and settings; a Replace also leaves the editor.
+	importBackup(
+		backup: BackupInspection,
+		selection: BackupSelection,
+		options?: BackupOptions,
+	): Promise<BackupImportResult>;
 
 	// Effect stack actions
 	addEffect(type: string): Promise<EffectInstance>;
@@ -1165,6 +1188,38 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		syncCoordinatorViewScale(hydratedProject.viewState);
 	};
 
+	// Cancels the open project's pending saves and loads, as its records are
+	// about to go.
+	const abandonActiveProjectWork = () => {
+		clearKeyboardTimer();
+		clearViewStateTimer();
+		viewStateDirty = false;
+		openProjectRequestId++;
+	};
+
+	// Closes the open project without saving it and shows `route`.
+	const dropActiveProject = (route: AppRoute) => {
+		transientStore.setState({
+			activeDrag: null,
+			splitPosition: null,
+			compareLatched: false,
+			compareHolding: false,
+		});
+		store.setState({
+			activeProjectId: null,
+			activeProject: null,
+			activeSource: null,
+			activeThumbnail: null,
+			history: [],
+			stackNeedsWriteBack: false,
+			stackEnvelopeStatus: 'ok',
+			unsupportedInstances: [],
+			debugView: null,
+			route,
+		});
+		coordinator.setSource(undefined);
+	};
+
 	const store = createStore<AppState>((set, get) => ({
 		bootStatus: 'booting',
 		route: {screen: 'library'},
@@ -1495,10 +1550,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		async deleteProject(id) {
 			const wasActive = get().activeProjectId === id;
 			if (wasActive) {
-				clearKeyboardTimer();
-				clearViewStateTimer();
-				viewStateDirty = false;
-				openProjectRequestId++;
+				abandonActiveProjectWork();
 			}
 
 			const result = await repository.deleteProject(id);
@@ -1507,26 +1559,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			}));
 
 			if (wasActive) {
-				transientStore.setState({
-					activeDrag: null,
-					splitPosition: null,
-					compareLatched: false,
-					compareHolding: false,
-				});
 				const nextRoute: AppRoute = {screen: 'library'};
-				set({
-					activeProjectId: null,
-					activeProject: null,
-					activeSource: null,
-					activeThumbnail: null,
-					history: [],
-					stackNeedsWriteBack: false,
-					stackEnvelopeStatus: 'ok',
-					unsupportedInstances: [],
-					debugView: null,
-					route: nextRoute,
-				});
-				coordinator.setSource(undefined);
+				dropActiveProject(nextRoute);
 				routerEnv.replaceHash(formatHashRoute(nextRoute));
 			}
 
@@ -1580,6 +1614,74 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				handleQuotaError(error);
 				throw error;
 			}
+		},
+
+		async exportBackup(options) {
+			await flushPendingCommitImpl();
+			await flushViewStateImpl();
+			return repository.exportBackup(options);
+		},
+
+		async getSourceSizes() {
+			return repository.getSourceSizes();
+		},
+
+		async inspectBackup(file, options) {
+			await flushPendingCommitImpl();
+			await flushViewStateImpl();
+			return repository.inspectBackup(file, options);
+		},
+
+		async importBackup(backup, selection, options) {
+			await flushPendingCommitImpl();
+			await flushViewStateImpl();
+
+			let result: BackupImportResult;
+			try {
+				result = await repository.importBackup(backup, selection, options);
+			} catch (error) {
+				handleQuotaError(error);
+				throw error;
+			}
+
+			// Before any `await`, so nothing saves over the imported records.
+			if (result.mode === 'replace' && get().activeProjectId !== null) {
+				const {route} = get();
+				const nextRoute: AppRoute =
+					route.screen === 'editor' ? {screen: 'library'} : route;
+				abandonActiveProjectWork();
+				dropActiveProject(nextRoute);
+				if (route.screen === 'editor') {
+					routerEnv.replaceHash(formatHashRoute(nextRoute));
+				}
+			}
+
+			if (result.projects.length > 0) {
+				await finishFirstImport();
+			}
+
+			const snapshot = await repository.getStartupSnapshot();
+			if (result.settings) {
+				syncTheme(result.settings.theme);
+			}
+
+			set((state) => ({
+				projects: sortProjectsByOpenedAt(snapshot.projects),
+				presets: sortPresetsByName(snapshot.presets),
+				...result.settings,
+				// A replaced project keeps its id, so its card reloads the picture.
+				thumbnailVersions: {
+					...state.thumbnailVersions,
+					...Object.fromEntries(
+						result.projects.map((project) => [
+							project.id,
+							(state.thumbnailVersions[project.id] ?? 0) + 1,
+						]),
+					),
+				},
+				notice: backupImportSummary(result),
+			}));
+			return result;
 		},
 
 		async addEffect(type) {

@@ -7,7 +7,11 @@ import type {openProjectFile, saveProjectFile} from './archive-client.ts';
 import {resolveStoredGeometry} from './geometry.ts';
 import {withSideA} from './helpers.ts';
 import {ProjectFileError, projectOpenMessage} from './project-file-error.ts';
-import type {ProjectFileContents, ProjectFileOutput} from './project-format.ts';
+import type {
+	ProjectFileContents,
+	ProjectFileOutput,
+	ProjectFilePayload,
+} from './project-format.ts';
 import {
 	MAX_PROJECT_NAME_LENGTH,
 	type ExportProjectOptions,
@@ -38,7 +42,10 @@ export type ProjectSnapshot = {
 	thumbnail: ThumbnailRecord | undefined;
 };
 
-type ImportedThumbnail = Pick<ThumbnailRecord, 'blob' | 'width' | 'height'>;
+export type ImportedThumbnail = Pick<
+	ThumbnailRecord,
+	'blob' | 'width' | 'height'
+>;
 
 // A file that passed every check but the quota one.
 export type PreparedImport = {
@@ -143,41 +150,54 @@ export function toSourceRecord(
 	};
 }
 
-// `name`, or the first free "(imported)" form of it.
+// `name`, or the first free "(imported)" form of it. `always` adds the suffix
+// even to a free name.
 export function importedProjectName(
 	name: string,
 	existingNames: readonly string[],
+	always = false,
 ): string {
 	const key = (value: string) => value.trim().toLocaleLowerCase('en');
 	const taken = new Set(existingNames.map((value) => key(value)));
-	let candidate = name;
-	for (let number = 1; taken.has(key(candidate)); number++) {
+	const suffixed = (number: number) => {
 		const suffix = number === 1 ? ' (imported)' : ` (imported ${number})`;
 		const base = name
 			.slice(0, MAX_PROJECT_NAME_LENGTH - suffix.length)
 			// A cut may split a surrogate pair.
 			.replace(/[\uD800-\uDBFF]$/, '')
 			.trimEnd();
-		candidate = `${base}${suffix}`;
+		return `${base}${suffix}`;
+	};
+
+	let number = always ? 1 : 0;
+	let candidate = always ? suffixed(number) : name;
+	while (taken.has(key(candidate))) {
+		number++;
+		candidate = suffixed(number);
 	}
 
 	return candidate;
 }
 
-// The records a prepared import adds under a new project id.
-export function buildImportedProject(
-	{contents, thumbnail}: PreparedImport,
-	{
-		projectId,
-		existingNames,
-		now,
-	}: {projectId: string; existingNames: readonly string[]; now: number},
-): {
+export type ImportedRecords = {
 	project: ProjectRecord;
 	history: HistoryEntryRecord[];
 	thumbnail: ThumbnailRecord | null;
-} {
-	const {stackA, selectedInstanceIdA, ...payload} = contents.project;
+};
+
+// The records one project of an archive adds, under the id and name given.
+export function buildProjectRecords(
+	{
+		payload: {stackA, selectedInstanceIdA, ...payload},
+		history: entries,
+		thumbnail,
+	}: {
+		payload: ProjectFilePayload;
+		history: HistoryEntryRecord[] | null;
+		thumbnail: ImportedThumbnail | null;
+	},
+	{projectId, name, now}: {projectId: string; name: string; now: number},
+): ImportedRecords {
 	const {transform, effectiveWidth, effectiveHeight} = resolveStoredGeometry(
 		payload.sourceWidth,
 		payload.sourceHeight,
@@ -187,7 +207,7 @@ export function buildImportedProject(
 		{
 			...payload,
 			id: projectId,
-			name: importedProjectName(payload.name, existingNames),
+			name,
 			transform,
 			effectiveWidth,
 			effectiveHeight,
@@ -205,7 +225,7 @@ export function buildImportedProject(
 		createdAt: now,
 	};
 	const history = (
-		contents.history ?? [withSideA(initial, stackA, selectedInstanceIdA)]
+		entries ?? [withSideA(initial, stackA, selectedInstanceIdA)]
 	).map((entry) =>
 		withSideA({...entry, projectId}, entry.stackA, entry.selectedInstanceIdA),
 	);
@@ -221,4 +241,23 @@ export function buildImportedProject(
 			updatedAt: now,
 		},
 	};
+}
+
+// The records a prepared import adds under a new project id.
+export function buildImportedProject(
+	{contents, thumbnail}: PreparedImport,
+	{
+		projectId,
+		existingNames,
+		now,
+	}: {projectId: string; existingNames: readonly string[]; now: number},
+): ImportedRecords {
+	return buildProjectRecords(
+		{payload: contents.project, history: contents.history, thumbnail},
+		{
+			projectId,
+			name: importedProjectName(contents.project.name, existingNames),
+			now,
+		},
+	);
 }

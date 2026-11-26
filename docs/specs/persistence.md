@@ -9,6 +9,7 @@ Updated with database version 2 storage rules for geometry transforms by Claude 
 Updated with cloud backup and sync (section 11) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with the project file reader, save errors and archive modules (section 8.3) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 Updated with single-project save and import in the repository and app store (section 8.3.5) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
+Updated with the backup size limit, validation, commit rules and modules (section 8.4) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 
 # Drift persistence spec
 
@@ -180,6 +181,8 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState` centred on the effective size, same `stack`, `stackA`, `transform` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
 | Save project file (F25) | none (reads only) | On request | Reads the project, its source, thumbnail and history (when included) in one `readonly` transaction, then writes the file in the archive worker (section 8.3.5). |
 | Open project file (F25) | `sources`, `projects`, `history`, `thumbnails`, `meta` | Immediate per file | Validates the whole file first, then writes one atomic transaction (section 8.3.5). Ends the first launch and triggers the automatic persistence request, as an image import does (section 7.3). |
+| Export backup (F17) | none (reads only) | On request | Reads the chosen records in one `readonly` transaction, then writes the ZIP in the archive worker (section 8.4). |
+| Import backup (F17) | `sources`, `projects`, `history`, `thumbnails`, `presets`, `meta` | On confirmation | Validates the whole file first, then stores new sources and commits everything else in one transaction (section 8.4.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
@@ -587,24 +590,39 @@ export type BackupSettingsPayload = {
 
 #### 8.4.2 Size limits and streaming
 
-- **Hard limits:** Whole backup ZIP max **4 GB** (`4,294,967,296` bytes; `fflate`'s streaming writer emits no ZIP64 records, so `T8.4` must add them or lower this cap below 4 GiB minus 1 byte); each JSON file max **16 MB** uncompressed; each `thumbnail.*` max **2 MB**; each `sources/*` entry max **200 MB** (`209,715,200` bytes).
-- **Streaming:** Export streams each `SourceRecord.blob` through `blob.stream()` into `ZipPassThrough` (STORE, level 0) inside `archive.worker.ts`, reporting `progress` per item (`Reading`, `Packing`) and honouring `Cancel` (which terminates the worker and releases chunks within 1 s).
+- **Hard limits:**
+  - Whole backup ZIP: max **4 GB** (`4,000,000,000` bytes), both as a file and as the total uncompressed size of the entries written or read. This stays below 4 GiB because `fflate`'s streaming writer emits no ZIP64 records and would silently truncate a larger offset ([decisions.md D44](decisions.md#d44-backups-stay-below-4-gib-instead-of-writing-zip64-2026-11-27)).
+  - Entries in one backup: max **65,534**, the most a ZIP without ZIP64 records can count.
+  - Each JSON file max **16 MB** uncompressed; each `thumbnail.*` max **2 MB**; each `sources/*` entry max **200 MB** (`209,715,200` bytes).
+  - ZIP central directory max **16 MB**.
+- **Export refuses what it could not import.** The writer checks every limit before it packs the first image, and the finished file size afterwards. A refused export produces no file (messages in section 8.4.4). It also validates every project and preset it writes, and does not re-hash stored source bytes.
+- **Streaming:** Export streams each `SourceRecord.blob` through `blob.stream()` into `ZipPassThrough` (STORE, level 0) inside `archive.worker.ts`. Never decode pixels during export.
+- **Memory on import:** Sources are read and hashed one at a time. A stored (uncompressed) source entry is handed on as a slice of the chosen file, so the app never holds all image bytes in memory. A deflated one (a re-zipped backup) becomes a new blob. If the file changes or disappears before the import ends, the write fails and nothing is kept. The in-memory fallback copies each source it imports, so the session does not depend on the file afterwards.
+- **Progress and cancel:** Progress is `{stage, fraction, path?}`. Export reports `reading` (records from storage) then `packing`; import reports `validating` then `importing`. `Cancel` aborts an `AbortSignal`: it terminates the worker, aborts the running IndexedDB transaction and takes effect within 1 s (AC-F17.5).
 
 #### 8.4.3 Selective export and selective import flow
 
 **Selective export:**
 
 1. User opens `"Export backup"` from Settings -> Storage or the Library overflow menu.
-2. Dialog displays all projects with checkboxes (all selected by default, `"Select all"` / `"Select none"`), plus `"Include undo history"` (checked), `"Include user presets (<N>)"` (checked), `"Include settings"` (checked), and the estimated deduplicated size.
+2. Dialog displays all projects with checkboxes (all selected by default, `"Select all"` / `"Select none"`), plus `"Include undo history"` (checked), `"Include user presets (<N>)"` (checked), `"Include settings"` (checked), and the estimated size: the bytes of the deduplicated source images of the checked projects. JSON entries and thumbnails are small and left out of the estimate.
 3. Clicking `"Export backup"` runs `archive.worker.ts` with a progress bar and `"Cancel"` button, then triggers browser download (or `navigator.canShare({files})` where supported).
+
+`scope` is `'library'` when every stored project is exported, else `'selection'`. `manifest.sources` lists each source the exported projects use once, however many projects share it. The records are read in one `readonly` transaction, so they agree with each other.
 
 **Selective import:**
 
+Phase 1 reads its JSON documents through `BackupReader.read(path)` (`src/storage/backup-documents.ts`, section 11.1). The paths it accepts are the ZIP layout of section 8.4.1, so `T9.5` has to let the revision folder of the cloud layout through.
+
 1. User picks a `.zip` file via `"Import backup"` (or drops a backup `.zip` on the Library or Editor).
-2. **Phase 1 (Inspect & validate manifest in worker, zero DB writes):** Stream-read the ZIP, validate `manifest.json` (`kind === 'backup'`, `backupVersion <= BACKUP_FORMAT_VERSION`, `projectFormatVersion <= PROJECT_FORMAT_VERSION`), validate every `project.json`, `history.json`, `presets.json`, and `settings.json`, and verify every referenced `sources/*` entry exists and matches its SHA-256 and `byteLength`.
+2. **Phase 1 (Inspect and validate, zero DB writes):** In the worker, validate `manifest.json` (`kind === 'backup'`, `backupVersion` and `projectFormatVersion`), every `project.json`, `history.json`, `presets.json` and `settings.json`, and verify that every `sources/*` entry exists and matches its SHA-256 and `byteLength`. Then check the images as a project file import does (section 8.3.5): a source already in `sources` must have the stored width and height; a new one must decode, have no side over 16,384 px, and decode to its declared size. A thumbnail that is missing, does not decode or has a side over 512 px is left out.
 3. **Phase 2 (Selection dialog):** Before writing anything, show the `"Import backup"` preview dialog:
    - Mode selector: **`Merge with current library`** (default) or **`Replace all local data`**.
-   - Scrollable checklist of projects in the backup (all checked by default, except `"Unchanged"` projects in Merge mode which are unchecked by default and labelled `"Unchanged"`). Each row shows project name, `W × H px`, source size, and a status badge computed against local IndexedDB: `"New"`, `"Unchanged"`, or `"Modified locally"`.
+   - Scrollable checklist of projects in the backup (all checked by default, except `"Unchanged"` projects in Merge mode which are unchecked by default and labelled `"Unchanged"`). Each row shows project name, `W × H px` (the effective size, as on Library cards), source size, and a status badge computed against local storage:
+     - `"New"`: no local project has this `id`.
+     - `"Unchanged"`: the local project with this `id` matches on `sourceHash`, `name`, `updatedAt` and `canonicalJson({transform, stack, stackA})`, with the local transform read as section 8.1 says.
+     - `"Modified locally"`: the `id` exists and does not match.
+   - View state, export settings, selection and `openedAt` do not count, so a project that differs only in those is `"Unchanged"`.
    - Checkboxes for `"User presets (<N>)"` (if `includesPresets`) and `"Settings (Theme, Compare mode)"` (if `includesSettings`).
    - Summary of required new storage bytes (excluding sources already present in `sources`).
 4. If the user selects **`Replace all local data`**, clicking `"Import"` opens a confirmation `AlertDialog`: `"Replace all local data? This deletes <N> existing project(s) and <M> user preset(s) on this device before importing."`
@@ -615,28 +633,55 @@ export type BackupSettingsPayload = {
 
 | Condition | Exact user-facing error message |
 |---|---|
-| File > 4 GB or any entry exceeds its uncompressed cap | `"Can't import backup: the archive is too large (limit is 4 GB, or 200 MB per image)."` |
-| Not a valid ZIP or decompression failure | `"Can't import backup: the file is damaged or not a valid ZIP archive."` |
-| Missing or invalid `manifest.json`, `presets.json`, `settings.json`, or any `project.json` / `history.json` | `"Can't import backup: missing or invalid manifest."` |
-| `backupVersion > BACKUP_FORMAT_VERSION` or `projectFormatVersion > PROJECT_FORMAT_VERSION` | `"Can't import backup: format version <v> is newer than this app supports. Update the app and try again."` |
-| Missing source entry | `"Can't import backup: missing image data (<path>)."` |
+| File over 4 GB, entries over 4 GB in total, or any entry over its uncompressed cap | `"Can't import backup: the archive is too large (limit is 4 GB, or 200 MB per image)."` |
+| Not a valid ZIP, truncated stream, decompression failure, an unsafe or duplicate entry path, an encrypted entry, or an unsupported compression method | `"Can't import backup: the file is damaged or not a valid ZIP archive."` |
+| Missing or invalid `manifest.json`, `presets.json`, `settings.json`, or any `project.json` / `history.json` (rules below) | `"Can't import backup: missing or invalid manifest."` |
+| `backupVersion` or `projectFormatVersion` is present and is not an integer, or is above the supported version (`<v>` is that value) | `"Can't import backup: format version <v> is newer than this app supports. Update the app and try again."` |
+| Missing source entry, or a project whose source is not listed in `manifest.sources` | `"Can't import backup: missing image data (<path>)."` |
 | SHA-256 or byte-length mismatch on a source entry | `"Can't import backup: image data is damaged (<path>)."` |
+| A new source does not decode, or has a side over 16,384 px | `"Can't import backup: embedded image is unreadable or exceeds 16,384 px."` |
+
+The checks run in this order: file size, ZIP structure and entry caps, `manifest.json` (`kind`, then the two versions, then the rest), presets and settings, each project, the sources, the thumbnails, then the decode checks. A newer file is therefore reported as newer even when the rest of it has a shape this version does not know.
+
+Metadata is invalid when, among the field rules of section 8.3: `kind` is not `'backup'`; a version is below 1; a project `id` is not 1 to 64 letters, digits, `_` or `-`, or repeats; `path`, `historyPath` or `thumbnailPath` is not the layout path for that `id`; `historyPath` is `null` while `includesHistory` is true, or the reverse; the manifest's `id`, `name`, `sourceHash`, source size or `updatedAt` differ from `project.json`; a source size differs from its source entry; a preset `id` is not `user:` followed by 1 to 64 of those characters, or repeats; a preset breaks the field invariants of section 3; or `presetCount` is not the number of presets (`0` without presets). `nameLower` is derived from `name`, never read from the file.
+
+**Export error messages:**
+
+| Condition | Exact user-facing error message |
+|---|---|
+| Any limit of section 8.4.2 | `"Can't export backup: it is too large (limit is 4 GB, or 200 MB per image). Select fewer projects or leave out undo history."` |
+| A source a project refers to is not available | `"Can't export backup: the image data of <project name> is missing."` |
+| A stored project or its history breaks the format rules | `"Can't export backup: the stored data of <project name> is invalid."` |
+| A stored preset or the stored settings break the format rules | `"Can't export backup: a stored preset or setting is invalid."` |
 
 **Atomic consistency when storage quota is exceeded part-way:**
 
 Import writes in four strict phases so the library can **never** end up with a project pointing to a missing source or half-deleted local data:
 
-1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources referenced by the user's checked projects that are not already in `sources`. Run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`.
-2. **Stage new source blobs:** Insert each missing `SourceRecord` into `sources` one at a time, tracking `insertedHashes: string[]` and checking for Cancel between blobs. If `QuotaExceededError` or Cancel occurs here, delete every hash in `insertedHashes` in a cleanup transaction, leave all existing projects/presets/settings untouched, and show `"Storage is full"` (or close silently on Cancel).
-3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['projects', 'history', 'thumbnails', 'presets', 'meta']` (pure JSON + optional small thumbnails):
-   - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings (also syncing `localStorage` `drift:theme` if settings were imported).
+1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources referenced by the user's checked projects that are not already in `sources`. When it is above 0, run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`. The in-memory fallback uses no browser storage and skips the check.
+2. **Stage new source blobs:** Insert each missing `SourceRecord` into `sources`, one transaction each, tracking `insertedHashes` and checking for Cancel between and during blobs. If anything fails here, including `QuotaExceededError` or Cancel, delete every inserted source that no project refers to, leave all existing projects, presets and settings untouched, and show `"Storage is full"` for a quota error (close silently on Cancel).
+3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['sources', 'projects', 'history', 'thumbnails', 'presets', 'meta']`. Decide what to write from the records read inside this transaction, not from the preview. Insert again any needed source that has gone missing since phase 2 (a startup cleanup in another tab may delete a source no project refers to yet). Cancel aborts the transaction.
+   - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs, names and timestamps), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings. Unchecked or absent presets still clear the local ones, as the confirmation says.
    - **Merge mode:**
-     - For each checked project: if `project.id` is absent, insert as-is. If `project.id` exists and matches `(sourceHash, name, updatedAt, canonicalJson({transform, stack, stackA}))`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (deduplicated as in section 8.3.5, max 120 chars), remap history/thumbnail `projectId`, and insert without overwriting the local project.
-     - For each preset (when checked): skip if same `id` or same `nameLower` and `canonicalStackJson(stack)`; assign a new `'user:' + crypto.randomUUID()` on `id` clash with different content; otherwise insert as-is.
-     - If settings checked: update `meta.appState.theme` and `compareMode` and sync `localStorage` `drift:theme`.
-   - If this transaction aborts for any reason (including `QuotaExceededError`), IndexedDB rolls back the entire metadata commit cleanly; then delete `insertedHashes` in a cleanup pass and show `"Storage is full"`.
-4. **Orphan cleanup (Replace mode):** Run `cleanupOrphanedSources()` after the metadata commit succeeds so sources that belonged only to replaced projects are freed.
-5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library.
+     - For each checked project: if `project.id` is absent, insert as-is. If it exists and is `"Unchanged"`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (always with the suffix, then deduplicated as in section 8.3.5, max 120 chars), remap history and thumbnail `projectId`, and insert without overwriting the local project.
+     - For each preset (when checked): skip it when a local preset has the same `canonicalStackJson(stack)` and also the same `id` or the same `nameLower`. Otherwise insert it, under a new `'user:' + crypto.randomUUID()` when its `id` is taken.
+     - If settings are checked: update `meta.appState.theme` and `compareMode`.
+   - Imported records keep the transform, both stacks and their selections (split side A included), view state and export settings, as in section 8.3.5. Imported thumbnails get an empty `stackSignature`.
+   - If this transaction aborts for any reason (including `QuotaExceededError`), IndexedDB rolls back the entire metadata commit cleanly; then delete `insertedHashes` as in phase 2.
+4. **Orphan cleanup:** After a Replace commit, run `cleanupOrphanedSources()` so sources that belonged only to replaced projects are freed. A failure here does not fail the import; the next startup cleans up.
+5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library. Cancel has no effect once the commit has succeeded.
+
+The summary counts what was written: `"Imported <N> project(s) and <M> preset(s)."` with the right singular or plural, with the presets left out when none were written and the whole sentence left out when neither was. `"Applied settings."` follows when settings were applied. With neither sentence it reads `"Nothing new to import."`. `"Skipped <K> unchanged."` ends it when projects were skipped.
+
+**Repository and app store:**
+
+- `StorageRepository.exportBackup(options)` returns `{blob, fileName}`. `projectIds` defaults to all projects; `includeHistory`, `includePresets` and `includeSettings` default to `true`. An unknown project id throws `StorageNotFoundError`.
+- `StorageRepository.getSourceSizes()` returns the byte length of every stored source by hash, for the export estimate (`estimateBackupBytes`).
+- `StorageRepository.inspectBackup(file, options)` runs phase 1 and returns the validated contents with a `preview` (per project: status, name, effective size, source bytes; preset count; whether settings are included; local project and preset counts; bytes of the sources not yet stored, per hash, for `backupNewBytes`). It writes nothing.
+- `StorageRepository.importBackup(inspection, selection, options)` runs the four phases. `selection` is `{mode: 'merge' | 'replace', projectIds, presets, settings}`. A project id that is not in the backup throws `StorageValidationError`. File errors throw `BackupError` with the message above; quota failures throw `StorageQuotaError`.
+- The app store's `exportBackup` and `inspectBackup` first save a pending keyboard commit and view state, so the file and the statuses include every edit. `importBackup` does the same, then reloads projects, presets and settings from storage, applies an imported theme (which syncs `localStorage` `drift:theme`) and compare mode, and sets the summary as the notice. After a Replace it closes the open project and returns to the Library; after a Merge the open project stays open. A quota error opens the `"Storage is full"` dialog. An import that writes a project ends the first launch and triggers the automatic persistence request (section 7.3).
+
+**Extra sources (F26): left to `T8.8`.** A backup holds only each project's primary source, as a project file does. `backupSourceHashes(project)` in `src/storage/backup-format.ts` is the one place that names the sources a project needs; the estimate, the writer, the reader's reference check, the preview and the import all go through it. `T8.8` must extend it (and give it the history entries) with the `image` parameters of section 8.5, make `totalSourceBytes` their sum, load those records on export, decode-check them on import, and switch the staging cleanup of phase 2 to the `byReferencedSourceHash` index.
 
 **30-day backup reminder decision:** The earlier 30-day Library backup reminder banner (and `lastBackupAt` / `backupReminderDismissedAt` fields on `AppStateRecord`) is **removed** (see [decisions.md](decisions.md)). Desktop browser storage is durable across sessions and `navigator.storage.persist()` is requested automatically after the first import; a time-based nag banner conflicts with `DESIGN.md` §1.
 
@@ -709,6 +754,11 @@ src/storage/
   zip-reader.ts        Central directory ZIP reader with byte caps
   archive-client.ts    Starts the archive worker, forwards progress, cancels by terminating it
   project-transfer.ts  Project file save and import shared by both adapters (section 8.3.5)
+  backup.ts            Backup ZIP writer and reader (section 8.4)
+  backup-documents.ts  Validation of a backup's JSON documents through a `read(path)` reader (section 11.1)
+  backup-format.ts     Backup types, limits and validation
+  backup-error.ts      Backup error codes and exact messages, free of fflate
+  backup-transfer.ts   Inspect, preview, merge plan and four-phase import shared by both adapters
   restore.ts           Startup restore coordinator (steps 1 to 7)
 tests/storage/
   repository.test.ts   CRUD, SHA-256 dedup, ref-counted delete, 201-entry history cap, atomicity
@@ -718,9 +768,11 @@ tests/storage/
   zip-reader.test.ts   Archive structure, ZIP64 and unsafe paths
   archive-client.test.ts  Worker messages and cancel
   project-transfer.test.ts  AC-F25.1 to AC-F25.8 against both adapters, quota rollback
+  backup.test.ts       Backup round trip, validation errors, limits, progress and cancel
+  backup-transfer.test.ts  AC-F17.1 to AC-F17.7 against both adapters, quota rollback
 ```
 
-(`src/worker/archive.worker.ts` runs the codec. `backup.ts` and its tests are added in Milestone 8 for `F17`.)
+(`src/worker/archive.worker.ts` runs both codecs.)
 
 Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev dependency). Real-browser persistence, quota exhaustion, private browsing, and offline PWA restore are verified in Spike S3 and the Playwright E2E suite ([roadmap.md](roadmap.md)).
 

@@ -1,5 +1,23 @@
 import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import {
+	backupSourceHashes,
+	type BackupOptions,
+	type BackupOutput,
+	type ExportBackupOptions,
+	type BackupInput,
+} from './backup-format.ts';
+import {
+	chooseBackupProjects,
+	inspectBackupArchive,
+	runBackupImport,
+	writeBackupArchive,
+	type BackupImportResult,
+	type BackupImportStore,
+	type BackupInspection,
+	type BackupSelection,
+	type BackupTransferDependencies,
+} from './backup-transfer.ts';
 import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	createDefaultAppState,
@@ -95,8 +113,11 @@ function runTransaction<T>(
 	stores: StoreName | readonly StoreName[],
 	mode: IDBTransactionMode,
 	operation: (transaction: IDBTransaction) => Promise<T> | T,
+	// Aborting rolls the transaction back, unless it is already committing.
+	signal?: AbortSignal,
 ): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
+		signal?.throwIfAborted();
 		let transaction: IDBTransaction;
 		try {
 			transaction = beginTransaction(database, stores, mode);
@@ -108,8 +129,26 @@ function runTransaction<T>(
 		let result: T;
 		let operationSettled = false;
 		let operationError: unknown;
+		let cancelled = false;
+		const cancel = () => {
+			try {
+				transaction.abort();
+			} catch {
+				// Too late to cancel: let the commit finish.
+				return;
+			}
+
+			cancelled = true;
+			operationError = signal!.reason;
+		};
+
+		signal?.addEventListener('abort', cancel);
+		const settle = () => {
+			signal?.removeEventListener('abort', cancel);
+		};
 
 		transaction.addEventListener('complete', () => {
+			settle();
 			if (operationError !== undefined) {
 				reject(wrapStorageError(operationError));
 				return;
@@ -119,6 +158,7 @@ function runTransaction<T>(
 		});
 
 		transaction.addEventListener('abort', () => {
+			settle();
 			const cause = operationError ?? transaction.error;
 			reject(
 				cause
@@ -134,7 +174,11 @@ function runTransaction<T>(
 		});
 
 		const handleFailure = (error: unknown) => {
-			operationError = error;
+			// Requests of a cancelled transaction fail too; keep the reason.
+			if (!cancelled) {
+				operationError = error;
+			}
+
 			operationSettled = true;
 			try {
 				transaction.abort();
@@ -177,18 +221,19 @@ function readIndexDescending<T>(index: IDBIndex): Promise<T[]> {
 	});
 }
 
-export type IndexedDbRepositoryOptions = ProjectTransferDependencies & {
-	storageManager?: StorageManagerLike;
-	now?: () => number;
-	keyRange?: typeof IDBKeyRange;
-};
+export type IndexedDbRepositoryOptions = ProjectTransferDependencies &
+	BackupTransferDependencies & {
+		storageManager?: StorageManagerLike;
+		now?: () => number;
+		keyRange?: typeof IDBKeyRange;
+	};
 
 export class IndexedDbRepository implements StorageRepository {
 	readonly #db: IDBDatabase;
 	readonly #storageManager: StorageManagerLike | undefined;
 	readonly #now: () => number;
 	readonly #keyRange: typeof IDBKeyRange;
-	readonly #transfer: ProjectTransferDependencies;
+	readonly #transfer: ProjectTransferDependencies & BackupTransferDependencies;
 
 	constructor(database: IDBDatabase, options: IndexedDbRepositoryOptions = {}) {
 		this.#db = database;
@@ -255,6 +300,145 @@ export class IndexedDbRepository implements StorageRepository {
 				return {project: updated, entry};
 			},
 		);
+	}
+
+	#backupStore(): BackupImportStore {
+		return {
+			checkQuota: async (bytes) => this.#requireQuota(bytes),
+			hasSource: async (sha256) => this.hasSource(sha256),
+			stageSource: async (source, signal) =>
+				runTransaction(
+					this.#db,
+					STORE_NAMES.sources,
+					'readwrite',
+					async (tx) => {
+						const store = tx.objectStore(STORE_NAMES.sources);
+						if ((await requestToPromise(store.count(source.sha256))) > 0) {
+							return false;
+						}
+
+						await requestToPromise(store.put(source));
+						return true;
+					},
+					signal,
+				),
+			commit: async (plan, signal) =>
+				runTransaction(
+					this.#db,
+					[
+						STORE_NAMES.sources,
+						STORE_NAMES.projects,
+						STORE_NAMES.history,
+						STORE_NAMES.thumbnails,
+						STORE_NAMES.presets,
+						STORE_NAMES.meta,
+					],
+					'readwrite',
+					async (tx) => this.#writeBackupPlan(tx, plan),
+					signal,
+				),
+			discardSources: async (hashes) =>
+				runTransaction(
+					this.#db,
+					[STORE_NAMES.sources, STORE_NAMES.projects],
+					'readwrite',
+					async (tx) => {
+						const bySourceHash = tx
+							.objectStore(STORE_NAMES.projects)
+							.index('bySourceHash');
+						for (const sha256 of hashes) {
+							if ((await requestToPromise(bySourceHash.count(sha256))) === 0) {
+								await requestToPromise(
+									tx.objectStore(STORE_NAMES.sources).delete(sha256),
+								);
+							}
+						}
+					},
+				),
+			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
+		};
+	}
+
+	// The metadata commit of a backup import (persistence.md section 8.4.4).
+	async #writeBackupPlan(
+		tx: IDBTransaction,
+		planFrom: Parameters<BackupImportStore['commit']>[0],
+	) {
+		const projectsStore = tx.objectStore(STORE_NAMES.projects);
+		const presetsStore = tx.objectStore(STORE_NAMES.presets);
+		const sourcesStore = tx.objectStore(STORE_NAMES.sources);
+		const metaStore = tx.objectStore(STORE_NAMES.meta);
+		const plan = planFrom({
+			projects: (await requestToPromise(
+				projectsStore.getAll(),
+			)) as ProjectRecord[],
+			presets: (await requestToPromise(
+				presetsStore.getAll(),
+			)) as UserPresetRecord[],
+		});
+
+		// A cleanup in another tab may have deleted a staged source.
+		for (const source of plan.sources) {
+			if ((await requestToPromise(sourcesStore.count(source.sha256))) === 0) {
+				await requestToPromise(
+					sourcesStore.put(toSourceRecord(source, this.#now())),
+				);
+			}
+		}
+
+		const replace = plan.mode === 'replace';
+		if (replace) {
+			for (const name of [
+				STORE_NAMES.projects,
+				STORE_NAMES.history,
+				STORE_NAMES.thumbnails,
+				STORE_NAMES.presets,
+			]) {
+				await requestToPromise(tx.objectStore(name).clear());
+			}
+		}
+
+		for (const {project, history, thumbnail} of plan.records) {
+			await requestToPromise(projectsStore.put(project));
+			for (const entry of history) {
+				await requestToPromise(tx.objectStore(STORE_NAMES.history).put(entry));
+			}
+
+			if (thumbnail) {
+				await requestToPromise(
+					tx.objectStore(STORE_NAMES.thumbnails).put(thumbnail),
+				);
+			}
+		}
+
+		for (const preset of plan.presets) {
+			await requestToPromise(presetsStore.put(preset));
+		}
+
+		if (replace || plan.settings) {
+			const appState =
+				((await requestToPromise(metaStore.get('appState'))) as
+					AppStateRecord | undefined) ?? createDefaultAppState();
+			await requestToPromise(
+				metaStore.put({
+					...appState,
+					...plan.settings,
+					...(replace && {activeProjectId: null}),
+					key: 'appState',
+				}),
+			);
+		}
+
+		return plan;
+	}
+
+	async #requireQuota(bytes: number): Promise<void> {
+		const quotaCheck = await checkQuotaForImport(bytes, this.#storageManager);
+		if (!quotaCheck.ok) {
+			throw new StorageQuotaError(
+				`Insufficient storage quota for ${bytes} bytes of images`,
+			);
+		}
 	}
 
 	async createProject(input: CreateProjectInput): Promise<CreateProjectResult> {
@@ -663,15 +847,7 @@ export class IndexedDbRepository implements StorageRepository {
 			async (sha256) => this.getSource(sha256),
 		);
 		if (prepared.newSourceBytes > 0) {
-			const quotaCheck = await checkQuotaForImport(
-				prepared.newSourceBytes,
-				this.#storageManager,
-			);
-			if (!quotaCheck.ok) {
-				throw new StorageQuotaError(
-					`Insufficient storage quota for ${prepared.newSourceBytes} bytes of images`,
-				);
-			}
+			await this.#requireQuota(prepared.newSourceBytes);
 		}
 
 		options.signal?.throwIfAborted();
@@ -744,6 +920,128 @@ export class IndexedDbRepository implements StorageRepository {
 				return {project, source: sources[0], deduplicated};
 			},
 		);
+	}
+
+	async exportBackup(options: ExportBackupOptions = {}): Promise<BackupOutput> {
+		const {signal, onProgress} = options;
+		onProgress?.({stage: 'reading', fraction: 0});
+		// One transaction, so the records agree.
+		const snapshot = await runTransaction(
+			this.#db,
+			[
+				STORE_NAMES.projects,
+				STORE_NAMES.sources,
+				STORE_NAMES.history,
+				STORE_NAMES.thumbnails,
+				STORE_NAMES.presets,
+				STORE_NAMES.meta,
+			],
+			'readonly',
+			async (tx) => {
+				const all = await readIndexDescending<ProjectRecord>(
+					tx.objectStore(STORE_NAMES.projects).index('byOpenedAt'),
+				);
+				const {projects, scope} = chooseBackupProjects(all, options.projectIds);
+				const includesHistory = options.includeHistory ?? true;
+				const items: Array<BackupInput['projects'][number]> = [];
+				for (const [index, project] of projects.entries()) {
+					const history = includesHistory
+						? ((await requestToPromise(
+								tx
+									.objectStore(STORE_NAMES.history)
+									.index('byProjectId')
+									.getAll(project.id),
+							)) as HistoryEntryRecord[])
+						: undefined;
+					const thumbnail = (await requestToPromise(
+						tx.objectStore(STORE_NAMES.thumbnails).get(project.id),
+					)) as ThumbnailRecord | undefined;
+					items.push({project, history, thumbnail: thumbnail?.blob});
+					onProgress?.({
+						stage: 'reading',
+						fraction: (index + 1) / projects.length,
+					});
+				}
+
+				const sources: SourceRecord[] = [];
+				for (const hash of new Set(
+					projects.flatMap((project) => backupSourceHashes(project)),
+				)) {
+					const source = (await requestToPromise(
+						tx.objectStore(STORE_NAMES.sources).get(hash),
+					)) as SourceRecord | undefined;
+					if (source) {
+						sources.push(source);
+					}
+				}
+
+				const presets =
+					(options.includePresets ?? true)
+						? ((await requestToPromise(
+								tx
+									.objectStore(STORE_NAMES.presets)
+									.index('byNameLower')
+									.getAll(),
+							)) as UserPresetRecord[])
+						: undefined;
+				let settings: BackupInput['settings'];
+				if (options.includeSettings ?? true) {
+					const {theme, compareMode} =
+						((await requestToPromise(
+							tx.objectStore(STORE_NAMES.meta).get('appState'),
+						)) as AppStateRecord | undefined) ?? createDefaultAppState();
+					settings = {theme, compareMode};
+				}
+
+				return {
+					scope,
+					includesHistory,
+					projects: items,
+					sources,
+					presets,
+					settings,
+				};
+			},
+			signal,
+		);
+		return writeBackupArchive(snapshot, options, this.#transfer);
+	}
+
+	async getSourceSizes(): Promise<Record<string, number>> {
+		return runTransaction(
+			this.#db,
+			STORE_NAMES.sources,
+			'readonly',
+			async (tx) => {
+				const sources = (await requestToPromise(
+					tx.objectStore(STORE_NAMES.sources).getAll(),
+				)) as SourceRecord[];
+				return Object.fromEntries(
+					sources.map((source) => [source.sha256, source.byteLength]),
+				);
+			},
+		);
+	}
+
+	async inspectBackup(
+		file: Blob,
+		options: BackupOptions = {},
+	): Promise<BackupInspection> {
+		return inspectBackupArchive(file, options, this.#transfer, {
+			findSource: async (sha256) => this.getSource(sha256),
+			read: async () => this.getStartupSnapshot(),
+		});
+	}
+
+	async importBackup(
+		backup: BackupInspection,
+		selection: BackupSelection,
+		options: BackupOptions = {},
+	): Promise<BackupImportResult> {
+		return runBackupImport(this.#backupStore(), backup, selection, options, {
+			now: this.#now,
+			createId: generateId,
+		});
 	}
 
 	async commitStack(input: CommitStackInput): Promise<CommitStackResult> {

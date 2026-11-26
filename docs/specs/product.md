@@ -476,6 +476,7 @@ Export all browser data (projects, user presets, and app settings) or a chosen s
 - **Merge versus Replace:**
   - **Merge (default):** Keeps existing local projects and presets, skips unchanged projects, imports modified clashes as a new UUID named `"<name> (imported)"`, merges presets, and applies settings only if checked.
   - **Replace:** Requires an explicit confirmation dialog (`"Replace all local data? This deletes <N> existing project(s) and <M> user preset(s) on this device before importing."`). Existing data is never removed until archive validation and source writes succeed.
+- **Size limit:** One backup holds at most 4 GB (and 200 MB per image). A larger export is refused with a message that says to select fewer projects or leave out undo history ([decisions.md D44](decisions.md#d44-backups-stay-below-4-gib-instead-of-writing-zip64-2026-11-27)).
 - **Progress, cancel, and quota safety:** Both export and import show stage progress (`Reading`, `Packing` / `Validating`, `Importing`) with a `"Cancel"` button that stops within 1 s without leaving partial projects. If browser storage runs out during import, newly written unreferenced blobs are cleaned up and the library stays completely consistent.
 - **UI locations:** `"Export backup"` and `"Import backup"` live in Settings -> Storage (`src/features/settings/settings-content.tsx`) and in a Library app-bar overflow menu (`src/app/app-bar-actions.ts`).
 

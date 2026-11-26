@@ -5,6 +5,7 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated after the engine foundation review by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (F20 geometry, F21 formats, F22 effect catalogue) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with multi-image blending (`imageBlend`, F26) spec by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI engine spec
 
@@ -990,3 +991,107 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
 - `src/codec/decode.ts`: detect TIFF magic bytes (`0x49 0x49 0x2A 0x00` or `0x4D 0x4D 0x00 0x2A`) and dynamically `import('utif2')` in the worker; convert 16-bit samples to 8-bit via `v >>> 8`. Detect HEIC (`ftypheic`/`ftypheix`/`ftypmif1`) and common RAW extensions/headers before `createImageBitmap` so the user gets the specific refusal message instead of a generic decode error. Detect animated GIF/WebP/APNG/AVIF headers on import to trigger the first-frame toast.
 - `src/features/import/`: detect `image/svg+xml` (or `.svg`), rasterise on the main thread via `HTMLImageElement` + `<canvas>` (default longest side 2,048 px when no intrinsic pixel size exists, clamped to 16,384 px and 50 MP), and store the resulting PNG `Blob` in `sources`.
 - `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.
+
+### 16.5 Multi-image blending (`imageBlend`, F26)
+
+#### Architectural choice: `imageBlend` effect vs full layer model
+
+Two designs were evaluated for merging multiple images:
+
+- **Option (a): `imageBlend` effect in the existing stack (recommended).** An `EffectDefinition` (`type: 'imageBlend'`, `version: 1`, `category: 'color'`) references another stored source by its SHA-256 hash and composites it onto the pipeline's current buffer. Preserves the same-size-in, same-size-out contract (`engine.md` §1 rule 4, `src/engine/types.ts`), lets effects run both before and after a blend, supports 3+ images by stacking instances, and reuses the existing stack UI, stage cache, undo history, and presets with minimal additions.
+- **Option (b): Full layer model (one effect stack per layer).** Would require replacing `EffectStack` with a multi-layer document tree (`schemaVersion: 2`), rewriting `renderStack` into a multi-pass layer compositor with `N` separate stage caches and `N`-times worker RAM, adding a second hierarchy panel (Layers + per-layer Stack) that crowds the 390 px phone layout, redesigning presets, and contradicting `product.md` §8 ("no general photo editor: no layers").
+
+Option (a) is specified below.
+
+#### New `ParamSpec` kind (`'image'`)
+
+Extend `ParamSpec` (`src/engine/types.ts`) with an 8th kind:
+
+```ts
+| {kind: 'image'; default: ''} // 64 lowercase hex SHA-256 referencing a SourceRecord, or '' (none)
+```
+
+- `ParamValue` already includes `string`, so `EffectStack` JSON and `canonicalStackJson` require no changes.
+- `validateParams` (`src/engine/params.ts`): accepts `''` or a string matching `/^[0-9a-f]{64}$/`; any other value falls back to `''`.
+- UI (`src/features/params/`): add `ImageSpec` to `format.ts` (`isDefaultParamValue` returns `value === ''`), add `ImageControl` (`src/features/params/image-control.tsx`), and add `case 'image'` to `ParamControl` (`src/features/params/param-control.tsx`).
+
+#### `imageBlend` effect definition (`src/engine/effects/image-blend.ts`)
+
+`type: 'imageBlend'`, `version: 1`, `category: 'color'`, label `"Image blend"`, description `"Composite another image over the current result with blend mode, fit, and transform."`
+
+| Param | Label | Kind | Default | Range or options | Group | Visible when |
+|---|---|---|---|---|---|---|
+| `image` | Blend image | `image` | `''` | 64-char SHA-256 or `''` | Source | always |
+| `blendMode` | Blend mode | `enum` | `normal` | `normal` "Normal", `multiply` "Multiply", `screen` "Screen", `overlay` "Overlay", `lighten` "Lighten", `darken` "Darken", `difference` "Difference", `exclusion` "Exclusion", `add` "Add", `subtract` "Subtract" | Blend | always |
+| `opacity` | Opacity | `number` (`percent`) | `1` | `0..1`, step `0.01` | Blend | always |
+| `fit` | Fit | `enum` | `cover` | `cover` "Cover", `contain` "Contain", `stretch` "Stretch", `tile` "Tile", `none` "Original size" | Placement | always |
+| `scale` | Scale | `number` (`percent`) | `1` | `0.1..4`, step `0.01` | Placement | always |
+| `offsetX` | Offset X | `number` (`percent`) | `0` | `-1..1`, step `0.01` | Placement | always |
+| `offsetY` | Offset Y | `number` (`percent`) | `0` | `-1..1`, step `0.01` | Placement | always |
+| `rotation` | Rotation | `angle` | `0` | `[0, 360)`, step `0.1`; snaps `0, 45, 90, 135, 180, 225, 270, 315` | Placement | always |
+
+Note: The universal instance `Blend & Mix` controls (`EffectInstance.blend` and `mix`, AC-F4.7) remain unchanged on every instance; `imageBlend` uses its own `blendMode` and `opacity` parameters so all 10 photographic/glitch blend modes are available without changing AC-F4.7.
+
+#### Blend mode formulas (exact integer arithmetic)
+
+For base channel `i` in `0..255` and overlay channel `f` in `0..255`, `blendChannel(i, f, mode)` returns `b` in `0..255`:
+
+| `blendMode` | Exact integer formula for `b` |
+|---|---|
+| `normal` | `f` |
+| `multiply` | `floorDiv(2 * i * f + 255, 510)` |
+| `screen` | `255 - floorDiv(2 * (255 - i) * (255 - f) + 255, 510)` |
+| `overlay` | `i < 128 ? floorDiv(4 * i * f + 255, 510) : 255 - floorDiv(4 * (255 - i) * (255 - f) + 255, 510)` |
+| `lighten` | `max(i, f)` |
+| `darken` | `min(i, f)` |
+| `difference` | `abs(i - f)` |
+| `exclusion` | `clamp(i + f - floorDiv(4 * i * f + 255, 510), 0, 255)` |
+| `add` | `min(255, i + f)` |
+| `subtract` | `max(0, i - f)` |
+
+#### Alpha handling (W3C Compositing Level 1, straight-alpha in/out)
+
+Let the base pixel be `(iR, iG, iB, iA)` and the sampled overlay pixel be `(sR, sG, sB, sA)`. Let `op = Math.round(opacity * 100)` (`0..100`) and effective overlay alpha `effA = floorDiv(2 * sA * op + 100, 200)` (`0..255`):
+
+1. If `effA === 0`, copy `(iR, iG, iB, iA)` unchanged.
+2. Otherwise compute `outA_num = effA * 255 + iA * (255 - effA)` (`0..65025`) and `outA = floorDiv(2 * outA_num + 255, 510)` (`0..255`).
+3. If `outA === 0`, output `(0, 0, 0, 0)`.
+4. Otherwise, for each channel `C` in `R, G, B`, let `bC = blendChannel(iC, sC, blendMode)` and `premul = effA * ((255 - iA) * sC + iA * bC) + iA * (255 - effA) * iC`. Output `outC = clamp(floorDiv(2 * premul + outA_num, 2 * outA_num), 0, 255)`.
+
+All intermediate values stay below `2^32`, well within IEEE-754 exact integers (`2^53 - 1`), and match W3C Compositing Level 1 `source-over` with separable blend modes without dark fringing on transparent bases.
+
+#### Placement, rotation, and sampling (deterministic)
+
+Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceHeight = Hs`, `ctx.scale = W / Ws`) and overlay render image `(Ow, Oh)` (with overlay source dimensions `(Ows, Ohs)`):
+
+1. Compute base-to-overlay fit scale `(fx, fy)` in render pixels:
+   - `cover`: `s = max(W / Ow, H / Oh)`, `fx = s`, `fy = s`.
+   - `contain`: `s = min(W / Ow, H / Oh)`, `fx = s`, `fy = s`.
+   - `stretch`: `fx = W / Ow`, `fy = H / Oh`.
+   - `tile` or `none`: `fx = (ctx.scale * Ows) / Ow`, `fy = (ctx.scale * Ohs) / Oh` (1:1 source-pixel scale regardless of proxy level).
+2. Apply user `scale`: `sx = fx * scale`, `sy = fy * scale`.
+3. Overlay centre in render pixels: `cx = W / 2 + offsetX * W`, `cy = H / 2 + offsetY * H`.
+4. Rotation angle `a = wrap(Math.round(rotation * 10), 3600)` reads `(DX, DY) = DIRECTION_TABLE[a]` (`src/engine/direction-table.ts`; `cos = DX / 4096`, `sin = -DY / 4096`, zero `Math.sin`/`Math.cos` calls).
+5. For each output pixel `(x, y)`:
+   - Relative offset `dx = (x + 0.5) - cx`, `dy = (y + 0.5) - cy`.
+   - Inverse rotate: `rx = dx * cos + dy * sin`, `ry = -dx * sin + dy * cos`.
+   - Overlay sample coordinate: `ux = rx / sx + Ow / 2 - 0.5`, `uy = ry / sy + Oh / 2 - 0.5`.
+   - If `fit === 'tile'`: wrap `ux` into `[0, Ow)` and `uy` into `[0, Oh)` with `wrap`.
+   - Else if `ux < -0.5 || ux > Ow - 0.5 || uy < -0.5 || uy > Oh - 0.5`: sampled pixel is `(0, 0, 0, 0)` (transparent, leaves base unchanged).
+   - Otherwise sample `(ux, uy)` with premultiplied-alpha bilinear interpolation (clamping edge taps to `[0, Ow - 1] × [0, Oh - 1]`, or wrapping taps when `fit === 'tile'`).
+
+#### Pipeline, worker protocol, proxies, and stage cache
+
+- **Context and pipeline (`src/engine/types.ts`, `src/engine/pipeline.ts`):**
+  - `PipelineOptions` adds `extraSources?: ReadonlyMap<string, RgbaImage>` (keyed by `sha256`).
+  - `RenderContext` adds `getSource(sha256: string): RgbaImage | undefined`.
+  - `PipelineWarning['code']` adds `'missing-source'`. When `imageBlend` has a non-empty `params.image` that `ctx.getSource` cannot resolve, it copies `input` to `output` unchanged and the pipeline records `{instanceId, code: 'missing-source'}`.
+- **Stage cache (`src/engine/pipeline.ts`):** `stageCacheKey` already hashes `canonicalStackJson(enabledPrefix)`, which contains `params.image` (an immutable content-addressed SHA-256). When `preview.worker.ts` finishes loading an extra source, it calls `cache.clear()` so any earlier render that saw `'missing-source'` is invalidated.
+- **Preview worker (`src/worker/protocol.ts`, `src/worker/preview.worker.ts`):**
+  - `PreviewRequest` adds `{type: 'loadExtraSource'; requestId: number; sha256: string; blob: Blob; width: number; height: number}` and `{type: 'unloadExtraSource'; sha256: string}`.
+  - `PreviewResponse` adds `{type: 'extraSourceLoaded'; requestId: number; sha256: string}`.
+  - Each extra source is stored in the preview worker as a `settle` proxy (capped at `SETTLE_PIXEL_CAP` = 4 MP) and a `drag` proxy (derived via `boxDownscale` to the active `drag` cap and updated on `setDragCap`). Maximum 8 distinct extra sources per project (`<= 160 MiB` total proxy memory at 4 MP settle + 1 MP drag).
+- **Export worker (`src/worker/export.worker.ts`):**
+  - `ExportRequest` (`export` and `renderFull`) adds `extraSources?: ReadonlyArray<{sha256: string; blob: Blob; width: number; height: number}>`.
+  - Decodes each referenced extra source at `renderSize(width, height, job.scale)` (full size for `renderFull` / `scale === 1`) before `renderStack`, releasing decoded buffers after export completes.
+- **Determinism:** Uses only `DIRECTION_TABLE`, exact integer blend/alpha formulas, and deterministic bilinear sampling. Output bytes are identical across runs, browsers, and Node for identical decoded input pixels.

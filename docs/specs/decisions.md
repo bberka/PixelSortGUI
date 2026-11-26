@@ -3,6 +3,7 @@ Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup/restore (F17), and multi-image blending (F26) decisions (D27 to D30) and open questions (Q16 to Q19) by Gemini 4 Neon (Antigravity, thought level low), specification subagent.
 
 # PixelSortGUI decisions and open questions
 
@@ -184,11 +185,39 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Choice:** "Cut" in the owner's request is specified as **crop** (`F20`). "Change history" is specified primarily as a **per-project edit history panel** (`F23`), with a brief companion spec for an offline **app version changelog** in Settings -> About (`F24`).
 - **Reason:** Both interpretations match the owner's phrasing and fit naturally into the editor; alternative readings (region cutout; changelog-only) are listed in Q11 and Q12 for owner confirmation.
 
+### D27. Neutral `.glproj` ZIP container for single-project files (2026-11-26)
+
+- **Options considered:** (a) App-named extension (`.psg`) or custom binary format; (b) JSON-only file with base64-encoded image bytes; (c) Neutral `.glproj` standard ZIP archive (`fflate`, MIT) storing `manifest.json`, `project.json`, optional `history.json`, optional thumbnail, and untouched `sources/<sha256>.<ext>` at STORE level 0.
+- **Choice:** Option (c) (`product.md` F25, `persistence.md` §8.3).
+- **Reason:** An app-neutral extension and `kind: 'project'` manifest survive any future rename. Standard ZIP with STORE level 0 avoids recompressing JPEGs/PNGs/WebPs and streams inside `archive.worker.ts` without base64 bloat or decoding 50 MP pixels on the main thread. Single-project import always generates a fresh UUID and suffixes name clashes (`"<name> (imported)"`) so existing local projects are never overwritten.
+- **Revisit if:** Streaming random-access archives (such as multi-gigabyte video projects) outgrow ZIP.
+
+### D28. Unified `fflate` backup format, 4-phase atomic restore, and dropping the 30-day reminder (2026-11-26)
+
+- **Options considered:** (a) Separate backup schema plus a 30-day Library backup reminder banner (`lastBackupAt`); (b) Reuse `.glproj`'s `ProjectFilePayload` and `archive.worker.ts` inside `glitch-backup-<timestamp>.zip` with a single deduplicated `sources/` directory, selective export/import, Merge/Replace modes, 4-phase quota-safe writes, and no 30-day reminder banner.
+- **Choice:** Option (b) (`product.md` F17, `persistence.md` §8.4).
+- **Reason:** Sharing the project payload and streaming worker gives one parser, one validator, and one migration pipeline while deduplicating shared sources across projects. Staging new source blobs before one atomic metadata transaction guarantees that a mid-import `QuotaExceededError` or cancel never leaves dangling references or half-deleted local data. Dropping the 30-day reminder avoids time-based nagging (`DESIGN.md` §1) on desktop browsers where `navigator.storage.persist()` is already requested.
+- **Revisit if:** Mobile/Safari acceptance adds platforms with aggressive eviction (covered separately by the deferred Safari 7-day warning in `persistence.md` §8.4.5).
+
+### D29. Multi-image blending as an `imageBlend` effect instead of a full layer model (2026-11-26)
+
+- **Options considered:** (a) Full multi-layer document tree with per-layer effect stacks (`EffectStack` `schemaVersion: 2`); (b) An `imageBlend` effect inside the existing effect stack with a new `'image'` `ParamSpec` kind, 10 exact integer blend modes, W3C straight-alpha compositing, 5 fit modes, and `DIRECTION_TABLE` rotation.
+- **Choice:** Option (b) (`product.md` F26, `engine.md` §16.5).
+- **Reason:** Preserves the same-size-in, same-size-out `EffectDefinition` contract (`engine.md` §1 rule 4), lets users apply effects before and after a blend or stack 3+ images, reuses the existing stack UI, stage cache, undo history, and responsive layouts (including 390 px phone width), and stays consistent with `product.md` §8 (no general photo editor layer tree).
+- **Revisit if:** Users specifically need independent per-layer effect stacks or non-linear node graphs.
+
+### D30. Reference-counted extra sources in IndexedDB v3 and 8-image cap (2026-11-26)
+
+- **Options considered:** (a) Store blend images in a separate `blendSources` store or inline inside `EffectStack`; (b) Reuse the existing `sources` store with SHA-256 deduplication, add `referencedSourceHashes` + `byReferencedSourceHash` (`multiEntry: true`) in IndexedDB v3 (`dbMigrations[2]`), cap each project at 8 distinct extra images, and strip `'image'` params when saving user presets.
+- **Choice:** Option (b) (`persistence.md` §8.5, `engine.md` §16.5).
+- **Reason:** Reusing `sources` lets users pick existing library images without duplicating bytes, keeps undo history lightweight while retaining blobs referenced only by undo entries, bounds preview worker proxy RAM to `<= 160 MiB` (8 extra sources at 4 MP settle + 1 MP drag), and prevents user presets from pinning blobs or carrying broken hashes across devices.
+- **Revisit if:** Multi-image collages routinely need more than 8 distinct secondary sources and worker proxy LRU eviction is added.
+
 ---
 
 ## Open questions for the owner
 
-Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, and Q11 through Q15 arise from the post-v0.1.0 specifications:
+Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, and Q11 through Q19 arise from the post-v0.1.0 specifications:
 
 ### Q10. Optional pre-commit guards and skills management
 
@@ -219,6 +248,26 @@ Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains ope
 
 - **Question:** Does the ranked top-5 set (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave`, `posterize`) match what you want first, or would you swap in another from the 11-effect catalogue (such as `pixelSmear`, `bayerDither`, `rgbNoise`, `mirrorFold`, `thresholdInvert`, or `jpegCrush`)?
 - **Recommended default:** Build the ranked top 5 first (`T7.4` to `T7.8`), then schedule the remaining 6 in a follow-up wave.
+
+### Q16. Release timing for F25, F17, and F26
+
+- **Question:** Should `F25` (project files), `F17` (full backup and restore), and `F26` (multi-image blending) ship in Milestone 8 (`v0.3.0`) after `v0.1.0` and `v0.2.0`, or should any of them be pulled into `v0.1.0` or `v0.2.0`? (Pulling `F25` adds +3 tasks, `F17` adds +3 more, `F26` adds +4; all three add +10 implementation tasks; see `roadmap.md` Milestone 8.)
+- **Recommended default:** Ship `v0.1.0` and `v0.2.0` first, then run Milestone 8 (`v0.3.0`) so `SourceTransform` (`F20`) and DB v2 are already in place.
+
+### Q17. Single-project file extension
+
+- **Question:** Is `.glproj` the preferred app-neutral extension for single-project files (`F25`), or would you prefer another neutral extension (such as `.glitchproj` or `.pxproj`)?
+- **Recommended default:** Keep `.glproj` (short, app-neutral, standard ZIP container).
+
+### Q18. Dropping the 30-day backup reminder banner
+
+- **Question:** Is it okay to drop the earlier 30-day Library backup reminder banner from `F17`, keeping manual `"Export backup"` and `"Import backup"` in Settings -> Storage and the Library overflow menu?
+- **Recommended default:** Drop the 30-day reminder banner (`D28`).
+
+### Q19. `imageBlend` effect versus full layers and 8-image cap
+
+- **Question:** Does implementing multi-image blending as a stackable `imageBlend` effect (with up to 8 distinct extra images per project, `D29`/`D30`) match how you want to blend images, or do you want a separate layer tree?
+- **Recommended default:** Keep the stackable `imageBlend` effect with the 8-extra-image cap.
 
 ---
 

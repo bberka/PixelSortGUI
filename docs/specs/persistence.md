@@ -3,6 +3,7 @@ Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium)
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup and restore (F17), and multi-image source reference counting (F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI persistence spec
 
@@ -22,7 +23,7 @@ Origin Private File System (OPFS) and the File System Access API are not used as
 
 ## 2. Database and object stores
 
-Database name: `pixelsortgui`. Initial schema version: `1`.
+Database name: `pixelsortgui`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` in `v0.3.0` per section 8.5).
 
 | Store | Key path | Indexes | Contents and sizing notes |
 |---|---|---|---|
@@ -231,7 +232,7 @@ Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted
 - **Transaction failure fallback:** Catch `QuotaExceededError` on any IndexedDB write. Because imports and commits run inside atomic transactions, IndexedDB aborts the transaction cleanly, leaving zero partial projects and preserving the last committed state.
 - **User prompt:** Open the `"Storage is full"` dialog explaining that this device's browser storage does not have enough free space, with `"Manage library"` (closes dialog and navigates to Library).
 
-## 8. Next release (v0.2.0): geometry transforms and history jump
+## 8. Post-v0.1.0 schema extensions (v0.2.0 and v0.3.0)
 
 ### 8.1 Database version 2 (`SourceTransform`, F20)
 
@@ -264,93 +265,289 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
 - **Action label conventions:** Commit labels include the parameter or action detail so the History panel is scannable, for example `"Threshold range 0.25 to 0.80"`, `"Angle 90°"`, `"Add Pixel sort"`, `"Remove Channel shift"`, `"Reorder Pixel sort"`, `"Apply preset ASDF classic"`, `"Crop 1200 × 800"`, `"Rotate 90° CW"`, `"Resize 1000 × 500"`.
 - **Memory footprint:** Each `HistoryEntryRecord` is plain JSON (`EffectStack` + `SourceTransform`, ~0.5 to 4 KB). At the 201-entry cap, a project's entire history stays under ~1 MB in RAM and IndexedDB, with zero pixel buffers stored.
 
-### 8.3 Later: Backup export and import (F17) and eviction warnings
+### 8.3 Project file format (F25)
 
-Not built in `v0.1.0` or `v0.2.0`. Kept here so the archive format and eviction-warning design are ready when scheduled.
+A project file stores one complete project on disk so it can be archived or reopened on any device or browser without any server or network call.
 
-#### 8.3.0 Safari 7-day eviction warning (later)
+#### 8.3.1 Container, dependency, and file extension
 
-When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
+- **Container:** Standard ZIP archive (PKZIP with ZIP64 support).
+- **Library:** `fflate` (npm: `fflate`, repository: `101arrowz/fflate`).
+  - **Licence:** MIT (with a BSD Zero Clause exemption for SheetJS), compatible with [licensing.md](../agents/licensing.md).
+  - **Size:** ~8 KB minified for base deflate/inflate plus ~3 KB for ZIP support (~11 KB minified total, zero dependencies, tree-shakeable; source: `npmjs.com/package/fflate` and `github.com/101arrowz/fflate`).
+  - **Current status:** Not yet in `package.json`. Added when `F25` or `F17` is implemented, with its notice generated into `THIRD-PARTY-NOTICES.md` via `vp run gen:notices`.
+  - **Streaming API:** Uses `fflate.Zip`, `ZipPassThrough` (STORE, compression level 0), `ZipDeflate` (DEFLATE, level 6), `fflate.Unzip`, and `UnzipInflate`, paired with `Blob.stream()` (`ReadableStream`, supported in Chrome 76+, Firefox 69+, Edge 79+, Safari 14.1+; source: MDN Web Docs / Can I use).
+- **File extension:** **`.glproj`** (neutral "glitch project" extension that does not embed the app name, so renaming the app never breaks saved files or user expectations; avoids `.psg` audio and `.proj` MSBuild collisions; remains a standard ZIP inspectable by any archive tool).
+- **Default file name:** `<project-slug>-<YYYYMMDD-HHmmss>.glproj`, where `<project-slug>` is the project name lowercased, non-alphanumeric runs collapsed to `-`, trimmed to 64 characters (fallback `project`).
 
-#### 8.3.1 Archive format (`backupVersion: 1`, later)
-
-Backups let the user archive projects or move them between browsers and devices (F17, later). Backups are standard ZIP files built and read with `fflate` (MIT). When implemented, add `lastBackupAt` and `backupReminderDismissedAt` to `AppStateRecord` and add a 30-day Library backup reminder banner (7-day dismiss cooldown).
-
-File naming:
-
-- Whole library: `pixelsort-backup-<YYYYMMDD-HHmmss>.zip`
-- Single project (from card menu): `<project-slug>-backup-<YYYYMMDD-HHmmss>.zip`
-
-Internal directory layout:
+#### 8.3.2 Archive layout
 
 ```
-manifest.json
-presets.json
+manifest.json          (DEFLATE level 6)
+project.json           (DEFLATE level 6)
+history.json           (DEFLATE level 6; present only when includesHistory is true)
+thumbnail.webp         (or thumbnail.jpg; STORE level 0; optional, <= 512 px longest side)
 sources/
-  <sha256>.<ext>
-projects/
-  <projectId>/
-    project.json
-    history.json          (present only when includesHistory is true)
+  <sha256>.<ext>       (STORE level 0; primary source, plus any secondary sources referenced by F26 imageBlend)
 ```
 
-- `sources/<sha256>.<ext>` entries are stored uncompressed (`fflate` level `0`, ZIP `STORE`) because PNG, JPEG, WebP, and AVIF files are already compressed; this avoids wasted CPU and peak memory on phones.
-- JSON files use `fflate` deflate level `6`.
-- Thumbnails are **not** included in the archive; they regenerate from source + stack after import.
+- Binary media entries (`sources/*`, `thumbnail.*`) use `ZipPassThrough` (STORE, level 0) because JPEG, PNG, WebP, and AVIF are already compressed. Skipping deflate avoids wasted CPU and cuts peak memory for 50 MP sources.
+- JSON metadata entries use `ZipDeflate` (level 6).
+- All entry paths use forward slashes (`/`) with no leading slash and no `..` path segments.
 
 `manifest.json`:
 
 ```ts
-type BackupManifest = {
+export const PROJECT_FORMAT_VERSION = 1;
+
+export type ArchiveSourceEntry = {
+	sha256: string; // 64 lowercase hex characters
+	path: string; // 'sources/<sha256>.<ext>'
+	mimeType: string; // e.g. 'image/jpeg', 'image/png', 'image/webp'
+	byteLength: number; // exact byte count of the entry
+	width: number; // EXIF-normalized display width in px, 1..16384
+	height: number; // EXIF-normalized display height in px, 1..16384
+};
+
+export type ProjectFileManifest = {
+	kind: 'project';
+	formatVersion: 1;
+	appVersion: string; // stamped at build time (e.g. '0.2.0', or '0.x (dev)')
+	exportedAt: string; // ISO 8601 UTC timestamp
+	includesHistory: boolean;
+	primarySourceHash: string; // matches project.json sourceHash
+	sources: ArchiveSourceEntry[]; // primary source first, followed by any F26 secondary sources
+	thumbnailPath: string | null; // 'thumbnail.webp' | 'thumbnail.jpg' | null
+};
+```
+
+`project.json`:
+
+```ts
+export type ProjectFilePayload = {
+	id: string; // original UUID v4
+	name: string; // trimmed, 1..120 characters
+	createdAt: number; // Unix epoch ms
+	updatedAt: number; // Unix epoch ms
+	openedAt: number; // Unix epoch ms
+	sourceHash: string; // primary source SHA-256
+	sourceWidth: number; // 1..16384
+	sourceHeight: number; // 1..16384
+	transform?: SourceTransform; // F20 geometry transform; omitted or IDENTITY_TRANSFORM before F20
+	stack: EffectStack; // exact serialised form from engine.md section 2.2
+	selectedInstanceId: string | null;
+	viewState: ViewState;
+	exportSettings: ExportSettings;
+	historyHeadSeq: number; // 0 when includesHistory is false
+	historyMinSeq: number; // 0 when includesHistory is false
+	historyMaxSeq: number; // 0 when includesHistory is false
+};
+```
+
+`history.json` (present only when `manifest.includesHistory === true`):
+
+```ts
+export type ProjectHistoryPayload = {
+	entries: HistoryEntryRecord[]; // ordered ascending by seq, length 1..201
+};
+```
+
+`metadata` covered by a project file: project `name`, `id`, `createdAt`, `updatedAt`, `openedAt`, `sourceWidth`, `sourceHeight`, source `mimeType`, `byteLength`, `sha256`, `transform` (`SourceTransform`), `stack` (`EffectStack`), `selectedInstanceId`, `viewState`, `exportSettings`, `appVersion`, and `exportedAt`.
+
+#### 8.3.3 Format versions and migrations
+
+- `manifest.formatVersion` starts at `1` and increments only when the archive directory layout or `manifest.json` / `project.json` schema changes incompatibly.
+- **Older version (`formatVersion < PROJECT_FORMAT_VERSION`):** Run pure sequential migrators `projectFileMigrations[v]` in memory on the parsed payload before validation and DB write.
+- **Newer version (`formatVersion > PROJECT_FORMAT_VERSION`):** Reject before writing anything to IndexedDB with: `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."`
+- **Optional `transform` field:** If `project.json` was exported by an app build before `F20` (no `transform` field), default to `IDENTITY_TRANSFORM` (`{rotation: 0, flipX: false, flipY: false, crop: null, resize: null}`).
+- **Effect stack and instance versions:** Unknown effect `type`s and instances with `version > def.version` are **not** errors. They are kept verbatim (AC-F4.6), skipped when rendering, and reported after import via a non-blocking toast: `"Opened <name> with <N> unsupported effect(s)."` Older instance versions migrate lazily on open via `def.migrations` (section 6).
+
+#### 8.3.4 Size limits, memory behaviour, and streaming (50 MP sources)
+
+- **Hard limits (zip-bomb and memory protection):**
+  - Whole `.glproj` file size: max **1 GB** (`1,073,741,824` bytes).
+  - Each JSON entry (`manifest.json`, `project.json`, `history.json`): max **16 MB** (`16,777,216` bytes) uncompressed.
+  - `thumbnail.*`: max **2 MB** (`2,097,152` bytes) uncompressed.
+  - Each `sources/*` entry: max **200 MB** (`209,715,200` bytes) uncompressed (matching the F1 single-file limit).
+  - Source pixel dimensions: `1..16,384` px per side.
+- **Memory behaviour on save (50 MP source):**
+  - Run ZIP assembly inside a dedicated Web Worker (`src/worker/archive.worker.ts`) so the main thread never blocks.
+  - Stream each `SourceRecord.blob` through `blob.stream().getReader()` in chunks into `fflate.ZipPassThrough` (STORE, level 0), appending emitted ZIP chunks to an array passed to `new Blob(chunks, {type: 'application/zip'})`.
+  - Never decode pixels during project-file save. Peak RAM for a 50 MP JPEG (15 to 40 MB compressed) stays around `1x` the compressed file size plus < 10 MB overhead.
+- **Memory behaviour on open (50 MP source):**
+  - Stream-read the `.glproj` `File` via `file.stream().getReader()` into `fflate.Unzip` (with `UnzipInflate` registered) inside `archive.worker.ts`.
+  - Abort immediately if any entry exceeds its uncompressed byte cap or contains an unsafe path (`..` or leading `/`).
+  - Collect each `sources/*` entry into a `Blob` and verify its SHA-256 one source at a time via `crypto.subtle.digest('SHA-256', ...)`. Never decode 50 MP pixels to RGBA during archive validation; only run `probeImageDimensions` if dimensions need verification on a source not yet in IndexedDB.
+
+#### 8.3.5 Validation, exact error messages, and import semantics
+
+Single-project import runs in two phases: **strict validation first** (zero IndexedDB writes), then **one atomic `readwrite` transaction**.
+
+**Phase 1: Validation and exact error messages**
+
+| Condition | Exact user-facing error message |
+|---|---|
+| File > 1 GB, or any entry exceeds its uncompressed cap (16 MB JSON, 2 MB thumbnail, 200 MB per source) | `"Can't open <file name>: the project file is too large (limit is 1 GB, or 200 MB per image)."` |
+| Not a valid ZIP, truncated stream, or `fflate` decompression error | `"Can't open <file name>: the file is damaged or not a valid project archive."` |
+| Missing `manifest.json` or `project.json`, invalid JSON, `manifest.kind !== 'project'`, or invalid required field types/ranges (`name` not 1..120 chars, `stack.instances.length > 32`, invalid `history.json` when `includesHistory` is true) | `"Can't open <file name>: missing or invalid project metadata."` |
+| `manifest.formatVersion` is not an integer or `> PROJECT_FORMAT_VERSION` | `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."` |
+| Any entry listed in `manifest.sources` (or `primarySourceHash`) is missing from the ZIP | `"Can't open <file name>: missing image data (<path>)."` |
+| Computed SHA-256 of any `sources/*` entry does not match its declared `sha256` (or `byteLength` mismatches) | `"Can't open <file name>: image data is damaged (<path>)."` |
+| Any newly imported source cannot be decoded or has a side > 16,384 px | `"Can't open <file name>: embedded image is unreadable or exceeds 16,384 px."` |
+| Pre-flight quota check (`checkQuotaForImport` on bytes of sources not already in `sources`) fails, or transaction throws `QuotaExceededError` | Open `"Storage is full"` dialog (`src/app/storage-full-dialog.tsx`); zero records written. |
+
+**Phase 2: Atomic commit and clash handling**
+
+1. **Sources:** For each source in `manifest.sources`, insert into `sources` only if `sha256` does not already exist. Existing blobs are reused without copying (AC-F25.4).
+2. **Project ID:** Always generate a fresh UUID v4 (`crypto.randomUUID()`) for single-project import so an existing local project is never overwritten.
+3. **Name clash:** Compare trimmed `project.name.toLocaleLowerCase('en')` against all existing projects. If a match exists, rename to `"<name> (imported)"`; if that also exists, `"<name> (imported 2)"`, `"<name> (imported 3)"`, and so on, truncating the base name if needed to stay within 120 characters.
+4. **History:** If `includesHistory` is true, insert all validated entries from `history.json` remapped to the new `projectId` (preserving `historyHeadSeq`, `historyMinSeq`, `historyMaxSeq`, capped at 201 entries). If `includesHistory` is false, insert one `seq: 0` `"Initial"` entry containing the imported `stack` (and `transform`) and set head/min/max seq to `0`.
+5. **Thumbnail:** If `thumbnailPath` is present and valid, store `ThumbnailRecord` under the new `projectId`; otherwise omit it so the editor generates a fresh thumbnail on open.
+6. **Activate:** Set `meta.appState.activeProjectId` to the new `projectId` (when imported from picker/drop as a single file, or the first project when multiple files are dropped) and open it in the editor.
+
+### 8.4 Full backup and restore (F17)
+
+Backups archive multiple projects (or the whole library), user presets, and app settings into a single standard ZIP file using the same `fflate` streaming worker (`src/worker/archive.worker.ts`) and project payload schema as `F25`.
+
+#### 8.4.1 Archive format (`backupVersion: 1`)
+
+- **Default file name:** `glitch-backup-<YYYYMMDD-HHmmss>.zip` (neutral prefix without the app name).
+- **Internal directory layout:**
+
+```
+manifest.json                     (DEFLATE level 6)
+presets.json                      (DEFLATE level 6; present when includesPresets is true)
+settings.json                     (DEFLATE level 6; present when includesSettings is true)
+sources/
+  <sha256>.<ext>                  (STORE level 0; deduplicated across all included projects and F26 blend sources)
+projects/
+  <projectId>/
+    project.json                  (DEFLATE level 6; identical ProjectFilePayload schema to F25)
+    history.json                  (DEFLATE level 6; present only when includesHistory is true)
+    thumbnail.webp                (or thumbnail.jpg; STORE level 0; optional)
+```
+
+Using the exact same `ProjectFilePayload`, `ProjectHistoryPayload`, and `ArchiveSourceEntry` schemas as `.glproj` means one parser, one validator, and one migration pipeline handle both single-project files and full backups, while sharing a single deduplicated `sources/` directory across projects.
+
+`manifest.json`:
+
+```ts
+export const BACKUP_FORMAT_VERSION = 1;
+
+export type BackupManifest = {
+	kind: 'backup';
 	backupVersion: 1;
-	appVersion: string; // stamped at build time, e.g. '0.1.0'
+	projectFormatVersion: 1; // matches PROJECT_FORMAT_VERSION for every project.json inside
+	appVersion: string; // stamped at build time, e.g. '0.2.0'
 	exportedAt: string; // ISO 8601 UTC timestamp
 	scope: 'library' | 'selection';
 	includesHistory: boolean;
-	projects: {id: string; name: string; sourceHash: string; sourceFile: string}[];
+	includesPresets: boolean;
+	includesSettings: boolean;
+	sources: ArchiveSourceEntry[];
+	projects: Array<{
+		id: string;
+		name: string;
+		sourceHash: string;
+		sourceWidth: number;
+		sourceHeight: number;
+		updatedAt: number;
+		path: string; // 'projects/<id>/project.json'
+		historyPath: string | null;
+		thumbnailPath: string | null;
+		totalSourceBytes: number; // primary + any F26 secondary sources for UI size display
+	}>;
 	presetCount: number;
 };
 ```
 
-`presets.json` holds `{ presets: UserPresetRecord[] }` containing all user presets (never built-in presets).
+`presets.json`: `{ presets: UserPresetRecord[] }` (user presets only; built-in presets are never exported).
 
-`projects/<projectId>/project.json` holds `ProjectRecord`.
+`settings.json`:
 
-`projects/<projectId>/history.json` holds `{ entries: HistoryEntryRecord[] }`.
+```ts
+export type BackupSettingsPayload = {
+	theme: ThemePreference; // 'system' | 'light' | 'dark'
+	compareMode: CompareMode; // 'toggle' | 'split'
+};
+```
 
-#### 8.3.2 Export flow
+#### 8.4.2 Size limits and streaming
 
-1. User chooses backup scope (whole library from Settings/Library menu, or a single project from its card menu) and whether to include undo history (`"Include undo history"`, default checked).
-2. Read the selected `ProjectRecord`s, their deduplicated `SourceRecord` blobs, optional `HistoryEntryRecord`s, and all `UserPresetRecord`s from IndexedDB.
-3. Stream-assemble the ZIP with `fflate` (reporting progress and allowing Cancel) into a `Blob` (`application/zip`) and trigger download (or Share on devices supporting `navigator.canShare({files})`).
-4. If `scope === 'library'`, update `meta.appState.lastBackupAt = Date.now()` and clear any active backup reminder banner.
+- **Hard limits:** Whole backup ZIP max **4 GB** (`4,294,967,296` bytes, supported by `fflate` ZIP64); each JSON file max **16 MB** uncompressed; each `thumbnail.*` max **2 MB**; each `sources/*` entry max **200 MB** (`209,715,200` bytes).
+- **Streaming:** Export streams each `SourceRecord.blob` through `blob.stream()` into `ZipPassThrough` (STORE, level 0) inside `archive.worker.ts`, reporting `progress` per item (`Reading`, `Packing`) and honouring `Cancel` (which terminates the worker and releases chunks within 1 s).
 
-#### 8.3.3 Import validation, deduplication and error handling
+#### 8.4.3 Selective export and selective import flow
 
-Import runs in two phases: **strict validation first** (zero DB writes), then **atomic commit**.
+**Selective export:**
 
-**Phase 1: Validation (AC-F17.3)**
+1. User opens `"Export backup"` from Settings -> Storage or the Library overflow menu.
+2. Dialog displays all projects with checkboxes (all selected by default, `"Select all"` / `"Select none"`), plus `"Include undo history"` (checked), `"Include user presets (<N>)"` (checked), `"Include settings"` (checked), and the estimated deduplicated size.
+3. Clicking `"Export backup"` runs `archive.worker.ts` with a progress bar and `"Cancel"` button, then triggers browser download (or `navigator.canShare({files})` where supported).
 
-1. Unzip via `fflate`. If the file is not a valid ZIP or decompression fails, abort with `"Can't import backup: the file is damaged or not a valid ZIP archive."`
-2. Parse `manifest.json`. If missing or malformed JSON, abort with `"Can't import backup: missing or invalid manifest."`
-3. Check `manifest.backupVersion`. If not an integer or `> 1`, abort with `"Can't import backup: format version <v> is newer than this app supports."`
-4. Validate `presets.json` and every listed `project.json` and (if `includesHistory`) `history.json` against required field types and ranges (`name` 1..120, `stack.instances.length <= 32`, etc.). Unknown effect types or newer effect versions inside `stack` are **allowed** and preserved (AC-F4.6).
-5. Verify every referenced `sources/<sha256>.<ext>` entry exists in the ZIP and that its computed SHA-256 equals `<sha256>`. On mismatch, abort with `"Can't import backup: image data is damaged (<filename>)."`
-6. Check remaining quota (section 7.4) against the total byte size of sources not already present in `sources`. If insufficient, show the `"Storage is full"` dialog and import nothing.
+**Selective import:**
 
-**Phase 2: Deduplication and write (AC-F17.2)**
+1. User picks a `.zip` file via `"Import backup"` (or drops a backup `.zip` on the Library or Editor).
+2. **Phase 1 (Inspect & validate manifest in worker, zero DB writes):** Stream-read the ZIP, validate `manifest.json` (`kind === 'backup'`, `backupVersion <= BACKUP_FORMAT_VERSION`, `projectFormatVersion <= PROJECT_FORMAT_VERSION`), validate every `project.json`, `history.json`, `presets.json`, and `settings.json`, and verify every referenced `sources/*` entry exists and matches its SHA-256 and `byteLength`.
+3. **Phase 2 (Selection dialog):** Before writing anything, show the `"Import backup"` preview dialog:
+   - Mode selector: **`Merge with current library`** (default) or **`Replace all local data`**.
+   - Scrollable checklist of projects in the backup (all checked by default, except `"Unchanged"` projects in Merge mode which are unchecked by default and labelled `"Unchanged"`). Each row shows project name, `W × H px`, source size, and a status badge computed against local IndexedDB: `"New"`, `"Unchanged"`, or `"Modified locally"`.
+   - Checkboxes for `"User presets (<N>)"` (if `includesPresets`) and `"Settings (Theme, Compare mode)"` (if `includesSettings`).
+   - Summary of required new storage bytes (excluding sources already present in `sources`).
+4. If the user selects **`Replace all local data`**, clicking `"Import"` opens a confirmation `AlertDialog`: `"Replace all local data? This deletes <N> existing project(s) and <M> user preset(s) on this device before importing."`
 
-1. **Sources:** Insert each `SourceRecord` only if its `sha256` does not already exist in `sources`.
-2. **Projects:** For each project in the archive:
-   - Look up `project.id` in `projects`.
-   - If absent: insert `ProjectRecord` and its `history` rows (if `includesHistory` was false, create a single `seq: 0` `"Initial"` entry containing `project.stack`).
-   - If present AND `existing.sourceHash === incoming.sourceHash`, `existing.name === incoming.name`, `existing.updatedAt === incoming.updatedAt`, and `canonicalStackJson(existing.stack) === canonicalStackJson(incoming.stack)`: **skip** as unchanged (prevents duplicates on re-import, AC-F17.2).
-   - If present AND any of those fields differ: generate a new UUID for `incoming.id`, rename to `"<name> (imported)"` (truncated to 120 chars), remap `projectId` on its `history` entries, and insert without overwriting the existing local project.
-3. **User presets:** For each preset in `presets.json`:
-   - If an existing preset has the same `id` OR the same `nameLower` and `canonicalStackJson(stack)`: **skip**.
-   - If an existing preset has the same `id` with different content: assign a new `'user:' + crypto.randomUUID()` id and insert.
-   - Otherwise insert as-is.
-4. Show a summary toast naming counts imported and skipped, and refresh the Library.
+#### 8.4.4 Validation, quota safety, and Merge vs Replace
+
+**Exact error messages (Phase 1):**
+
+| Condition | Exact user-facing error message |
+|---|---|
+| File > 4 GB or any entry exceeds its uncompressed cap | `"Can't import backup: the archive is too large (limit is 4 GB, or 200 MB per image)."` |
+| Not a valid ZIP or decompression failure | `"Can't import backup: the file is damaged or not a valid ZIP archive."` |
+| Missing or invalid `manifest.json`, `presets.json`, `settings.json`, or any `project.json` / `history.json` | `"Can't import backup: missing or invalid manifest."` |
+| `backupVersion > BACKUP_FORMAT_VERSION` or `projectFormatVersion > PROJECT_FORMAT_VERSION` | `"Can't import backup: format version <v> is newer than this app supports. Update the app and try again."` |
+| Missing source entry | `"Can't import backup: missing image data (<path>)."` |
+| SHA-256 or byte-length mismatch on a source entry | `"Can't import backup: image data is damaged (<path>)."` |
+
+**Atomic consistency when storage quota is exceeded part-way:**
+
+Import writes in four strict phases so the library can **never** end up with a project pointing to a missing source or half-deleted local data:
+
+1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources referenced by the user's checked projects that are not already in `sources`. Run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`.
+2. **Stage new source blobs:** Insert each missing `SourceRecord` into `sources` one at a time, tracking `insertedHashes: string[]` and checking for Cancel between blobs. If `QuotaExceededError` or Cancel occurs here, delete every hash in `insertedHashes` in a cleanup transaction, leave all existing projects/presets/settings untouched, and show `"Storage is full"` (or close silently on Cancel).
+3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['projects', 'history', 'thumbnails', 'presets', 'meta']` (pure JSON + optional small thumbnails):
+   - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings (also syncing `localStorage` `psg:theme` if settings were imported).
+   - **Merge mode:**
+     - For each checked project: if `project.id` is absent, insert as-is. If `project.id` exists and matches `(sourceHash, name, updatedAt, canonicalJson({transform, stack}))`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (deduplicated as in section 8.3.5, max 120 chars), remap history/thumbnail `projectId`, and insert without overwriting the local project.
+     - For each preset (when checked): skip if same `id` or same `nameLower` and `canonicalStackJson(stack)`; assign a new `'user:' + crypto.randomUUID()` on `id` clash with different content; otherwise insert as-is.
+     - If settings checked: update `meta.appState.theme` and `compareMode` and sync `localStorage` `psg:theme`.
+   - If this transaction aborts for any reason (including `QuotaExceededError`), IndexedDB rolls back the entire metadata commit cleanly; then delete `insertedHashes` in a cleanup pass and show `"Storage is full"`.
+4. **Orphan cleanup (Replace mode):** Run `cleanupOrphanedSources()` after the metadata commit succeeds so sources that belonged only to replaced projects are freed.
+5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library.
+
+**30-day backup reminder decision:** The earlier 30-day Library backup reminder banner (and `lastBackupAt` / `backupReminderDismissedAt` fields on `AppStateRecord`) is **removed** (see [decisions.md](decisions.md)). Desktop browser storage is durable across sessions and `navigator.storage.persist()` is requested automatically after the first import; a time-based nag banner conflicts with `DESIGN.md` §1.
+
+#### 8.4.5 Safari 7-day eviction warning (later)
+
+When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies to Safari tabs (exempt when installed to the Home Screen on iOS/iPadOS or Dock on macOS). Add `safariEvictionBannerDismissedAt` to `AppStateRecord`, detect iOS/iPadOS Safari tabs (`navigator.maxTouchPoints > 1` with WebKit UA and non-standalone display mode), and show a dismissable banner after the first import (30-day cooldown) explaining Add to Home Screen.
+
+### 8.5 Multi-image source reference counting and GC (F26)
+
+When `F26` (`imageBlend`) lands, a project can reference up to **8** additional `SourceRecord`s alongside its primary `sourceHash`, both in its current `stack` and in its retained `history` entries. Extra sources live in the existing `sources` store (zero new object stores) and share SHA-256 deduplication with primary sources.
+
+- **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`, after F20's v2; or v2 / `dbMigrations[1]` if `F26` ships ahead of `F20`):**
+  - Add `referencedSourceHashes: string[]` to `ProjectRecord`: a sorted, deduplicated array containing `project.sourceHash` plus every valid 64-char SHA-256 found in any `kind: 'image'` parameter of `project.stack` and all retained `history` entries for that project.
+  - Create a `multiEntry: true` index `byReferencedSourceHash` on `projects` keyed on `referencedSourceHashes`.
+  - Migration `dbMigrations[2]` iterates existing `projects` and sets `referencedSourceHashes = [project.sourceHash]` where missing, and updates `meta.schemaInfo.dbVersion = 3`.
+- **Maintaining `referencedSourceHashes`:**
+  - `createProject`, `duplicateProject`, `commitStack`, and project/backup import compute `referencedSourceHashes` inside the same `readwrite` transaction. Because a project holds at most 201 lightweight JSON history entries, scanning them takes under 1 ms.
+  - Adding an extra image to a project checks the 8-distinct-extra-source cap (counting distinct non-empty `image` hashes in `project.stack` excluding `project.sourceHash`). If exceeded, reject with `"A project can use at most 8 extra blend images."`
+- **Reference-counted deletion and orphan GC:**
+  - `deleteProject(id)` deletes the project, its history, and its thumbnail, then for every hash `h` in `existing.referencedSourceHashes`, checks `projectsStore.index('byReferencedSourceHash').count(h)` and deletes `sourcesStore.delete(h)` whenever count is `0`.
+  - `cleanupOrphanedSources()` checks `byReferencedSourceHash` instead of `bySourceHash` so secondary images referenced only by `imageBlend` or undo history are never evicted.
+  - When a `commitStack` prunes old history entries that held the last reference to an extra source, `cleanupOrphanedSources()` frees that blob on idle startup (or immediately if `referencedSourceHashes` shrank and count dropped to `0`).
+- **User presets:** `createPreset` strips any `kind: 'image'` parameter value to `''` before saving so presets never pin source blobs or carry broken hashes across devices.
+- **Project files (`F25`) and backups (`F17`):** Exporting a project collects all hashes in `project.sourceHash` + `project.stack` (+ `history` entries when `includesHistory` is true) and writes each unique source once into `sources/<sha256>.<ext>` and `manifest.sources`.
 
 ## 9. Restore sequence on startup
 
@@ -358,7 +555,7 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
 
 1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('psg:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
 2. **Step 1 (Secure context gate):** Check `window.isSecureContext`. If `false`, render the secure-context error screen (DESIGN.md section 9) and stop (product.md section 4).
-3. **Step 2 (Open database):** Open IndexedDB `pixelsortgui` at `dbVersion = 1` (running `onupgradeneeded` migrations if upgrading from an older version).
+3. **Step 2 (Open database):** Open IndexedDB `pixelsortgui` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` in `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
    - If `VersionError` (stored DB is newer than app): render the blocking reload/update screen and stop.
    - If any other error: instantiate `MemoryStorageAdapter`, set `storageUnavailable = true`, and continue (AC-F16.4).
 4. **Step 3 (Fast metadata read):** Run one `readonly` transaction across `['meta', 'projects', 'presets']` to load:
@@ -400,6 +597,6 @@ tests/storage/
   restore.test.ts      Route resolution, deleted-project hash, fallback to MemoryStorageAdapter
 ```
 
-(`backup.ts` and `backup.test.ts` are added when F17 is scheduled.)
+(`project-file.ts`, `backup.ts`, and their tests are added in Milestone 8 for `F25` and `F17`.)
 
 Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev dependency). Real-browser persistence, quota exhaustion, private browsing, and offline PWA restore are verified in Spike S3 and the Playwright E2E suite ([roadmap.md](roadmap.md)).

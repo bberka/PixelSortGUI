@@ -3,6 +3,7 @@ Reconciled by Claude Sonnet 5.5 (thinking medium), documentation subagent.
 Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium), documentation subagent.
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI product spec
 
@@ -376,12 +377,74 @@ Acceptance criteria:
 - AC-F24.1: Settings -> About includes a `"View changelog"` toggle that expands the bundled release notes offline without any network request.
 - AC-F24.2: The build reads `CHANGELOG.md` from the repository root so release notes stay in sync with tagged releases.
 
+### F25. Project files (save and open a single project)
+
+A user can save any single project to disk as a self-contained `.glproj` file (a standard ZIP archive) and open it again later on any device or browser without uploading anything. The archive holds the untouched original source bytes (plus any secondary images referenced by `F26`), its SHA-256 hash, project metadata (name, created/modified/opened timestamps, source dimensions and MIME type), the geometry transform (`F20`), the effect stack, export settings, view state, optional undo history (default included), and an optional preview thumbnail. Format details and validation rules are in [persistence.md section 8.3](persistence.md#83-project-file-format-f25).
+
+- **Extension and neutrality:** `.glproj` (standard ZIP container built and read with `fflate`, MIT). The extension and manifest (`kind: 'project'`) do not embed the app name so renaming the app never breaks saved files.
+- **UI entry points:**
+  - **Save:** `"Save project file"` in each library card menu (`src/features/library/project-card.tsx`) and in the editor toolbar / phone overflow menu (`src/features/toolbar/editor-toolbar.tsx`). Opens a compact dialog with `"Include undo history"` (checked by default), `"Save"`, and a progress bar with `"Cancel"` while assembling.
+  - **Open:** Supported alongside image import in the `"Open images"` file picker (`src/features/import/use-image-picker.ts`, accepting `.glproj` and `.zip` in addition to image types) and by dragging and dropping `.glproj` (or `.zip`) files onto the library or editor (`src/features/import/window-file-drop.tsx`).
+- **Name clash and deduplication:** Opening a `.glproj` always creates a new project with a fresh UUID so an existing local project is never overwritten. If a project with the same name already exists (case-insensitive trimmed match), the imported copy is named `"<name> (imported)"` (or `"<name> (imported 2)"`, etc., truncated to 120 characters). If the source SHA-256 already exists in `sources`, the existing stored blob is reused without storing a second copy.
+
+Acceptance criteria:
+
+- AC-F25.1: Choosing `"Save project file"` on a project with 2 effects, a geometry transform, custom export settings, and 5 history commits downloads a `<slug>-<YYYYMMDD-HHmmss>.glproj` file whose ZIP entries match [persistence.md section 8.3.2](persistence.md#832-archive-layout) and whose source entry matches the stored `SourceRecord` bytes bit-for-bit.
+- AC-F25.2: Opening that `.glproj` file on a fresh browser profile (via picker or drag-and-drop) restores the project name, timestamps, source dimensions, effect stack, geometry transform, export settings, and all 5 undo steps, and opens it in the editor.
+- AC-F25.3: Saving with `"Include undo history"` unchecked omits `history.json`; opening that file creates a single `seq: 0` `"Initial"` history entry holding the imported stack and transform.
+- AC-F25.4: Opening a `.glproj` whose source SHA-256 already exists in `sources` creates a new project without duplicating the blob (storage usage grows by less than 1% of the source file size); if a project with the same name exists, the new project is named `"<name> (imported)"`.
+- AC-F25.5: Opening a corrupt or non-ZIP `.glproj` creates no project and shows `"Can't open <file name>: the file is damaged or not a valid project archive."`
+- AC-F25.6: Opening a `.glproj` with a missing source entry or a modified byte in `sources/<sha256>.<ext>` creates no project and shows `"Can't open <file name>: missing image data (<path>)."` or `"Can't open <file name>: image data is damaged (<path>)."`
+- AC-F25.7: Opening a `.glproj` with `formatVersion` higher than supported creates no project and shows `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."`
+- AC-F25.8: Opening a `.glproj` containing an unknown effect type or newer effect version imports the project cleanly, preserves the instance verbatim (AC-F4.6), and shows a non-blocking toast `"Opened <name> with <N> unsupported effect(s)."`
+- AC-F25.9: Saving and opening a 50 MP project file makes zero network requests and completes without decoding full-resolution pixels on the main thread.
+
+### F17. Full backup and restore
+
+Export all browser data (projects, user presets, and app settings) or a chosen subset of projects into one standard ZIP backup archive, and selectively restore it on the same or another browser with Merge or Replace semantics. Built on the same `fflate` ZIP streaming worker and project payload format as `F25` ([persistence.md section 8.4](persistence.md#84-full-backup-and-restore-f17)), deduplicating shared source blobs across projects inside the archive. The earlier 30-day backup reminder banner idea is dropped (see [decisions.md](decisions.md) for the reason).
+
+- **Selective export:** Opens the `"Export backup"` dialog showing checkboxes for every project (all checked by default, with `"Select all"` / `"Select none"`), plus `"Include undo history"` (checked), `"Include user presets"` (checked), and `"Include settings"` (checked). Displays estimated uncompressed size. Downloads `glitch-backup-<YYYYMMDD-HHmmss>.zip`.
+- **Selective import:** Choosing `"Import backup"` (or dropping a backup `.zip` on the Library or Editor) validates the archive in a worker first, then displays a preview list with checkboxes for every project (name, dimensions, source size, and status badge `"New"`, `"Unchanged"`, or `"Modified locally"`), user presets count, and settings (`Theme`, `Compare mode`) before writing anything to IndexedDB.
+- **Merge versus Replace:**
+  - **Merge (default):** Keeps existing local projects and presets, skips unchanged projects, imports modified clashes as a new UUID named `"<name> (imported)"`, merges presets, and applies settings only if checked.
+  - **Replace:** Requires an explicit confirmation dialog (`"Replace all local data? This deletes <N> existing project(s) and <M> user preset(s) on this device before importing."`). Existing data is never removed until archive validation and source writes succeed.
+- **Progress, cancel, and quota safety:** Both export and import show stage progress (`Reading`, `Packing` / `Validating`, `Importing`) with a `"Cancel"` button that stops within 1 s without leaving partial projects. If browser storage runs out during import, newly written unreferenced blobs are cleaned up and the library stays completely consistent.
+- **UI locations:** `"Export backup"` and `"Import backup"` live in Settings -> Storage (`src/features/settings/settings-content.tsx`) and in a Library app-bar overflow menu (`src/app/app-bar-actions.ts`).
+
+Acceptance criteria:
+
+- AC-F17.1: Exporting a full backup of 3 projects (2 sharing the same source image), 2 user presets, and True Black theme produces a `.zip` containing `manifest.json`, `presets.json`, `settings.json`, 3 `projects/<id>/project.json` entries, and only 2 deduplicated `sources/<sha256>.<ext>` entries.
+- AC-F17.2: Importing that backup on a fresh browser profile shows all 3 projects, 2 presets, and settings pre-checked in the preview dialog; unchecking 1 project and importing restores only the 2 checked projects, the 2 presets, and the True Black theme.
+- AC-F17.3: Re-importing the same backup in Merge mode marks all 3 projects `"Unchanged"` and skips them without creating duplicates; modifying 1 project locally and re-importing marks it `"Modified locally"` and imports it as `"<name> (imported)"` without overwriting the local edit.
+- AC-F17.4: Importing in Replace mode prompts for confirmation, replaces all local projects and presets with the selected backup items, and deletes orphaned source blobs afterwards.
+- AC-F17.5: Cancelling a backup export or import stops within 1 s and leaves IndexedDB unchanged.
+- AC-F17.6: Triggering a quota error during backup import leaves zero partial or broken projects (every existing project still opens and renders cleanly) and opens the `"Storage is full"` dialog.
+- AC-F17.7: Importing a corrupt ZIP, a backup with a tampered source byte, or a backup with `backupVersion` higher than supported writes nothing and shows the exact error message from [persistence.md section 8.4.4](persistence.md#844-validation-quota-safety-and-merge-vs-replace).
+
+### F26. Blending multiple images (`imageBlend`)
+
+Merge or composite a second (third, ...) image into a project using an **`imageBlend`** effect instance inside the existing effect stack ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)). Because `imageBlend` is a normal effect in the stack, users can apply pixel sorting or glitch effects before the blend, merge another image with blend mode, opacity, fit, scale, offset, and rotation, and apply further effects to the combined result. Stacking multiple `imageBlend` instances merges 3 or more images.
+
+- **Why an effect instead of a full layer model:** Fits the existing same-size-in, same-size-out `EffectDefinition` architecture (`src/engine/types.ts`), reuses undo/redo, stage cache, and responsive stack layouts without introducing a second layer tree UI or rewriting presets (see [decisions.md](decisions.md)).
+- **Choosing an image:** Introduces a new `ParamSpec` kind (`'image'`) rendered by a dedicated `ImageControl` in `src/features/params/`. Users can pick an image from their device (same F1 validation, EXIF normalization, and 50 MP prompt) or reuse any image already stored in the library without duplicating bytes.
+- **Controls:** Image picker, Blend mode (`Normal`, `Multiply`, `Screen`, `Overlay`, `Lighten`, `Darken`, `Difference`, `Exclusion`, `Add`, `Subtract`), Opacity (`0%` to `100%`), Fit (`Cover`, `Contain`, `Stretch`, `Tile`, `None`), Scale (`10%` to `400%`), Offset X / Y (`-100%` to `+100%`), and Rotation (`0°` to `360°`).
+- **Limits and storage:** Up to **8** distinct extra images per project (each subject to F1's 16,384 px / 50 MP / 200 MB limits). Extra images live in the existing `sources` store, deduplicated by SHA-256, reference-counted across projects and undo history, and included automatically in `.glproj` project files (`F25`) and backups (`F17`). Saving a stack as a user preset clears `image` parameters to empty so presets never pin images.
+
+Acceptance criteria:
+
+- AC-F26.1: Adding `imageBlend` to a project, picking a second image from device or library, and setting Blend mode to `Difference` and Opacity to `100%` updates the preview within the visible-update budget and produces bit-identical output on repeated PNG exports.
+- AC-F26.2: Placing `pixelSort` before `imageBlend` and `channelShift` after `imageBlend` applies pixel sort only to the base image, blends the second image on top, and applies channel shift to the merged result.
+- AC-F26.3: Picking an image already used by another project reuses its `SourceRecord` (storage usage grows by less than 1% of the file size); deleting the first project keeps the shared image intact for the second project, and deleting both removes the blob from `sources`.
+- AC-F26.4: Removing an `imageBlend` instance and clicking Undo restores the blended image cleanly (its source blob is retained while referenced by undo history).
+- AC-F26.5: Saving a project containing `imageBlend` to a `.glproj` file (`F25`) or backup (`F17`) and opening it on a fresh browser profile restores both the primary and secondary images and renders the exact same result.
+- AC-F26.6: Attempting to reference a 9th distinct extra image in one project is rejected with `"A project can use at most 8 extra blend images."`
+- AC-F26.7: Saving a stack containing `imageBlend` as a user preset clears the `image` parameter to empty; applying that preset adds `imageBlend` with its blend/fit/transform parameters and `"No image selected"`.
+
 ## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).
 
-1. **Backup and restore (`F17`, later).** ZIP export and import of selected projects or the whole library (source images, effect stacks, geometry transforms, optional history, and all user presets), double-import deduplication, corruption/version errors, and the 30-day backup reminder. Format in [persistence.md section 8.3](persistence.md#83-later-backup-export-and-import-f17-and-eviction-warnings).
-2. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.3.0](persistence.md#830-safari-7-day-eviction-warning-later)).
+1. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.4.5](persistence.md#845-safari-7-day-eviction-warning-later)).
 3. **Masks and on-canvas tools.** Brush-painted mask per effect instance (paint, erase, size, hardness, invert, clear, overlay opacity), region cutout if requested (Q11), mask from the image's own luminance, imported mask images, and interactive on-canvas tools using the reserved slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot-reserved-for-later) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later). Engine mask semantics are already specified in engine.md section 5.6.
 4. **Remaining F22 effects and `pixelSort` v2.** The 6 lower-ranked effects from F22 (`bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert`, `jpegCrush`), per-channel pixel sort, interval transforms (mirror, splice, fold, grouping equal colours), and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density).
 5. **Editing comfort.** Compare against any history entry; paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.

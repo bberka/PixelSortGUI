@@ -1,5 +1,6 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with project files (F25), full backup and restore (F17), and image blend (F26) UI specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
 # PixelSortGUI design system
 
@@ -302,6 +303,21 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render muted (`text-muted-foreground opacity-60`) to show they belong to the redo branch and will be discarded on a new commit. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state.
 - **App changelog (F24):**
   - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
+- **Project files (F25):**
+  - **Library card menu (`src/features/library/project-card.tsx`):** Add `"Save project file"` (`Download` or `Archive` icon) below `"Duplicate"` and above the separator before `"Delete"`.
+  - **Editor (`src/features/toolbar/editor-toolbar.tsx` / phone overflow):** Add `"Save project file"` action reachable from the editor toolbar (desktop/tablet) and phone top-bar overflow (`⋮`).
+  - **Save project file dialog:** Compact `Dialog` (desktop/tablet) / `Sheet` (phone) with project name summary, `"Include undo history"` checkbox (default checked), `"Save"` primary button, and during assembly a `Progress` bar with `"Cancel"`.
+  - **Open project file (`src/features/import/`):** `"Open images"` file picker (`use-image-picker.ts`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) updates the drop overlay copy (`drop-overlay.tsx`) to `"Drop images or project files to open"`. Error messages use the existing `ImportProblemDialog`.
+- **Full backup and restore (F17):**
+  - **Settings -> Storage (`src/features/settings/settings-content.tsx`):** Add a `"Backup & restore"` row below the persistence controls with `"Export backup"` and `"Import backup"` outline buttons.
+  - **Library app bar (`src/app/app-bar-actions.ts`):** Add a compact overflow menu button (`⋮`, `aria-label="Library actions"`) next to Settings with `"Export backup"` and `"Import backup"`.
+  - **Export backup dialog:** `Dialog` (desktop/tablet) / full-height `Sheet` (phone) with `"Select all"` / `"Select none"`, scrollable project checkbox list (project name, `W × H px`), `"Include undo history"`, `"Include user presets"`, `"Include settings"`, estimated size readout, `"Export backup"` primary button, and progress bar with `"Cancel"` while packing.
+  - **Import backup dialog:** Two-step modal: validating progress state (with `"Cancel"`), followed by a selection view with a `ToggleGroup` for `"Merge"` / `"Replace"`, scrollable project checkbox list (name, `W × H px`, size, status `Badge` `"New"` / `"Unchanged"` / `"Modified locally"`), presets and settings checkboxes, `"Import"` primary button, and a destructive `AlertDialog` confirmation when `"Replace"` is chosen.
+- **Image blend parameter control (`kind: 'image'`, F26):**
+  - Rendered by `ImageControl` (`src/features/params/image-control.tsx`) inside `ParamControl` (`src/features/params/param-control.tsx`).
+  - Layout: `48 × 36 px` rounded thumbnail preview (or muted placeholder icon with `"No image selected"`), dimensions metadata (`W × H px`), `"Choose image"` outline button, and `"Clear"` icon button (`X`, shown when an image is set).
+  - Clicking `"Choose image"` opens a `Popover` (desktop/tablet) / `Sheet` (phone) with two options: `"From device"` (opens native image file picker with F1 validation/50 MP flow) and `"From library"` (scrollable grid of existing library project thumbnails to reuse a stored `SourceRecord` without duplicating bytes).
+  - If the referenced source is missing (`'missing-source'` warning), displays a destructive-text inline note `"Missing image"` beside `"Choose image"`.
 
 ## 8. Interaction: touch, pointer and keyboard
 

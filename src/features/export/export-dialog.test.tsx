@@ -6,9 +6,13 @@ import {createTestStore, makeTestBlob} from '../../../tests/state/fixtures.ts';
 import {ExportDialog, type ExportDialogProps} from './export-dialog.tsx';
 import {
 	buildDefaultFilename,
+	clampMaxFileSizeKb,
 	computeOutputDimensions,
 	downloadBlob,
+	fileSizeLimitModeFor,
+	formatByteSize,
 	OOM_EXPORT_MESSAGE,
+	parseCustomFileSizeToKb,
 	replaceFilenameExtension,
 	resolveDownloadFilename,
 	toExportScale,
@@ -567,5 +571,71 @@ describe('ExportDialog', () => {
 
 		expect(downloads).toEqual(['Sunset-20261124-090507.png']);
 		expect(busyStates.at(-1)).toBe(false);
+	});
+
+	it('persists file-size limit presets, shows PNG note, and displays export summary', async () => {
+		const context = await setup();
+		const jobs = attachExportController(context);
+
+		const {rerender} = mountDialog(context, {
+			downloadFile: () => () => {},
+		});
+
+		act(() => {
+			findButton('1 MB').click();
+		});
+		await flush();
+
+		expect(
+			context.store.getState().activeProject?.exportSettings.maxFileSizeKb,
+		).toBe(1024);
+		expect(
+			document.querySelector('[data-slot="export-png-limit-note"]')
+				?.textContent,
+		).toContain('PNG is lossless');
+
+		act(() => {
+			findButton('Download').click();
+		});
+		await flush();
+
+		expect(jobs[0].options.maxFileSizeKb).toBe(1024);
+
+		act(() => {
+			jobs[0].resolve({
+				status: 'done',
+				file: new Blob([new Uint8Array(512 * 1024)], {type: 'image/png'}),
+				width: 2000,
+				height: 1500,
+				mime: 'image/png',
+				totalMs: 40,
+				targetMet: true,
+			});
+		});
+		await flush();
+
+		const summary = document.querySelector('[data-slot="export-summary"]');
+		expect(summary?.textContent).toContain('512 KB');
+		expect(summary?.textContent).toContain('2000 × 1500 px');
+
+		// Reopening restores the persisted limit.
+		rerender({open: false});
+		await flush();
+		rerender({open: true});
+		await flush();
+
+		expect(findButton('1 MB').getAttribute('aria-checked')).toBe('true');
+	});
+
+	it('clamps and formats file-size limit helpers', () => {
+		expect(clampMaxFileSizeKb(5)).toBe(10);
+		expect(clampMaxFileSizeKb(200_000)).toBe(102_400);
+		expect(fileSizeLimitModeFor(null)).toBe('off');
+		expect(fileSizeLimitModeFor(2048)).toBe('2048');
+		expect(fileSizeLimitModeFor(750)).toBe('custom');
+		expect(parseCustomFileSizeToKb(2, 'MB')).toBe(2048);
+		expect(formatByteSize(512)).toBe('512 B');
+		expect(formatByteSize(500 * 1024)).toBe('500 KB');
+		expect(formatByteSize(2.5 * 1024 * 1024)).toBe('2.50 MB');
 	});
 });

@@ -789,7 +789,7 @@ for (const theme of THEMES) {
 			await assertNoA11yViolations(page);
 
 			await surface.getByRole('radio', {name: 'JPEG'}).click();
-			await surface.getByRole('radio', {name: 'Custom'}).click();
+			await surface.getByRole('radio', {name: 'Custom'}).first().click();
 			await expect(
 				surface.getByRole('spinbutton', {name: 'Quality'}),
 			).toBeVisible();
@@ -809,3 +809,44 @@ for (const theme of THEMES) {
 		});
 	}
 }
+
+test('AC-F12.8 & AC-F12.9: size-limited export fits within target and persists limit', async ({
+	page,
+}) => {
+	await seedProject(page, {
+		name: 'LimitPhoto',
+		width: 1200,
+		height: 900,
+		effects: ['pixelSort'],
+	});
+	await page.getByRole('button', {name: 'Export'}).click();
+	const dialog = page.getByRole('dialog', {name: 'Export'});
+	await expect(dialog).toBeVisible();
+
+	await dialog.getByRole('radio', {name: 'JPEG'}).click();
+	const sizeLimitGroup = dialog.getByRole('radiogroup', {
+		name: 'Limit file size',
+	});
+	await sizeLimitGroup.getByRole('radio', {name: 'Custom'}).click();
+
+	const maxSizeInput = dialog.getByRole('spinbutton', {name: 'Max size'});
+	await maxSizeInput.fill('50');
+	await maxSizeInput.press('Enter');
+
+	const [download] = await Promise.all([
+		page.waitForEvent('download'),
+		dialog.getByRole('button', {name: 'Download'}).click(),
+	]);
+	const bytes = await readDownloadBytes(download);
+	expect(bytes.byteLength).toBeLessThanOrEqual(50 * 1024);
+	await expect(dialog.locator('[data-slot="export-summary"]')).toBeVisible();
+
+	// Close and reopen the dialog: the custom 50 KB limit is remembered.
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await page.getByRole('button', {name: 'Export'}).click();
+	await expect(dialog).toBeVisible();
+	await expect(
+		dialog.locator('[data-slot="export-size-limit-value"]'),
+	).toHaveText('≤ 50 KB');
+});

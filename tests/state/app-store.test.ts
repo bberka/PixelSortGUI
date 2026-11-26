@@ -373,6 +373,7 @@ describe('app store — projects, routing, settings, coordinator, and quota', ()
 			quality: 85,
 			sizeMode: 'half',
 			customLongestSide: null,
+			maxFileSizeKb: null,
 		});
 	});
 

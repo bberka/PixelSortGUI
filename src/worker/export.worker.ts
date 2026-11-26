@@ -138,16 +138,27 @@ async function handle(message: ExportRequest): Promise<void> {
 
 		const image = await decodeAndRender(message);
 		postProgress(jobId, 'encode', 0);
+		const maxBytes =
+			typeof message.maxFileSizeKb === 'number' &&
+			Number.isFinite(message.maxFileSizeKb) &&
+			message.maxFileSizeKb > 0
+				? message.maxFileSizeKb * 1024
+				: undefined;
 		const encoded = await encodeImage(image, {
 			format: message.format,
 			quality: message.quality,
+			maxBytes,
+			onProgress(fraction) {
+				postProgress(jobId, 'encode', fraction);
+			},
 		});
 		if (!encoded.ok) {
 			throw new JobError(encoded.error.code, encoded.error.message);
 		}
 
 		postProgress(jobId, 'encode', 1);
-		const {blob, width, height, mime} = encoded.value;
+		const {blob, width, height, mime, effectiveQuality, targetMet} =
+			encoded.value;
 		scope.postMessage({
 			type: 'exported',
 			jobId,
@@ -156,6 +167,8 @@ async function handle(message: ExportRequest): Promise<void> {
 			height,
 			mime,
 			totalMs: performance.now() - started,
+			effectiveQuality,
+			targetMet,
 		});
 	} catch (error) {
 		scope.postMessage({

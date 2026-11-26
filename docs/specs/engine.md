@@ -593,6 +593,16 @@ Limits and codec details:
 - Transparent pixels are flattened onto white (`#ffffff`) before JPEG encoding.
 - A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of partially transparent PNGs is later work.
 
+**Size-limited encoding** (optional `maxBytes` / `maxFileSizeKb` in 10 KB–100 MB):
+
+When `maxFileSizeKb` is unset or `null`, encoding runs once at the requested dimensions and quality with no extra work. When `maxFileSizeKb` is set (`maxBytes = maxFileSizeKb * 1024`):
+
+1. Encode once at the requested dimensions and quality. If `blob.size <= maxBytes`, return immediately with `targetMet: true`.
+2. For lossy formats (`jpeg`, `webp`), binary-search integer quality in `[10, requestedQuality]` (quality floor `10`, i.e. `0.10`; up to 7 iterations) to find the highest quality where `blob.size <= maxBytes`.
+3. If still `> maxBytes` (or for lossless `png`), iteratively downscale the rendered image uniformly on an `OffscreenCanvas` (bounded to at most 6 scaling iterations; uniform floor scale `minScale = Math.min(1, 64 / Math.min(width, height))` so aspect ratio is always preserved and sources with a side `<= 64` px are not downscaled; per-step multiplier `clamp(Math.sqrt(maxBytes / blob.size) * 0.92, minScale / scale, 0.9)`, jumping directly to `minScale` on the final iteration if not yet reached, with `nextWidth = Math.max(1, Math.round(width * scale))` and `nextHeight = Math.max(1, Math.round(height * scale))`) and re-encode. For lossy formats at a downscaled size, test at the quality floor first and refine quality upward with binary search if it fits.
+4. Check cancellation (via an optional `isCancelled` callback or worker termination) and report encode progress between iterations so cancellation still completes within 1 s.
+5. Return the final `blob` together with metadata: `actualWidth` (the encoded `width`), `actualHeight` (the encoded `height`), `effectiveQuality` (integer `10..100` for JPEG/WebP, `undefined` for PNG), and `targetMet` (`blob.size <= maxBytes`).
+
 ## 14. Testing
 
 ### 14.1 Unit tests

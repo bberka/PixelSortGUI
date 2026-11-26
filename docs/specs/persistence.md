@@ -65,6 +65,7 @@ type ExportSettings = {
 	quality: number; // integer 50..100, default 92 (used for jpeg and webp)
 	sizeMode: ExportSizeMode; // default 'full'
 	customLongestSide: number | null; // integer 1..max(width, height), null unless sizeMode === 'custom'
+	maxFileSizeKb?: number | null; // optional integer 10..102400 (10 KB..100 MB), null/undefined for unlimited; backwards-compatible, no DB version bump required
 };
 
 type ProjectRecord = {

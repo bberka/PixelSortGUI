@@ -15,6 +15,7 @@ import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {mirrorFoldSpec, type MirrorFoldParams} from './mirror-fold-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
+import {rgbNoiseSpec, type RgbNoiseParams} from './rgb-noise-spec.ts';
 import {
 	scanlineWaveSpec,
 	type ScanlineWaveParams,
@@ -92,6 +93,14 @@ const lazyBayerDitherEffect: EffectDefinition<BayerDitherParams> = {
 	},
 };
 
+const lazyRgbNoiseEffect: EffectDefinition<RgbNoiseParams> = {
+	...rgbNoiseSpec,
+	async render(input, output, params, ctx) {
+		const {rgbNoiseEffect} = await import('./rgb-noise.ts');
+		return rgbNoiseEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyJpegCrushEffect: EffectDefinition<JpegCrushParams> = {
 	...jpegCrushSpec,
 	async render(input, output, params, ctx) {
@@ -116,6 +125,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyScanlineWaveEffect,
 	lazyMirrorFoldEffect,
 	lazyBayerDitherEffect,
+	lazyRgbNoiseEffect,
 	lazyJpegCrushEffect,
 ];
 

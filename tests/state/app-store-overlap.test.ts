@@ -87,9 +87,10 @@ describe('app store — overlapping edits', () => {
 
 		const committed = store.getState().commitParam(id, 'redX', 20);
 		const closed = store.getState().closeProject();
-		// Long enough for a close that does not wait to finish first.
+		// The memory repository settles in microtasks, so one turn of the event
+		// loop lets a close that does not wait run to its end.
 		await new Promise((resolve) => {
-			setTimeout(resolve, 20);
+			setImmediate(resolve);
 		});
 		gate.resolve();
 		await Promise.all([committed, closed]);

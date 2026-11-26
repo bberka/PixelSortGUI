@@ -1,5 +1,6 @@
 import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import type {ArchiveOptions, ProjectFileOutput} from './project-format.ts';
 
 export const DB_NAME = 'drift';
 export const DB_VERSION = 2;
@@ -190,6 +191,16 @@ export type DeleteProjectResult = {
 	sourceDeleted: boolean;
 };
 
+export type ExportProjectOptions = ArchiveOptions & {
+	// Absent means `true`.
+	includeHistory?: boolean;
+};
+
+export type ImportProjectOptions = ArchiveOptions & {
+	// Makes the imported project the active one. Absent means `true`.
+	setActive?: boolean;
+};
+
 export type CreatePresetInput = {
 	name: string;
 	stack: EffectStack;
@@ -212,6 +223,18 @@ export type StorageRepository = {
 	renameProject(id: string, name: string): Promise<ProjectRecord>;
 	duplicateProject(id: string): Promise<ProjectRecord>;
 	deleteProject(id: string): Promise<DeleteProjectResult>;
+	// The project as a `.glproj` file (persistence.md section 8.3).
+	exportProjectFile(
+		projectId: string,
+		options?: ExportProjectOptions,
+	): Promise<ProjectFileOutput>;
+	// Always a new project. Rejects with `ProjectFileError` or
+	// `StorageQuotaError`, and then nothing was written.
+	importProjectFile(
+		file: Blob,
+		fileName: string,
+		options?: ImportProjectOptions,
+	): Promise<CreateProjectResult>;
 	commitStack(input: CommitStackInput): Promise<CommitStackResult>;
 	saveProjectStack(
 		id: string,

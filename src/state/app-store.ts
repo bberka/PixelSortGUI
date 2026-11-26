@@ -35,6 +35,7 @@ import {
 	resolveProjectStacks,
 	type UnsupportedInstanceInfo,
 } from '../storage/migrations.ts';
+import type {ProjectFileOutput} from '../storage/project-format.ts';
 import {
 	requestPersistentStorage,
 	type StorageManagerLike,
@@ -47,8 +48,10 @@ import {
 	type CreateProjectInput,
 	type CreateProjectResult,
 	type DeleteProjectResult,
+	type ExportProjectOptions,
 	type ExportSettings,
 	type HistoryEntryRecord,
+	type ImportProjectOptions,
 	type ProjectRecord,
 	type SourceRecord,
 	type SplitOrientation,
@@ -118,6 +121,13 @@ export const MISSING_PROJECT_NOTICE = 'That project no longer exists.';
 
 export function invalidGeometryNotice(projectName: string): string {
 	return `The saved crop, rotation and size of ${projectName} were invalid and have been reset.`;
+}
+
+export function unsupportedEffectsNotice(
+	projectName: string,
+	count: number,
+): string {
+	return `Opened ${projectName} with ${count} unsupported effect(s).`;
 }
 
 // The notice for a stored transform that this project's source cannot take.
@@ -249,6 +259,18 @@ export type AppState = {
 	renameProject(id: string, name: string): Promise<ProjectRecord>;
 	duplicateProject(id: string): Promise<ProjectRecord>;
 	deleteProject(id: string): Promise<DeleteProjectResult>;
+	// The project file of `id`, holding every edit made so far.
+	exportProjectFile(
+		id: string,
+		options?: ExportProjectOptions,
+	): Promise<ProjectFileOutput>;
+	// Adds the file's project to the library and opens it, unless `setActive` is
+	// `false`. Rejects as `StorageRepository.importProjectFile` does.
+	importProjectFile(
+		file: Blob,
+		fileName: string,
+		options?: ImportProjectOptions,
+	): Promise<CreateProjectResult>;
 
 	// Effect stack actions
 	addEffect(type: string): Promise<EffectInstance>;
@@ -1048,6 +1070,29 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		}, VIEW_STATE_DEBOUNCE_MS);
 	};
 
+	// After a saved import: asks for persistent storage once and ends the first
+	// launch.
+	const finishFirstImport = async (): Promise<void> => {
+		if (!persistenceRequested) {
+			persistenceRequested = true;
+			requestPersistentStorage(deps.storageManager, (persisted) => {
+				if (!disposed) {
+					store.setState((state) => ({
+						storage: {...state.storage, persisted},
+					}));
+				}
+			});
+		}
+
+		if (!store.getState().welcomeDismissed) {
+			// A first import ends the first launch, saved or not.
+			await store
+				.getState()
+				.dismissWelcome()
+				.catch(() => {});
+		}
+	};
+
 	const flushPendingCommitImpl = async (): Promise<void> => {
 		const pending = pendingKeyboard;
 		if (!pending) {
@@ -1242,23 +1287,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 			try {
 				const result = await repository.createProject(input);
-				if (!persistenceRequested) {
-					persistenceRequested = true;
-					requestPersistentStorage(deps.storageManager, (persisted) => {
-						if (!disposed) {
-							set((state) => ({
-								storage: {...state.storage, persisted},
-							}));
-						}
-					});
-				}
-
-				if (!get().welcomeDismissed) {
-					// A first import ends the first launch, saved or not.
-					await get()
-						.dismissWelcome()
-						.catch(() => {});
-				}
+				await finishFirstImport();
 
 				const activate = input.setActive ?? true;
 				set((state) => ({
@@ -1502,6 +1531,55 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			}
 
 			return result;
+		},
+
+		async exportProjectFile(id, options) {
+			if (get().activeProjectId === id) {
+				await flushPendingCommitImpl();
+				await flushViewStateImpl();
+			}
+
+			return repository.exportProjectFile(id, options);
+		},
+
+		async importProjectFile(file, fileName, options = {}) {
+			await flushPendingCommitImpl();
+			await flushViewStateImpl();
+
+			try {
+				const result = await repository.importProjectFile(
+					file,
+					fileName,
+					options,
+				);
+				await finishFirstImport();
+				set((state) => ({
+					projects: upsertProject(state.projects, result.project),
+				}));
+				if (options.setActive ?? true) {
+					await get().openProject(result.project.id);
+				}
+
+				const {unsupportedInstances} = resolveProjectStacks(
+					result.project,
+					registry,
+				);
+				if (unsupportedInstances.length > 0) {
+					const added = unsupportedEffectsNotice(
+						result.project.name,
+						unsupportedInstances.length,
+					);
+					// Several files may be opened at once: keep every notice.
+					set(({notice}) => ({
+						notice: notice ? `${notice} ${added}` : added,
+					}));
+				}
+
+				return result;
+			} catch (error) {
+				handleQuotaError(error);
+				throw error;
+			}
 		},
 
 		async addEffect(type) {

@@ -55,6 +55,7 @@ export * from './geometry.ts';
 export * from './helpers.ts';
 export * from './memory-adapter.ts';
 export * from './migrations.ts';
+export * from './project-transfer.ts';
 export * from './quota.ts';
 export * from './repository.ts';
 export * from './types.ts';

@@ -18,6 +18,14 @@ import {
 	validateStackForWrite,
 	withSideA,
 } from './helpers.ts';
+import type {ProjectFileOutput} from './project-format.ts';
+import {
+	buildImportedProject,
+	prepareProjectImport,
+	toSourceRecord,
+	writeProjectArchive,
+	type ProjectTransferDependencies,
+} from './project-transfer.ts';
 import {checkQuotaForImport, type StorageManagerLike} from './quota.ts';
 import {
 	MAX_HISTORY_ENTRIES,
@@ -32,9 +40,11 @@ import {
 	type CreateProjectInput,
 	type CreateProjectResult,
 	type DeleteProjectResult,
+	type ExportProjectOptions,
 	type ExportSettings,
 	type HistoryEntryRecord,
 	type HistoryStepResult,
+	type ImportProjectOptions,
 	type ProjectRecord,
 	type SchemaInfoRecord,
 	type SourceRecord,
@@ -167,7 +177,7 @@ function readIndexDescending<T>(index: IDBIndex): Promise<T[]> {
 	});
 }
 
-export type IndexedDbRepositoryOptions = {
+export type IndexedDbRepositoryOptions = ProjectTransferDependencies & {
 	storageManager?: StorageManagerLike;
 	now?: () => number;
 	keyRange?: typeof IDBKeyRange;
@@ -178,12 +188,14 @@ export class IndexedDbRepository implements StorageRepository {
 	readonly #storageManager: StorageManagerLike | undefined;
 	readonly #now: () => number;
 	readonly #keyRange: typeof IDBKeyRange;
+	readonly #transfer: ProjectTransferDependencies;
 
 	constructor(database: IDBDatabase, options: IndexedDbRepositoryOptions = {}) {
 		this.#db = database;
 		this.#storageManager = options.storageManager;
 		this.#now = options.now ?? (() => Date.now());
 		this.#keyRange = options.keyRange ?? globalThis.IDBKeyRange;
+		this.#transfer = options;
 	}
 
 	async #moveHistoryHead(
@@ -591,6 +603,145 @@ export class IndexedDbRepository implements StorageRepository {
 				}
 
 				return {deleted: true, sourceDeleted};
+			},
+		);
+	}
+
+	async exportProjectFile(
+		projectId: string,
+		options: ExportProjectOptions = {},
+	): Promise<ProjectFileOutput> {
+		const includeHistory = options.includeHistory ?? true;
+		// One transaction, so the project and its history agree.
+		const snapshot = await runTransaction(
+			this.#db,
+			[
+				STORE_NAMES.projects,
+				STORE_NAMES.sources,
+				STORE_NAMES.history,
+				STORE_NAMES.thumbnails,
+			],
+			'readonly',
+			async (tx) => {
+				const project = (await requestToPromise(
+					tx.objectStore(STORE_NAMES.projects).get(projectId),
+				)) as ProjectRecord | undefined;
+				if (!project) {
+					throw new StorageNotFoundError(`Project "${projectId}" not found`);
+				}
+
+				const source = (await requestToPromise(
+					tx.objectStore(STORE_NAMES.sources).get(project.sourceHash),
+				)) as SourceRecord | undefined;
+				const history = includeHistory
+					? ((await requestToPromise(
+							tx
+								.objectStore(STORE_NAMES.history)
+								.index('byProjectId')
+								.getAll(projectId),
+						)) as HistoryEntryRecord[])
+					: undefined;
+				const thumbnail = (await requestToPromise(
+					tx.objectStore(STORE_NAMES.thumbnails).get(projectId),
+				)) as ThumbnailRecord | undefined;
+				return {project, source, history, thumbnail};
+			},
+		);
+		return writeProjectArchive(snapshot, options, this.#transfer);
+	}
+
+	async importProjectFile(
+		file: Blob,
+		fileName: string,
+		options: ImportProjectOptions = {},
+	): Promise<CreateProjectResult> {
+		const prepared = await prepareProjectImport(
+			file,
+			fileName,
+			options,
+			this.#transfer,
+			async (sha256) => this.getSource(sha256),
+		);
+		if (prepared.newSourceBytes > 0) {
+			const quotaCheck = await checkQuotaForImport(
+				prepared.newSourceBytes,
+				this.#storageManager,
+			);
+			if (!quotaCheck.ok) {
+				throw new StorageQuotaError(
+					`Insufficient storage quota for ${prepared.newSourceBytes} bytes of images`,
+				);
+			}
+		}
+
+		options.signal?.throwIfAborted();
+		const now = this.#now();
+		const projectId = generateId();
+
+		return runTransaction(
+			this.#db,
+			[
+				STORE_NAMES.sources,
+				STORE_NAMES.projects,
+				STORE_NAMES.history,
+				STORE_NAMES.thumbnails,
+				STORE_NAMES.meta,
+			],
+			'readwrite',
+			async (tx) => {
+				const sourcesStore = tx.objectStore(STORE_NAMES.sources);
+				const projectsStore = tx.objectStore(STORE_NAMES.projects);
+				const historyStore = tx.objectStore(STORE_NAMES.history);
+				const metaStore = tx.objectStore(STORE_NAMES.meta);
+
+				const sources: SourceRecord[] = [];
+				let deduplicated = false;
+				for (const [index, entry] of prepared.contents.sources.entries()) {
+					const existing = (await requestToPromise(
+						sourcesStore.get(entry.sha256),
+					)) as SourceRecord | undefined;
+					const source = existing ?? toSourceRecord(entry, now);
+					if (!existing) {
+						await requestToPromise(sourcesStore.put(source));
+					}
+
+					deduplicated ||= index === 0 && existing !== undefined;
+					sources.push(source);
+				}
+
+				const others = (await requestToPromise(
+					projectsStore.getAll(),
+				)) as ProjectRecord[];
+				const {project, history, thumbnail} = buildImportedProject(prepared, {
+					projectId,
+					existingNames: others.map((other) => other.name),
+					now,
+				});
+				await requestToPromise(projectsStore.put(project));
+				for (const entry of history) {
+					await requestToPromise(historyStore.put(entry));
+				}
+
+				if (thumbnail) {
+					await requestToPromise(
+						tx.objectStore(STORE_NAMES.thumbnails).put(thumbnail),
+					);
+				}
+
+				if (options.setActive ?? true) {
+					const appState = (await requestToPromise(
+						metaStore.get('appState'),
+					)) as AppStateRecord | undefined;
+					await requestToPromise(
+						metaStore.put({
+							...(appState ?? createDefaultAppState()),
+							key: 'appState',
+							activeProjectId: projectId,
+						}),
+					);
+				}
+
+				return {project, source: sources[0], deduplicated};
 			},
 		);
 	}

@@ -19,6 +19,14 @@ import {
 	validateStackForWrite,
 	withSideA,
 } from './helpers.ts';
+import type {ProjectFileOutput} from './project-format.ts';
+import {
+	buildImportedProject,
+	prepareProjectImport,
+	toSourceRecord,
+	writeProjectArchive,
+	type ProjectTransferDependencies,
+} from './project-transfer.ts';
 import {
 	DB_VERSION,
 	MAX_HISTORY_ENTRIES,
@@ -30,9 +38,11 @@ import {
 	type CreateProjectInput,
 	type CreateProjectResult,
 	type DeleteProjectResult,
+	type ExportProjectOptions,
 	type ExportSettings,
 	type HistoryEntryRecord,
 	type HistoryStepResult,
+	type ImportProjectOptions,
 	type ProjectRecord,
 	type SchemaInfoRecord,
 	type SourceRecord,
@@ -43,7 +53,7 @@ import {
 	type ViewState,
 } from './types.ts';
 
-export type MemoryStorageAdapterOptions = {
+export type MemoryStorageAdapterOptions = ProjectTransferDependencies & {
 	now?: () => number;
 };
 
@@ -56,9 +66,11 @@ export class MemoryStorageAdapter implements StorageRepository {
 	#appState: AppStateRecord = createDefaultAppState();
 	readonly #schemaInfo: SchemaInfoRecord;
 	readonly #now: () => number;
+	readonly #transfer: ProjectTransferDependencies;
 
 	constructor(options: MemoryStorageAdapterOptions = {}) {
 		this.#now = options.now ?? (() => Date.now());
+		this.#transfer = options;
 		this.#schemaInfo = {
 			key: 'schemaInfo',
 			dbVersion: DB_VERSION,
@@ -341,6 +353,78 @@ export class MemoryStorageAdapter implements StorageRepository {
 		}
 
 		return {deleted: true, sourceDeleted};
+	}
+
+	async exportProjectFile(
+		projectId: string,
+		options: ExportProjectOptions = {},
+	): Promise<ProjectFileOutput> {
+		const project = this.#projects.get(projectId);
+		if (!project) {
+			throw new StorageNotFoundError(`Project "${projectId}" not found`);
+		}
+
+		const snapshot = {
+			project: cloneRecord(project),
+			source: this.#sources.get(project.sourceHash),
+			history:
+				(options.includeHistory ?? true)
+					? await this.getHistory(projectId)
+					: undefined,
+			thumbnail: this.#thumbnails.get(projectId),
+		};
+		return writeProjectArchive(snapshot, options, this.#transfer);
+	}
+
+	// No quota check: this adapter uses no browser storage.
+	async importProjectFile(
+		file: Blob,
+		fileName: string,
+		options: ImportProjectOptions = {},
+	): Promise<CreateProjectResult> {
+		const prepared = await prepareProjectImport(
+			file,
+			fileName,
+			options,
+			this.#transfer,
+			async (sha256) => this.getSource(sha256),
+		);
+		options.signal?.throwIfAborted();
+
+		// No `await` below, so the writes cannot interleave with another call.
+		const now = this.#now();
+		const projectId = generateId();
+		const {project, history, thumbnail} = buildImportedProject(prepared, {
+			projectId,
+			existingNames: Array.from(this.#projects.values(), (other) => other.name),
+			now,
+		});
+		const primaryHash = project.sourceHash;
+		const deduplicated = this.#sources.has(primaryHash);
+		for (const entry of prepared.contents.sources) {
+			if (!this.#sources.has(entry.sha256)) {
+				this.#sources.set(entry.sha256, toSourceRecord(entry, now));
+			}
+		}
+
+		this.#projects.set(projectId, cloneRecord(project));
+		this.#history.set(
+			projectId,
+			new Map(history.map((entry) => [entry.seq, cloneRecord(entry)])),
+		);
+		if (thumbnail) {
+			this.#thumbnails.set(projectId, thumbnail);
+		}
+
+		if (options.setActive ?? true) {
+			this.#appState = {...this.#appState, activeProjectId: projectId};
+		}
+
+		return {
+			project: cloneRecord(project),
+			source: {...this.#sources.get(primaryHash)!},
+			deduplicated,
+		};
 	}
 
 	async commitStack(input: CommitStackInput): Promise<CommitStackResult> {

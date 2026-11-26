@@ -138,6 +138,120 @@ describe('crop mode', () => {
 		expect(geometry()).toMatchObject({cropping: false, draft: null});
 	});
 
+	const typed = {x: 2, y: 3, width: 12, height: 9};
+
+	// Starts `run`, calls `act` while its history write is held, then lets it end.
+	async function during(
+		bundle: Awaited<ReturnType<typeof setup>>['bundle'],
+		run: () => Promise<void>,
+		act: () => void,
+	) {
+		const save = holdSave(bundle);
+		const done = run();
+		await save.started;
+		act();
+		save.release();
+		await done;
+	}
+
+	it('keeps a box set while Apply crop saves, still unapplied', async () => {
+		const {bundle, controller, project, geometry, box} = await setup();
+		controller.open();
+		controller.setBox({x: 10, y: 5, width: 20, height: 10});
+		await during(bundle, controller.applyCrop, () => {
+			controller.setBox(typed);
+		});
+		expect(project().transform.crop).toEqual({
+			x: 10,
+			y: 5,
+			width: 20,
+			height: 10,
+		});
+		expect(geometry().cropping).toBe(true);
+		expect(box()).toEqual(typed);
+	});
+
+	it('stays in crop mode when it is reopened while Apply crop saves', async () => {
+		const {bundle, controller, geometry, box} = await setup();
+		controller.open();
+		controller.setBox({x: 10, y: 5, width: 20, height: 10});
+		await during(bundle, controller.applyCrop, () => {
+			controller.cancelCrop();
+			controller.startCrop();
+		});
+		expect(geometry().cropping).toBe(true);
+		expect(box()).toEqual({x: 10, y: 5, width: 20, height: 10});
+	});
+
+	it('leaves crop mode when the box ends where the applied crop is', async () => {
+		const {bundle, controller, geometry} = await setup();
+		const applied = {x: 10, y: 5, width: 20, height: 10};
+		controller.open();
+		controller.setBox(applied);
+		await during(bundle, controller.applyCrop, () => {
+			controller.setBox(typed);
+			controller.setBox(applied);
+		});
+		expect(geometry()).toMatchObject({cropping: false, draft: null});
+	});
+
+	it('keeps a box set while Reset crop saves', async () => {
+		const {bundle, controller, project, geometry, box} = await setup();
+		controller.open();
+		controller.setBox({x: 10, y: 5, width: 20, height: 10});
+		await controller.applyCrop();
+		await during(bundle, controller.resetCrop, () => {
+			controller.setBox(typed);
+		});
+		expect(project().transform.crop).toBeNull();
+		expect(geometry().cropping).toBe(true);
+		expect(box()).toEqual(typed);
+	});
+
+	it('keeps a box set after Reset crop was asked for but before it ran', async () => {
+		const {bundle, controller, project, box} = await setup();
+		controller.open();
+		controller.setBox({x: 10, y: 5, width: 20, height: 10});
+		await controller.applyCrop();
+		const save = holdSave(bundle);
+		const flipped = controller.orient('flipH');
+		const reset = controller.resetCrop();
+		await save.started;
+		controller.setBox(typed);
+		save.release();
+		await Promise.all([flipped, reset]);
+		expect(project().transform.crop).toBeNull();
+		expect(box()).toEqual({...typed, x: 40 - typed.x - typed.width});
+	});
+
+	const resize = {width: 20, height: 15, filter: 'nearest'} as const;
+
+	it('keeps a box set while Apply resize saves', async () => {
+		const {bundle, controller, project, geometry, box} = await setup();
+		controller.open();
+		await during(
+			bundle,
+			async () => controller.applyResize(resize),
+			() => {
+				controller.setBox(typed);
+			},
+		);
+		expect(project().transform.resize).toEqual(resize);
+		expect(geometry().cropping).toBe(true);
+		expect(box()).toEqual(typed);
+	});
+
+	it('keeps a box set while Reset resize saves', async () => {
+		const {bundle, controller, project, box} = await setup();
+		controller.open();
+		await controller.applyResize(resize);
+		await during(bundle, controller.resetResize, () => {
+			controller.setBox(typed);
+		});
+		expect(project().transform.resize).toBeNull();
+		expect(box()).toEqual(typed);
+	});
+
 	it('drops an unsaved box when the saved geometry changes under it', async () => {
 		const {bundle, controller, box} = await setup();
 		controller.open();

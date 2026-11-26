@@ -4,6 +4,7 @@ import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 import {sliceShiftEffect} from './slice-shift.ts';
+import {posterizeEffect} from './posterize.ts';
 
 /**
  Static effect registry for render workers, bundling all render implementations
@@ -14,6 +15,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	channelShiftEffect,
 	channelSwapEffect,
 	sliceShiftEffect,
+	posterizeEffect,
 ];
 
 export const runtimeEffectRegistry = createRegistry(runtimeEffects);

@@ -391,7 +391,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`channelSwap` (version 1, `color`) is implemented as specified in section 16.1. Two already-specified glitch effects (`sliceShift`, `blockShuffle`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `posterize`, `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`channelSwap` and `posterize` (both version 1, `color`) are implemented as specified in section 16.1. Two already-specified glitch effects (`sliceShift`, `blockShuffle`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -657,6 +657,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/pixel-sort/  index.ts, select.ts, edges.ts, fill.ts
   effects/channel-shift.ts
   effects/channel-swap.ts
+  effects/posterize.ts
   effects/slice-shift.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
@@ -671,7 +672,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap` and `sliceShift` (section 16.1) and the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap`, `sliceShift` and `posterize` (section 16.1) and the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) have been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 

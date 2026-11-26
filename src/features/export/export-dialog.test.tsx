@@ -383,6 +383,50 @@ describe('ExportDialog', () => {
 		expect(filenameInput?.value).toBe('Sunset-20261124-090507.jpg');
 	});
 
+	it('keeps a separate AVIF quality, default 80, and exports with it', async () => {
+		const context = await setup();
+		const jobs = attachExportController(context);
+		mountDialog(context);
+		await flush();
+
+		const quality = () =>
+			document.querySelector<HTMLInputElement>('input[type="number"]')!;
+		const choose = async (label: string) => {
+			act(() => {
+				[...document.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+					.find((radio) => radio.textContent === label)!
+					.click();
+			});
+			await flush();
+		};
+
+		await choose('AVIF');
+		expect(quality().value).toBe('80');
+		setInputValue(quality(), '60');
+		act(() => {
+			quality().dispatchEvent(new FocusEvent('focusout', {bubbles: true}));
+		});
+		await flush();
+		await choose('JPEG');
+		expect(quality().value).toBe('92');
+		await choose('AVIF');
+		expect(quality().value).toBe('60');
+		expect(
+			context.store.getState().activeProject?.exportSettings,
+		).toMatchObject({format: 'avif', quality: 92, avifQuality: 60});
+
+		act(() => {
+			[...document.querySelectorAll('button')]
+				.find((button) => button.textContent === 'Download')!
+				.click();
+		});
+		await flush();
+		expect(jobs[0]?.options).toMatchObject({format: 'avif', quality: 60});
+		expect(
+			document.querySelector<HTMLInputElement>('input[type="text"]')?.value,
+		).toMatch(/\.avif$/);
+	});
+
 	it('updates live dimensions for Full, 1/2, 1/4, and Custom longest side', async () => {
 		const context = await setup({width: 4001, height: 3001});
 		mountDialog(context);

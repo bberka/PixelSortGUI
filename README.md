@@ -22,7 +22,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Compare view: toggle or hold Compare (button or `\`) to view the original image, and split view (`S`) with a draggable and keyboard-operable divider, left/right or top/bottom (`Shift+S`).
 - A separate effect stack for each side of the split view, with copy to the other side, swap sides, presets and undo for both, and export of either side.
 - Responsive editor layouts: a fixed right sidebar on desktop, a resizable and collapsible docked bottom panel on tablet, a horizontal stack strip with a three-detent bottom sheet on portrait phone, and a collapsible right drawer on landscape phone.
-- Export as PNG, JPEG, WebP (WebP only where the browser can encode it), BMP or uncompressed TIFF. JPEG and WebP have a quality setting. Size is full, half, quarter or a custom longest side, with an optional output file-size limit (compressing JPEG/WebP quality and scaling dimensions as needed). You can set the file name.
+- Export as PNG, JPEG, WebP (WebP only where the browser can encode it), AVIF, BMP or uncompressed TIFF. JPEG, WebP and AVIF have a quality setting. A large photo can take several seconds or more to export as AVIF. Size is full, half, quarter or a custom longest side, with an optional output file-size limit (lowering JPEG, WebP or AVIF quality and scaling dimensions as needed). You can set the file name.
 - Settings: theme (System, Light or True Black), storage usage and storage protection status, an "Install app" button when the browser offers installation, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, a link to their full licence texts, and a changelog that works offline.
 - A built-in guide (the question-mark button, Settings, or the `?` key) with a quick start, a reference of every effect and its settings, keyboard shortcuts, and storage and privacy notes. It works offline. A welcome card on the first launch points to import and the guide.
 - Offline use and installable PWA: after the first visit, the app loads, edits and exports offline via a precached service worker. When a new version is ready, a "Reload to update" toast appears without interrupting active edits.
@@ -33,7 +33,6 @@ These are planned and not in the app.
 
 - Crop and resize.
 - More effects.
-- AVIF export.
 - Project files and backup and restore.
 
 The order of work is in [roadmap.md](docs/specs/roadmap.md) and the feature list is in [product.md](docs/specs/product.md).

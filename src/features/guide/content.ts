@@ -313,8 +313,9 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			{
 				kind: 'list',
 				items: [
-					'Formats: PNG, JPEG, and WebP where your browser can write it.',
-					'Quality (JPEG and WebP) goes from 50 to 100 and starts at 92.',
+					'Formats: PNG, JPEG, WebP where your browser can write it, AVIF, BMP and TIFF.',
+					'Quality (JPEG, WebP and AVIF) goes from 50 to 100. It starts at 92, or 80 for AVIF.',
+					'AVIF makes small files, but a large photo takes longer to export than in other formats.',
 					'Size: full, half, quarter, or a custom longest side. Drift never scales a photo up.',
 					'Name the file, then download it. A Share button appears where your browser supports sharing files.',
 					'Export saves side B. When side A of the split view has effects, you can choose side A instead.',
@@ -323,7 +324,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			},
 			{
 				kind: 'paragraph',
-				text: 'File-size limit (off at first): pick a preset or type a limit from 10 KB to 100 MB. JPEG and WebP lower the quality first, then shrink the image. PNG can only shrink the image. Drift tells you the final size and what it changed, and says so if even the smallest image is over the limit.',
+				text: 'File-size limit (off at first): pick a preset or type a limit from 10 KB to 100 MB. JPEG, WebP and AVIF lower the quality first, then shrink the image. PNG, BMP and TIFF can only shrink the image. Drift tells you the final size and what it changed, and says so if even the smallest image is over the limit.',
 			},
 		],
 	},

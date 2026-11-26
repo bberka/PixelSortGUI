@@ -312,13 +312,13 @@ Acceptance criteria:
 
 ### F21. Extended image formats
 
-Today (`v0.1.0`), import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`). Since `v0.1.0`, the first-frame notice, the HEIC/HEIF and RAW refusals, and the explicit AVIF, BMP, and GIF picker entries and tests listed below have been implemented; the rest of this section has not.
+Today (`v0.1.0`), import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`). Since `v0.1.0`, the first-frame notice, the HEIC/HEIF and RAW refusals, and the explicit AVIF, BMP, and GIF picker entries and tests listed below, and SVG import, have been implemented; the rest of this section has not.
 
 Next-release additions (all bundled offline with MIT-compatible licences, zero runtime network calls; full browser support matrix and sources in [engine.md section 16.4](engine.md#164-extended-format-support-f21)):
 
 - **Import additions:**
   - **TIFF (`.tif`, `.tiff`):** Decoded via bundled `utif2` (MIT, ~25 to 30 KB gzipped, lazy-loaded in the worker). Supports 8-bit and 16-bit (downconverted to 8-bit sRGB) grayscale, RGB, RGBA, paletted, uncompressed, LZW, PackBits, Deflate, and JPEG-compressed TIFFs. First page/IFD is imported.
-  - **SVG (`.svg`):** Rasterised on the main thread via an `HTMLImageElement` drawn onto a canvas (scripts and external resources are blocked by the browser's SVG-as-image sandbox) into an RGBA PNG blob stored in `sources`, capped at 16,384 px per side and 50 MP. SVGs without explicit pixel dimensions default to scaling their `viewBox` to a longest side of 2,048 px.
+  - **SVG (`.svg`):** Rasterised on the main thread via an `HTMLImageElement` drawn onto a canvas (scripts and external resources are blocked by the browser's SVG-as-image sandbox) into an RGBA PNG blob stored in `sources`, capped at 16,384 px per side and 50 MP. SVGs without explicit pixel dimensions default to scaling their `viewBox` to a longest side of 2,048 px, and larger sizes are scaled down to fit the cap. `.svg` is listed in the file picker `accept` attribute.
   - **AVIF (`.avif`), BMP (`.bmp`), GIF first frame (`.gif`):** Explicitly tested in CI and listed in the file picker `accept` attribute.
   - **Animated inputs (animated GIF, WebP, APNG, AVIF):** Import the first frame per the HTML `ImageBitmap` specification and show a non-blocking toast: `"Imported the first frame of <file name>. Animation is not supported yet."`
 - **Export additions:**

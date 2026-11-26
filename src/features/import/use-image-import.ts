@@ -8,6 +8,7 @@ import {
 	problemForStorageError,
 	type ImportProblem,
 } from './import-problems.ts';
+import {isSvgFile, rasterizeSvg} from './rasterize-svg.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {
@@ -122,6 +123,27 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		resolve?.(choice);
 	};
 
+	// The raster is already within the size limits, so it needs no probe.
+	const readSvg = async (
+		file: File,
+	): Promise<AcceptedImage | ImportProblem> => {
+		const raster = await rasterizeSvg(file);
+		if (!raster.ok) {
+			return problemForCodecError(file.name, raster.error);
+		}
+
+		return {
+			input: {
+				name: file.name,
+				blob: raster.value.blob,
+				mimeType: raster.value.blob.type,
+				width: raster.value.width,
+				height: raster.value.height,
+				stripExtension: true,
+			},
+		};
+	};
+
 	const readOne = async (
 		file: File,
 		index: number,
@@ -139,6 +161,10 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		const format = await inspectImageFormat(file, file.name);
 		if (format.refused) {
 			return problemForRefusedFormat(file.name, format.refused);
+		}
+
+		if (isSvgFile(file)) {
+			return readSvg(file);
 		}
 
 		const probed = await probe(file);

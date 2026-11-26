@@ -137,6 +137,21 @@ test('Shift+Tab leaves the panel tabs and Tab returns to the selected one', asyn
 	await expect(selected).toBeFocused();
 });
 
+test('phone landscape opens the history in a side sheet that stays open after a jump', async ({
+	page,
+}) => {
+	await page.setViewportSize({width: 844, height: 390});
+	await seedHistory(page);
+	await expect(page.getByRole('tab', {name: 'History'})).toHaveCount(0);
+	await page.getByRole('button', {name: 'History', exact: true}).click();
+
+	await entry(page, 'Angle 30°').click();
+	await expectRows(page, FIVE_COMMITS, 'Angle 30°', ['Angle 50°', 'Angle 40°']);
+	const sheet = await page.getByRole('dialog', {name: 'History'}).boundingBox();
+	expect(sheet!.x + sheet!.width).toBeCloseTo(844, 0);
+	expect(sheet!.height).toBeCloseTo(390, 0);
+});
+
 async function openHistoryTab(page: Page): Promise<void> {
 	await page.getByRole('tab', {name: 'History'}).click();
 	await expect(historyList(page)).toBeVisible();

@@ -6,6 +6,7 @@
 - New effect: Bayer dither.
 - New effect: RGB noise, which adds colour or monochrome noise and dead or hot pixels.
 - New effect: Threshold invert, which inverts channels inside a key range and can show the selection.
+- New effect: Pixel smear, which drags selected pixels along an angle in fading trails.
 
 ## v0.2.0
 

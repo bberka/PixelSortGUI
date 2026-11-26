@@ -4,6 +4,7 @@ import {bayerDitherEffect} from './bayer-dither.ts';
 import {blockShuffleEffect} from './block-shuffle.ts';
 import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
+import {jpegCrushEffect} from './jpeg-crush.ts';
 import {mirrorFoldEffect} from './mirror-fold.ts';
 import {pixelSortEffect} from './pixel-sort/index.ts';
 import {sliceShiftEffect} from './slice-shift.ts';
@@ -24,6 +25,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	scanlineWaveEffect,
 	mirrorFoldEffect,
 	bayerDitherEffect,
+	jpegCrushEffect,
 ];
 
 export const runtimeEffectRegistry = createRegistry(runtimeEffects);

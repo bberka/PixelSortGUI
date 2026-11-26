@@ -1,0 +1,25 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "jc000001",
+				"type": "jpegCrush",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"blockSize": 8,
+					"quality": 12,
+					"chromaSubsample": true,
+					"corruptRate": 0.3,
+					"corruptShift": 0.8,
+					"seed": 20261126
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 0.5
+}

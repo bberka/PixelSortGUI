@@ -1,0 +1,25 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "jc000001",
+				"type": "jpegCrush",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"blockSize": 8,
+					"quality": 20,
+					"chromaSubsample": true,
+					"corruptRate": 0.5,
+					"corruptShift": 0.5,
+					"seed": 20261126
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

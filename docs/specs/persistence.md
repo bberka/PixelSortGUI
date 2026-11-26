@@ -7,6 +7,7 @@ Updated with project files (F25), full backup and restore (F17), and multi-image
 Updated with split orientation and side A fields by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with database version 2 storage rules for geometry transforms by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with cloud backup and sync (section 11) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with the project file reader, save errors and archive modules (section 8.3) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift persistence spec
 
@@ -344,14 +345,15 @@ A project file stores one complete project on disk so it can be archived or reop
 
 #### 8.3.1 Container, dependency, and file extension
 
-- **Container:** Standard ZIP archive (PKZIP with ZIP64 support).
+- **Container:** Standard ZIP archive (PKZIP). The reader accepts ZIP64 records. The writer emits none: a project file is at most 1 GB, and `fflate`'s streaming writer cannot produce them.
 - **Library:** `fflate` (npm: `fflate`, repository: `101arrowz/fflate`).
   - **Licence:** MIT (with a BSD Zero Clause exemption for SheetJS), compatible with [licensing.md](../agents/licensing.md).
   - **Size:** ~8 KB minified for base deflate/inflate plus ~3 KB for ZIP support (~11 KB minified total, zero dependencies, tree-shakeable; source: `npmjs.com/package/fflate` and `github.com/101arrowz/fflate`).
-  - **Current status:** Not yet in `package.json`. Added when `F25` or `F17` is implemented, with its notice generated into `THIRD-PARTY-NOTICES.md` via `vp run gen:notices`.
-  - **Streaming API:** Uses `fflate.Zip`, `ZipPassThrough` (STORE, compression level 0), `ZipDeflate` (DEFLATE, level 6), `fflate.Unzip`, and `UnzipInflate`, paired with `Blob.stream()` (`ReadableStream`, supported in Chrome 76+, Firefox 69+, Edge 79+, Safari 14.1+; source: MDN Web Docs / Can I use).
+  - **Current status:** In `dependencies`, with its notice generated into `THIRD-PARTY-NOTICES.md` via `vp run gen:notices`. Only the archive worker imports it, so it is not part of the initial bundle.
+  - **Streaming API:** Writing uses `fflate.Zip`, `ZipPassThrough` (STORE, compression level 0) and `ZipDeflate` (DEFLATE, level 6); reading uses `fflate.Inflate`. Both are paired with `Blob.stream()` (`ReadableStream`, supported in Chrome 76+, Firefox 69+, Edge 79+, Safari 14.1+; source: MDN Web Docs / Can I use).
+  - **No `fflate.Unzip`:** `fflate`'s writer puts entry sizes after the data (a data descriptor), and `fflate.Unzip` then finds the end of an entry by searching the data for a ZIP signature. A stored image that happens to hold those four bytes is cut short without an error (reproduced with `fflate` 0.8.3). The reader (`src/storage/zip-reader.ts`) takes entry offsets and sizes from the central directory instead.
 - **File extension:** **`.glproj`** (neutral "glitch project" extension that does not embed the app name, so renaming the app never breaks saved files or user expectations; avoids `.psg` audio and `.proj` MSBuild collisions; remains a standard ZIP inspectable by any archive tool).
-- **Default file name:** `<project-slug>-<YYYYMMDD-HHmmss>.glproj`, where `<project-slug>` is the project name lowercased, non-alphanumeric runs collapsed to `-`, trimmed to 64 characters (fallback `project`).
+- **Default file name:** `<project-slug>-<YYYYMMDD-HHmmss>.glproj`, where `<project-slug>` is the project name lowercased, non-alphanumeric runs collapsed to `-`, trimmed to 64 characters (fallback `project`). The timestamp is the device's local time, and letters and digits of any script count as alphanumeric.
 
 #### 8.3.2 Archive layout
 
@@ -364,6 +366,8 @@ sources/
   <sha256>.<ext>       (STORE level 0; primary source, plus any secondary sources referenced by F26 imageBlend)
 ```
 
+- A source extension follows its MIME type (`jpg`, `png`, `webp`, `avif`, `gif`, `bmp`, `tiff`, `svg`, else `bin`).
+- A stored thumbnail that is neither WebP nor JPEG, or is larger than the thumbnail cap, is left out.
 - Binary media entries (`sources/*`, `thumbnail.*`) use `ZipPassThrough` (STORE, level 0) because JPEG, PNG, WebP, and AVIF are already compressed. Skipping deflate avoids wasted CPU and cuts peak memory for 50 MP sources.
 - JSON metadata entries use `ZipDeflate` (level 6).
 - All entry paths use forward slashes (`/`) with no leading slash and no `..` path segments.
@@ -406,7 +410,7 @@ export type ProjectFilePayload = {
 	sourceHash: string; // primary source SHA-256
 	sourceWidth: number; // 1..16384
 	sourceHeight: number; // 1..16384
-	transform?: SourceTransform; // F20 geometry transform; omitted or IDENTITY_TRANSFORM before F20
+	transform?: SourceTransform; // F20 geometry transform; always written, read as IDENTITY_TRANSFORM when absent
 	stack: EffectStack; // exact serialised form from engine.md section 2.2
 	selectedInstanceId: string | null;
 	stackA?: EffectStack; // split side A; omitted when empty
@@ -432,9 +436,9 @@ export type ProjectHistoryPayload = {
 #### 8.3.3 Format versions and migrations
 
 - `manifest.formatVersion` starts at `1` and increments only when the archive directory layout or `manifest.json` / `project.json` schema changes incompatibly.
-- **Older version (`formatVersion < PROJECT_FORMAT_VERSION`):** Run pure sequential migrators `projectFileMigrations[v]` in memory on the parsed payload before validation and DB write.
+- **Older version (`formatVersion < PROJECT_FORMAT_VERSION`):** Run pure sequential migrators `projectFileMigrations[v]` in memory on the parsed `manifest.json`, `project.json` and `history.json` before validation and DB write. A version below 1, or one with no migrator, is invalid metadata. Version 1 is the first, so the table is empty.
 - **Newer version (`formatVersion > PROJECT_FORMAT_VERSION`):** Reject before writing anything to IndexedDB with: `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."`
-- **Optional `transform` field:** If `project.json` was exported by an app build before `F20` (no `transform` field), default to `IDENTITY_TRANSFORM` (`{rotation: 0, flipX: false, flipY: false, crop: null, resize: null}`).
+- **Optional `transform` field:** A `project.json` or history entry without `transform` reads as `IDENTITY_TRANSFORM` (`{rotation: 0, flipX: false, flipY: false, crop: null, resize: null}`). A `transform` that is present but does not fit the source size is invalid metadata: a file is never repaired the way a stored record is (section 8.1).
 - **Effect stack and instance versions:** Unknown effect `type`s and instances with `version > def.version` are **not** errors. They are kept verbatim (AC-F4.6), skipped when rendering, and reported after import via a non-blocking toast: `"Opened <name> with <N> unsupported effect(s)."` Older instance versions migrate lazily on open via `def.migrations` (section 6).
 
 #### 8.3.4 Size limits, memory behaviour, and streaming (50 MP sources)
@@ -444,15 +448,19 @@ export type ProjectHistoryPayload = {
   - Each JSON entry (`manifest.json`, `project.json`, `history.json`): max **16 MB** (`16,777,216` bytes) uncompressed.
   - `thumbnail.*`: max **2 MB** (`2,097,152` bytes) uncompressed.
   - Each `sources/*` entry: max **200 MB** (`209,715,200` bytes) uncompressed (matching the F1 single-file limit).
+  - All entries read from one project file: max **1 GB** uncompressed in total.
+  - ZIP central directory: max **16 MB**.
   - Source pixel dimensions: `1..16,384` px per side.
+- **How the caps are applied:** The declared sizes in the central directory are checked before any data is read. Inflating then counts the real bytes, in small input steps, and stops at the cap, so a header that understates a size cannot get past it.
 - **Memory behaviour on save (50 MP source):**
   - Run ZIP assembly inside a dedicated Web Worker (`src/worker/archive.worker.ts`) so the main thread never blocks.
-  - Stream each `SourceRecord.blob` through `blob.stream().getReader()` in chunks into `fflate.ZipPassThrough` (STORE, level 0), appending emitted ZIP chunks to an array passed to `new Blob(chunks, {type: 'application/zip'})`.
+  - Stream each `SourceRecord.blob` through `blob.stream().getReader()` in chunks into `fflate.ZipPassThrough` (STORE, level 0). Emitted ZIP chunks are folded into intermediate `Blob`s as they accumulate and joined into one `new Blob(parts, {type: 'application/zip'})`.
   - Never decode pixels during project-file save. Peak RAM for a 50 MP JPEG (15 to 40 MB compressed) stays around `1x` the compressed file size plus < 10 MB overhead.
 - **Memory behaviour on open (50 MP source):**
-  - Stream-read the `.glproj` `File` via `file.stream().getReader()` into `fflate.Unzip` (with `UnzipInflate` registered) inside `archive.worker.ts`.
-  - Abort immediately if any entry exceeds its uncompressed byte cap or contains an unsafe path (`..` or leading `/`).
+  - Inside `archive.worker.ts`, read the central directory from the end of the `File`, then stream only the entries the manifest names through `file.slice(...).stream()` (inflating deflated entries with `fflate.Inflate`).
+  - Abort if any entry exceeds its uncompressed byte cap or has an unsafe path (a `..` segment, a leading `/` or a backslash).
   - Collect each `sources/*` entry into a `Blob` and verify its SHA-256 one source at a time via `crypto.subtle.digest('SHA-256', ...)`. Never decode 50 MP pixels to RGBA during archive validation; only run `probeImageDimensions` if dimensions need verification on a source not yet in IndexedDB.
+- **Progress and cancel:** The worker reports the fraction of bytes done and the current entry. Cancel terminates the worker (`src/storage/archive-client.ts`), one worker per save or open.
 
 #### 8.3.5 Validation, exact error messages, and import semantics
 
@@ -463,13 +471,25 @@ Single-project import runs in two phases: **strict validation first** (zero Inde
 | Condition | Exact user-facing error message |
 |---|---|
 | File > 1 GB, or any entry exceeds its uncompressed cap (16 MB JSON, 2 MB thumbnail, 200 MB per source) | `"Can't open <file name>: the project file is too large (limit is 1 GB, or 200 MB per image)."` |
-| Not a valid ZIP, truncated stream, or `fflate` decompression error | `"Can't open <file name>: the file is damaged or not a valid project archive."` |
-| Missing `manifest.json` or `project.json`, invalid JSON, `manifest.kind !== 'project'`, or invalid required field types/ranges (`name` not 1..120 chars, `stack.instances.length > 32`, invalid `history.json` when `includesHistory` is true) | `"Can't open <file name>: missing or invalid project metadata."` |
-| `manifest.formatVersion` is not an integer or `> PROJECT_FORMAT_VERSION` | `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."` |
+| Not a valid ZIP, truncated stream, decompression error, an unsafe or duplicate entry path, an encrypted entry, or an unsupported compression method | `"Can't open <file name>: the file is damaged or not a valid project archive."` |
+| Missing `manifest.json` or `project.json`, invalid JSON, `manifest.kind !== 'project'`, no `manifest.formatVersion`, or invalid required field types/ranges (`name` not 1..120 chars, `stack.instances.length > 32`, a `sourceHash` or source size that differs from the primary source entry, invalid `history.json` when `includesHistory` is true: not 1..201 entries with consecutive `seq` values matching the project's head, min and max) | `"Can't open <file name>: missing or invalid project metadata."` |
+| `manifest.formatVersion` is present and is not an integer, or is `> PROJECT_FORMAT_VERSION` | `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."` |
 | Any entry listed in `manifest.sources` (or `primarySourceHash`) is missing from the ZIP | `"Can't open <file name>: missing image data (<path>)."` |
 | Computed SHA-256 of any `sources/*` entry does not match its declared `sha256` (or `byteLength` mismatches) | `"Can't open <file name>: image data is damaged (<path>)."` |
 | Any newly imported source cannot be decoded or has a side > 16,384 px | `"Can't open <file name>: embedded image is unreadable or exceeds 16,384 px."` |
 | Pre-flight quota check (`checkQuotaForImport` on bytes of sources not already in `sources`) fails, or transaction throws `QuotaExceededError` | Open `"Storage is full"` dialog (`src/app/storage-full-dialog.tsx`); zero records written. |
+
+The checks run in this order: file size, ZIP structure and entry caps, `manifest.json` (`kind`, then `formatVersion`, then migration), the other metadata, the sources, the thumbnail. A thumbnail that `thumbnailPath` names but the archive lacks is ignored. Effect instances are checked for their envelope fields only (`id`, `type`, `version`, `enabled`, `params`, `mix`, `blend`), so unknown effects pass through unchanged. The last two rows are checked by the import step (they need the database and an image decoder); the codec checks the rows above them.
+
+**Save errors.** The writer checks what it writes against the same rules, so it never produces a file that cannot be opened:
+
+| Condition | Exact user-facing error message |
+|---|---|
+| A source over 200 MB, a JSON entry over 16 MB, or a file over 1 GB | `"Can't save <project name>: the project is too large for a project file (limit is 1 GB, or 200 MB per image)."` |
+| A source the project refers to is not available | `"Can't save <project name>: its image data is missing."` |
+| The stored project or history breaks the rules above | `"Can't save <project name>: its stored data is invalid."` |
+
+An invalid stored transform does not stop a save: it is written as the repaired value (section 8.1).
 
 **Phase 2: Atomic commit and clash handling**
 
@@ -549,7 +569,7 @@ export type BackupSettingsPayload = {
 
 #### 8.4.2 Size limits and streaming
 
-- **Hard limits:** Whole backup ZIP max **4 GB** (`4,294,967,296` bytes, supported by `fflate` ZIP64); each JSON file max **16 MB** uncompressed; each `thumbnail.*` max **2 MB**; each `sources/*` entry max **200 MB** (`209,715,200` bytes).
+- **Hard limits:** Whole backup ZIP max **4 GB** (`4,294,967,296` bytes; `fflate`'s streaming writer emits no ZIP64 records, so `T8.4` must add them or lower this cap below 4 GiB minus 1 byte); each JSON file max **16 MB** uncompressed; each `thumbnail.*` max **2 MB**; each `sources/*` entry max **200 MB** (`209,715,200` bytes).
 - **Streaming:** Export streams each `SourceRecord.blob` through `blob.stream()` into `ZipPassThrough` (STORE, level 0) inside `archive.worker.ts`, reporting `progress` per item (`Reading`, `Packing`) and honouring `Cancel` (which terminates the worker and releases chunks within 1 s).
 
 #### 8.4.3 Selective export and selective import flow
@@ -665,14 +685,21 @@ src/storage/
   repository.ts        IndexedDB implementation (atomic transactions, ref-counted delete, history pruning)
   memory-adapter.ts    In-memory fallback when IndexedDB is unavailable
   quota.ts             estimate(), persist(), pre-flight quota check
+  project-file.ts      .glproj writer, reader, validation and format migrations (section 8.3)
+  project-file-error.ts  Error codes and exact messages, free of fflate
+  zip-reader.ts        Central directory ZIP reader with byte caps
+  archive-client.ts    Starts the archive worker, forwards progress, cancels by terminating it
   restore.ts           Startup restore coordinator (steps 1 to 7)
 tests/storage/
   repository.test.ts   CRUD, SHA-256 dedup, ref-counted delete, 201-entry history cap, atomicity
   migrations.test.ts   DB version upgrades, EffectStack and EffectInstance write-back, unknown effects
   restore.test.ts      Route resolution, deleted-project hash, fallback to MemoryStorageAdapter
+  project-file.test.ts  .glproj round trip, errors, caps, progress and cancel
+  zip-reader.test.ts   Archive structure, ZIP64 and unsafe paths
+  archive-client.test.ts  Worker messages and cancel
 ```
 
-(`project-file.ts`, `backup.ts`, and their tests are added in Milestone 8 for `F25` and `F17`.)
+(`src/worker/archive.worker.ts` runs the codec. `backup.ts` and its tests are added in Milestone 8 for `F17`.)
 
 Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev dependency). Real-browser persistence, quota exhaustion, private browsing, and offline PWA restore are verified in Spike S3 and the Playwright E2E suite ([roadmap.md](roadmap.md)).
 

@@ -38,7 +38,11 @@ import {
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
-import type {ExportFormat, SupportedEncodeFormats} from '@/codec/encode.ts';
+import {
+	isLossyFormat,
+	type ExportFormat,
+	type SupportedEncodeFormats,
+} from '@/codec/encode.ts';
 import {Button} from '@/components/ui/button';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {
@@ -74,6 +78,18 @@ import {
 import type {ExportStage} from '@/worker/protocol.ts';
 
 type ExportMode = 'download' | 'share';
+
+const FORMAT_LABELS: Readonly<Record<ExportFormat, string>> = {
+	png: 'PNG',
+	jpeg: 'JPEG',
+	webp: 'WebP',
+	bmp: 'BMP',
+	tiff: 'TIFF',
+};
+
+function isExportFormat(value: string): value is ExportFormat {
+	return Object.hasOwn(FORMAT_LABELS, value);
+}
 
 type ExportProgress = {
 	readonly stage: ExportStage;
@@ -328,7 +344,7 @@ export function ExportDialog({
 
 	const handleFormatChange = (value: string) => {
 		if (
-			(value !== 'png' && value !== 'jpeg' && value !== 'webp') ||
+			!isExportFormat(value) ||
 			(value === 'webp' && !supportedFormats.webp)
 		) {
 			return;
@@ -697,21 +713,17 @@ export function ExportDialog({
 					className="w-full"
 					onValueChange={handleFormatChange}
 				>
-					<ToggleGroupItem value="png" className="flex-1">
-						PNG
-					</ToggleGroupItem>
-					<ToggleGroupItem value="jpeg" className="flex-1">
-						JPEG
-					</ToggleGroupItem>
-					{supportedFormats.webp ? (
-						<ToggleGroupItem value="webp" className="flex-1">
-							WebP
-						</ToggleGroupItem>
-					) : null}
+					{Object.entries(FORMAT_LABELS).map(([value, label]) =>
+						value === 'webp' && !supportedFormats.webp ? null : (
+							<ToggleGroupItem key={value} value={value} className="flex-1">
+								{label}
+							</ToggleGroupItem>
+						),
+					)}
 				</ToggleGroup>
 			</div>
 
-			{effectiveFormat === 'png' ? null : (
+			{isLossyFormat(effectiveFormat) ? (
 				<div className="space-y-2">
 					<div className="flex items-center justify-between gap-2">
 						<Label htmlFor={qualityInputId}>Quality</Label>
@@ -754,7 +766,7 @@ export function ExportDialog({
 						onValueCommit={handleQualitySliderCommit}
 					/>
 				</div>
-			)}
+			) : null}
 
 			<div className="space-y-2">
 				<div className="flex items-baseline justify-between gap-2">
@@ -940,13 +952,13 @@ export function ExportDialog({
 					</div>
 				) : null}
 
-				{effectiveFormat === 'png' && sizeLimitMode !== 'off' ? (
+				{!isLossyFormat(effectiveFormat) && sizeLimitMode !== 'off' ? (
 					<p
 						data-slot="export-png-limit-note"
 						className="text-xs leading-4 text-muted-foreground"
 					>
-						PNG is lossless and scales dimensions to fit. Choose JPEG or WebP
-						for smaller files.
+						{FORMAT_LABELS[effectiveFormat]} is lossless and scales dimensions
+						to fit. Choose JPEG or WebP for smaller files.
 					</p>
 				) : null}
 			</div>

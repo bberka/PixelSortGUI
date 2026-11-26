@@ -6,6 +6,7 @@ import {
 	type CodecResult,
 } from '@/codec/decode.ts';
 import {DEFAULT_EXPORT_QUALITY} from '@/codec/encode.ts';
+import {decodeTiff, isTiff} from '@/codec/tiff.ts';
 
 /**
  The source image stored for an image over the 50 MP guaranteed maximum when
@@ -39,7 +40,7 @@ export type DownscaleCanvas = {
 
 export type DownscaleRuntime = {
 	createImageBitmap(
-		source: Blob,
+		source: Blob | ImageData,
 		options?: ImageBitmapOptions,
 	): Promise<DownscaleBitmap>;
 	createCanvas(width: number, height: number): DownscaleCanvas;
@@ -93,7 +94,17 @@ export async function downscaleToPixelCap(
 	let canvas: DownscaleCanvas | undefined;
 
 	try {
-		bitmap = await runtime.createImageBitmap(blob, {
+		let source: Blob | ImageData = blob;
+		if (await isTiff(blob)) {
+			const image = await decodeTiff(blob);
+			source = new ImageData(
+				image.data as Uint8ClampedArray<ArrayBuffer>,
+				image.width,
+				image.height,
+			);
+		}
+
+		bitmap = await runtime.createImageBitmap(source, {
 			imageOrientation: 'from-image',
 			colorSpaceConversion: 'default',
 			resizeWidth: target.width,

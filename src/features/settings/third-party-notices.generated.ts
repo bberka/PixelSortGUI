@@ -375,6 +375,12 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 		url: 'https://github.com/theKashey/use-sidecar',
 	},
 	{
+		name: 'utif2',
+		version: '4.1.0',
+		license: 'MIT',
+		url: 'https://github.com/photopea/UTIF.js',
+	},
+	{
 		name: 'workbox-core',
 		version: '7.4.1',
 		license: 'MIT',

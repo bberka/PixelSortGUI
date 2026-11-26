@@ -34,6 +34,7 @@ import {
 	useAppStore,
 	useTransientStore,
 } from '@/app/runtime-context.tsx';
+import {projectDimensions} from '@/render/render-source.ts';
 import {selectShowingOriginal} from '@/state/transient.ts';
 import {sideCanvasLabel, selectSplitOrientation} from '@/state/split-sides.ts';
 import type {RenderStatus} from '@/state/app-store.ts';
@@ -95,9 +96,16 @@ function isPointerTarget(target: EventTarget | null): boolean {
 export function CanvasStage() {
 	const {bundle} = useAppRuntime();
 	const projectId = useAppStore((state) => state.activeProjectId);
-	const sourceWidth = useAppStore((state) => state.activeProject?.sourceWidth);
-	const sourceHeight = useAppStore(
-		(state) => state.activeProject?.sourceHeight,
+	// The canvas works in pixels of the image after its geometry transform.
+	const imageWidth = useAppStore((state) =>
+		state.activeProject
+			? projectDimensions(state.activeProject).width
+			: undefined,
+	);
+	const imageHeight = useAppStore((state) =>
+		state.activeProject
+			? projectDimensions(state.activeProject).height
+			: undefined,
 	);
 	const setViewState = useAppStore((state) => state.setViewState);
 	const commitSplitPosition = useAppStore((state) => state.commitSplitPosition);
@@ -339,13 +347,10 @@ export function CanvasStage() {
 			return;
 		}
 
-		const source: Size = {
-			width: project.sourceWidth,
-			height: project.sourceHeight,
-		};
+		const source: Size = projectDimensions(project);
 		sourceRef.current = source;
 		claimView(resolveView(project.viewState, source, viewportRef.current));
-	}, [bundle, projectId, sourceWidth, sourceHeight, claimView, scheduleDraw]);
+	}, [bundle, projectId, imageWidth, imageHeight, claimView, scheduleDraw]);
 
 	const syncViewport = useCallback((): Size => {
 		const stage = stageRef.current;

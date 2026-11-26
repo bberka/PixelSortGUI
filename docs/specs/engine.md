@@ -443,7 +443,7 @@ For fully opaque images (`A = 255`), the output is bit-identical to straight-alp
 
 The main-thread render coordinator (`src/render/coordinator.ts`) owns the preview worker (one project is open at a time) and keeps a monotonically increasing `generation` number.
 
-- Every change of the effective stack (including uncommitted slider values) or of the debug view increments `generation`.
+- Every change of the effective stack (including uncommitted slider values) or of the debug view increments `generation`. So does a new source or a new geometry transform of the same source (16.3).
 - While a control is being dragged: send a `drag` render of the newest stack whenever no `drag` render is in flight. Intermediate values that arrive while one is in flight are coalesced; only the newest is sent next. There is never more than one in-flight request per level.
 - When the control is released, or 150 ms pass without a change: send a `settle` render of the newest stack.
 - On a `settle` result, if the view shows the image at more than 1.25 device pixels per `settle` proxy pixel and the proxy scale is below 1, wait 500 ms without changes, then request a `full` render (8.6).
@@ -462,7 +462,7 @@ A worker cannot read new messages while a synchronous loop runs, and `SharedArra
 
 ### 8.5 Stage cache
 
-The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source or render size changes to free memory. Debug renders read earlier stages from the cache but never write to it.
+The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. The preview worker's `sourceKey` names the source bytes and the geometry transform (16.3). Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source, the transform or the render size changes to free memory. Debug renders read earlier stages from the cache but never write to it.
 
 ### 8.6 Progressive refinement
 
@@ -531,22 +531,23 @@ Two worker scripts: `src/worker/preview.worker.ts` (one, long-lived, reloaded wi
 type StackRequest = {stack: EffectStack; debug?: {instanceId: string; view: 'selection'}};
 
 type PreviewRequest =
-	| {type: 'loadSource'; requestId: number; sourceKey: string; blob: Blob; sourceWidth: number; sourceHeight: number; caps: {drag: number; settle: number}}
+	| {type: 'loadSource'; requestId: number; sourceKey: string; blob: Blob; sourceWidth: number; sourceHeight: number; caps: {drag: number; settle: number}; transform?: SourceTransform}
+	| {type: 'setTransform'; requestId: number; sourceKey: string; transform: SourceTransform}
 	| ({type: 'render'; jobId: number; generation: number; sourceKey: string; level: 'drag' | 'settle'} & StackRequest)
 	| {type: 'cancel'; belowGeneration: number}
 	| {type: 'setDragCap'; pixels: number}
 	| {type: 'unloadSource'; sourceKey: string};
 
 type PreviewResponse =
-	| {type: 'sourceLoaded'; requestId: number; sourceKey: string; settle: {width: number; height: number}; drag: {width: number; height: number}; original: ImageBitmap}
+	| {type: 'sourceLoaded'; requestId: number; sourceKey: string; settle: {width: number; height: number}; drag: {width: number; height: number}; effective?: {width: number; height: number}; original: ImageBitmap}
 	| {type: 'progress'; jobId: number; fraction: number}
 	| {type: 'rendered'; jobId: number; generation: number; level: 'drag' | 'settle'; width: number; height: number; bitmap: ImageBitmap; totalMs: number; perInstanceMs: number[]; warnings: PipelineResult['warnings']}
 	| {type: 'cancelled'; jobId: number}
 	| {type: 'error'; jobId?: number; requestId?: number; code: EngineErrorCode; message: string};
 
 type ExportRequest =
-	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number} & StackRequest)
-	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number} & StackRequest);
+	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number; transform?: SourceTransform} & StackRequest)
+	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number; transform?: SourceTransform} & StackRequest);
 
 type ExportResponse =
 	| {type: 'progress'; jobId: number; stage: 'decode' | 'render' | 'encode'; fraction: number}
@@ -560,7 +561,8 @@ type EngineErrorCode = 'decode-failed' | 'unsupported-format' | 'too-large' | 'o
 Rules:
 
 - `ImageBitmap`s and `ArrayBuffer`s are transferred, not copied. Blobs are passed by reference.
-- `loadSource` decodes the `settle` proxy, derives the `drag` proxy, and returns the `settle`-size source as `original` for Compare.
+- `loadSource` decodes the `settle` proxy, derives the `drag` proxy, and returns the `settle`-size image as `original` for Compare. `setTransform` does the same for the source already loaded, with a new geometry transform, and is answered by `sourceLoaded` or `error` with its `requestId`.
+- `sourceWidth` and `sourceHeight` are always the dimensions of the stored source. A missing `transform` means `IDENTITY_TRANSFORM`. `effective` is the size after the transform (16.3).
 - Allocation failures (`RangeError`) become `out-of-memory`; the UI suggests a smaller export size.
 - Crash handling: if a worker fires `error` or does not answer a `render` within 30 s, the coordinator terminates it, starts a new one, reloads the source and repeats the newest request. A second crash within 60 s shows the error state in DESIGN.md section 9.
 - The main thread never runs effect code; it only draws bitmaps.
@@ -673,8 +675,8 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/scanline-wave.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
-src/worker/            protocol.ts, preview.worker.ts, export.worker.ts
-src/render/            coordinator.ts (main thread: generations, scheduling, crash restart)
+src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
+src/render/            coordinator.ts (main thread: generations, scheduling, crash restart), render-source.ts (a project's source and effective size)
 src/presets/           builtin.ts
 tests/engine/          unit and property tests
 tests/golden/          golden cases
@@ -684,7 +686,7 @@ scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-upda
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`), which no storage, worker or UI code uses yet.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal), SVG rasterised import, TIFF import and export, BMP export and AVIF export of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`) and its use by the workers, the render coordinator, the canvas and the export dialog. No storage or UI code writes a transform yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -997,6 +999,8 @@ All sums below are integers under `2^53`.
 
 **Lanczos filtering:** each source pixel contributes `P = (R * A, G * A, B * A, A)`. The horizontal pass stores `h = floorDiv(sum(wx * P) + 2^13, 2^14)` per channel, unclamped. The vertical pass forms `v = sum(wy * h)`. Output alpha is `clamp(floorDiv(vA + 2^29, 2^30), 0, 255)`. If it is 0 the pixel is `(0, 0, 0, 0)`; otherwise each colour channel is `clamp(floorDiv(2 * vC + vA, 2 * vA), 0, 255)`.
 
+**Lanczos working memory** is independent of the source height. A vertical downscale (`He < Hc`) reads the source rows once, in order: each filtered row is added into the 64-bit accumulator of every destination row whose window holds it, and a destination row is written when its last source row is in. At most 6 accumulators are open at once. Otherwise the last 6 or fewer filtered rows are kept in a ring. Row buffers are at most `208 * We` bytes (3,407,872 at `We = 16,384`), and everything the resize allocates besides its input and output images stays under 8 MiB (8,388,608 bytes) for every shape within the limits. Both forms add a destination row's source rows in the same order, so the output bytes are the same.
+
 **Bilinear**, per axis: `n = clamp((2 * d + 1) * S - D, 0, (S - 1) * 2 * D)`, `i0 = floorDiv(n, 2 * D)`, `i1 = min(i0 + 1, S - 1)`, `f = n - i0 * 2 * D`, with weights `2 * D - f` for `i0` and `f` for `i1`. The four taps have weight `w = wx * wy` and `total = 4 * We * He`; alpha and colour then follow the `boxDownscale` formulas of section 8.2.
 
 #### Functions
@@ -1005,10 +1009,15 @@ All sums below are integers under `2^53`.
 
 #### Pipeline, proxy, stage cache, and effect-parameter interaction
 
-- **Where it runs:** Before `renderStack`. `effectiveDimensions(Ws, Hs, transform)` returns `(We, He)`. `renderStack` receives `sourceWidth: We, sourceHeight: He`.
-- **Preview worker (`src/worker/preview.worker.ts`):** `loadSource` and a new `setTransform` message receive `transform: SourceTransform`. When `crop` is null and `resize` is null (identity or rotate/flip only), the worker may decode at `settle` cap and apply rotate/flip directly. When `crop` or `resize` is set, the worker decodes at a resolution sufficient to yield the full `settle` proxy (up to 4 MP of `(We, He)`), applies `applyTransform`, derives `drag` via `boxDownscale`, returns the transformed `settle` bitmap as `original` (so Compare and Split align 1:1 with the edited result), and clears the stage cache.
-- **Stage cache (`src/engine/pipeline.ts`):** `sourceKey` passed to `renderStack` becomes `${sourceHash}:${canonicalJson(transform)}` so two different crops with identical `(We, He)` never collide in the cache.
-- **Export worker (`src/worker/export.worker.ts`):** `export` and `renderFull` receive `transform: SourceTransform`. Export decodes full source, applies orientation and crop, then resizes directly to `renderSize(We, He, exportScale)` using `transform.resize?.filter ?? 'lanczos3'` (avoiding double resampling when both `transform.resize` and `exportScale < 1` are active), and runs `renderStack` with `sourceWidth: We, sourceHeight: He`.
+- **Where it runs:** Before `renderStack`. `effectiveDimensions(Ws, Hs, transform)` returns `(We, He)`. `renderStack` receives `sourceWidth: We, sourceHeight: He`. `transformKey(transform)` is the canonical JSON of a transform; a missing transform has the key of `IDENTITY_TRANSFORM`. A transform that `effectiveDimensions` rejects fails the request with an `internal` error before anything is decoded.
+- **Preview worker (`src/worker/preview.worker.ts`):** `loadSource` and `setTransform` receive the transform. It is applied once per message, when the proxies are made; renders reuse them. Let `(Pw, Ph) = renderSizeForPixelCap(We, He, settle cap)`.
+  - When `crop` and `resize` are both null (identity or rotate/flip only), the worker decodes to `(Pw, Ph)`, with width and height exchanged for 90° and 270°, and applies rotate/flip. The identity transform decodes as before and copies nothing.
+  - Otherwise, with `(Wc, Hc)` the cropped size, it decodes at `k = min(1, max(Pw / Wc, Ph / Hc))` (each source side `ceil(side * k)`, at most the side), moves each crop edge onto the decoded oriented image (`roundHalfAway(edge * decodedSide / orientedSide)`, keeping at least 1 px inside the image), and calls `applyTransform` with a resize to exactly `(Pw, Ph)` using `resize.filter`, or `lanczos3` without a resize. When `k = 1` the crop is exact, and a proxy as large as the effective image is pixel-identical to the export.
+  - It then derives `drag` with `boxDownscale`, returns the transformed `settle` image as `original` (so Compare and Split align 1:1 with the edited result) with `effective: {width: We, height: He}`, and clears the stage cache.
+- **Stage cache:** the `sourceKey` that the preview worker passes to `renderStack` is `${sourceHash}:${transformKey(transform)}`, so two different crops with identical `(We, He)` never collide in the cache. `sourceKey` in worker messages stays the source hash.
+- **Render coordinator (`src/render/coordinator.ts`):** the transform is part of the render source. A `setSource` call with the loaded source's key and a different `transformKey` starts a new generation, discards the displayed frame, `original` and `full` result, cancels preview renders in flight, sends `setTransform` and renders `settle` when it is answered. The same key and the same `transformKey` do nothing. The `source` event reports the effective dimensions as `width` and `height`, and the zoom rule for `full` renders (8.3) uses them. Exports and `full` renders send the current transform, and a restarted preview worker is loaded with it.
+- **Export worker (`src/worker/export.worker.ts`):** `export` and `renderFull` receive the transform. With the identity transform the source is decoded at the export size as in section 13. Otherwise the worker decodes the full source, then calls `applyTransform` once with the orientation and crop and a resize directly to `renderSize(We, He, exportScale)` using `transform.resize?.filter ?? 'lanczos3'` (avoiding double resampling when both `transform.resize` and `exportScale < 1` are active), and runs `renderStack` with `sourceWidth: We, sourceHeight: He`. The worker serves one job, so nothing is cached between jobs.
+- **Main thread:** the canvas places frames, `original` and `full` tiles in effective-image pixels. Export size presets and the dimensions in the export dialog come from `effectiveDimensions`.
 - **Effect parameters with `unit: 'px'`:** Stored unchanged in effective-image pixels. Cropping or resizing never rewrites effect parameters.
 
 ### 16.4 Extended format support (F21)

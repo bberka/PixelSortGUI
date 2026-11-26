@@ -250,6 +250,27 @@ describe('app store — split sides', () => {
 		expect(sideCoordinators).toHaveLength(2);
 	});
 
+	it('gives side A the same transformed source as side B', async () => {
+		const context = await setupSplit();
+		const {store, sideCoordinators} = context;
+		const transform = {
+			rotation: 90,
+			flipX: false,
+			flipY: true,
+			crop: {x: 10, y: 20, width: 200, height: 150},
+			resize: null,
+		} as const;
+		await store.getState().setEditSide('a');
+		await store.getState().addEffect('channelShift');
+		// Storage does not keep a transform until T7.14, so set it in memory.
+		store.setState({activeProject: {...active(context), transform}});
+
+		const sources = sideCoordinators[0].calls.filter(
+			(call) => call.type === 'setSource',
+		);
+		expect(sources.at(-1)).toMatchObject({source: {transform}});
+	});
+
 	it('renders only the side that changed, coalescing drags per side', async () => {
 		const context = await setupSplit();
 		const {store, coordinator, sideCoordinators} = context;

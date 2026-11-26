@@ -1,5 +1,10 @@
 import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
+import {
+	IDENTITY_TRANSFORM,
+	transformKey,
+	type SourceTransform,
+} from '../engine/transform.ts';
 import type {EffectStack, RenderLevel} from '../engine/types.ts';
 import {
 	DRAG_PIXEL_CAP_MAX,
@@ -17,8 +22,9 @@ import {
 	type StackRequest,
 } from '../worker/protocol.ts';
 
-// The main-thread scheduler of engine.md sections 8.3, 8.4 and 11. It imports
-// only types from the engine and the codec, so neither lands in the main bundle.
+// The main-thread scheduler of engine.md sections 8.3, 8.4 and 11. Apart from
+// comparing transforms it imports only types from the engine and the codec, so
+// rendering and decoding stay out of the main bundle.
 
 export const SETTLE_DELAY_MS = 150;
 export const FULL_DELAY_MS = 500;
@@ -57,16 +63,19 @@ export type RenderSource = {
 	blob: Blob;
 	width: number;
 	height: number;
+	// Geometry applied before the effects (engine.md section 16.3). Missing means the identity.
+	transform?: SourceTransform;
 };
 
 export type SourceInfo = {
 	key: string;
+	// The effective size: the image after its transform.
 	width: number;
 	height: number;
 	settle: ProxySize;
 	// At the cap in use when the source loaded. A `drag` frame carries its own size.
 	drag: ProxySize;
-	// The unprocessed image at `settle` size, for Compare.
+	// The image without effects at `settle` size, transform applied, for Compare.
 	original: ImageBitmap;
 };
 
@@ -145,7 +154,11 @@ export type ExportTask = {
 };
 
 export type RenderCoordinator = {
-	// Loads the image into the preview worker, replacing the previous one. A call with the current key does nothing.
+	/**
+	 Loads the image into the preview worker, replacing the previous one. With the
+	 current key, a changed `transform` re-renders the new geometry and anything
+	 else does nothing.
+	 */
 	setSource(source: RenderSource | undefined): void;
 	/**
 	 Renders a new effective stack. With `dragging`, the value is an intermediate
@@ -432,6 +445,7 @@ export function createRenderCoordinator(
 			sourceWidth: source.width,
 			sourceHeight: source.height,
 			caps: {drag: dragCap, settle: SETTLE_PIXEL_CAP},
+			transform: source.transform,
 		});
 	};
 
@@ -515,8 +529,9 @@ export function createRenderCoordinator(
 		frame?.level === 'settle' &&
 		frame.generation === generation &&
 		fullFailedGeneration !== generation &&
-		sourceInfo.settle.width < source.width &&
-		(viewScale * source.width) / sourceInfo.settle.width > FULL_ZOOM_THRESHOLD;
+		sourceInfo.settle.width < sourceInfo.width &&
+		(viewScale * sourceInfo.width) / sourceInfo.settle.width >
+			FULL_ZOOM_THRESHOLD;
 
 	const endFullJob = (error?: RenderError) => {
 		fullJob?.worker.terminate();
@@ -593,6 +608,7 @@ export function createRenderCoordinator(
 			blob: source.blob,
 			sourceWidth: source.width,
 			sourceHeight: source.height,
+			transform: source.transform,
 			...request,
 		});
 	};
@@ -625,10 +641,11 @@ export function createRenderCoordinator(
 				}
 
 				const previous = sourceInfo;
+				const effective = response.effective ?? source;
 				sourceInfo = {
 					key: source.key,
-					width: source.width,
-					height: source.height,
+					width: effective.width,
+					height: effective.height,
 					settle: response.settle,
 					drag: response.drag,
 					original: response.original,
@@ -822,6 +839,7 @@ export function createRenderCoordinator(
 			format: options.format,
 			quality: options.quality ?? 92,
 			maxFileSizeKb: options.maxFileSizeKb ?? null,
+			transform: from.transform,
 			stack: options.stack,
 		});
 		return cancel;
@@ -835,22 +853,59 @@ export function createRenderCoordinator(
 		discardFull();
 	};
 
+	// Everything rendered from the loaded image is out of date.
+	const discardSource = () => {
+		invalidate();
+		for (const level of PREVIEW_LEVELS) {
+			const job = inFlight[level];
+			if (job) {
+				job.discard = true;
+			}
+		}
+
+		dropSource();
+	};
+
+	// Same bytes, new geometry: the worker keeps the file and rebuilds its proxies.
+	const changeTransform = (next: RenderSource) => {
+		discardSource();
+		source = next;
+		// A failed coordinator has no worker; `retry` loads the new geometry.
+		if (failed || !preview) {
+			return;
+		}
+
+		ready = false;
+		cancelBelow(generation);
+		nextId++;
+		loadRequestId = nextId;
+		preview.post({
+			type: 'setTransform',
+			requestId: loadRequestId,
+			sourceKey: next.key,
+			transform: next.transform ?? IDENTITY_TRANSFORM,
+		});
+	};
+
 	return {
 		setSource(next) {
-			if (disposed || next?.key === source?.key) {
+			if (disposed) {
+				return;
+			}
+
+			if (next?.key === source?.key) {
+				if (
+					next &&
+					transformKey(next.transform) !== transformKey(source?.transform)
+				) {
+					changeTransform(next);
+				}
+
 				return;
 			}
 
 			const previousKey = source?.key;
-			invalidate();
-			for (const level of PREVIEW_LEVELS) {
-				const job = inFlight[level];
-				if (job) {
-					job.discard = true;
-				}
-			}
-
-			dropSource();
+			discardSource();
 			source = next;
 			dragCap = DRAG_PIXEL_CAP_MAX;
 			failed = false;

@@ -1,3 +1,4 @@
+import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
 
 export const DB_NAME = 'drift';
@@ -76,6 +77,9 @@ export type ProjectRecord = {
 	sourceHash: string;
 	sourceWidth: number;
 	sourceHeight: number;
+	// Crop, rotation, flip and resize. Missing means the identity; saved from
+	// database version 2 on (persistence.md section 8.1).
+	transform?: SourceTransform;
 	stack: EffectStack;
 	selectedInstanceId: string | null;
 	// Split side A. Absent when it has no instances.

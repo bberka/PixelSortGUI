@@ -23,6 +23,7 @@ import type {
 	RenderEvent,
 	SourceInfo,
 } from '../render/coordinator.ts';
+import {renderSourceFor} from '../render/render-source.ts';
 import {normalizeViewState, withSideA} from '../storage/helpers.ts';
 import {
 	resolveProjectStacks,
@@ -559,7 +560,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				? activeSource
 				: null;
 		const visible = compareMode === 'split';
-		const inputs = [stack, source, visible, debugView, drag];
+		const transform = activeProject?.transform;
+		const inputs = [stack, source, visible, debugView, drag, transform];
 		if (inputs.every((value, index) => value === lastSideInputs[index])) {
 			return;
 		}
@@ -571,12 +573,15 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		}
 
 		sideRenderer.sync({
-			source: {
-				key: source.sha256,
-				blob: source.blob,
-				width: source.width,
-				height: source.height,
-			},
+			// Side A shows the same transformed source as side B.
+			source: activeProject
+				? renderSourceFor(activeProject, source)
+				: {
+						key: source.sha256,
+						blob: source.blob,
+						width: source.width,
+						height: source.height,
+					},
 			request: {
 				stack: applyTransientDragToStack(stack, drag),
 				debug:
@@ -1009,12 +1014,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			return;
 		}
 
-		coordinator.setSource({
-			key: source.sha256,
-			blob: source.blob,
-			width: source.width,
-			height: source.height,
-		});
+		coordinator.setSource(renderSourceFor(hydratedProject, source));
 		dispatchStackToCoordinator(hydratedProject.stack, null, false);
 		syncCoordinatorViewScale(hydratedProject.viewState);
 	};
@@ -1190,12 +1190,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						notice: null,
 					});
 					routerEnv.setHash(formatHashRoute(nextRoute));
-					coordinator.setSource({
-						key: result.source.sha256,
-						blob: result.source.blob,
-						width: result.source.width,
-						height: result.source.height,
-					});
+					coordinator.setSource(renderSourceFor(result.project, result.source));
 					dispatchStackToCoordinator(result.project.stack, null, false);
 					syncCoordinatorViewScale(result.project.viewState);
 				}

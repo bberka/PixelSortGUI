@@ -1,7 +1,7 @@
 import {LANCZOS_TABLE} from './lanczos-table.ts';
 import {clamp, floorDiv, roundHalfAway} from './math.ts';
 import {boxDownscale} from './resample.ts';
-import {createImage, type RgbaImage} from './types.ts';
+import {canonicalJson, createImage, type RgbaImage} from './types.ts';
 
 export type RotationDegrees = 0 | 90 | 180 | 270;
 export type ResizeFilter = 'lanczos3' | 'bilinear' | 'nearest';
@@ -47,6 +47,13 @@ export const IDENTITY_TRANSFORM: SourceTransform = Object.freeze({
 	crop: null,
 	resize: null,
 });
+
+// Equal for equal geometry; a missing transform is the identity.
+export function transformKey(
+	transform: SourceTransform = IDENTITY_TRANSFORM,
+): string {
+	return canonicalJson(transform);
+}
 
 export const MAX_OUTPUT_SIDE = 16_384;
 // A larger cropped image may keep or reduce its own pixel count.
@@ -565,18 +572,87 @@ function filterRow(
 	}
 }
 
-function resizeLanczos(source: RgbaImage, size: Size): RgbaImage {
-	const {width, height} = size;
-	const target = createImage(width, height);
-	const xs = lanczosAxis(source.width, width);
-	const ys = lanczosAxis(source.height, height);
+// Adds one filtered row, times its vertical weight, into a destination row.
+function addRow(sums: Float64Array, row: Int32Array, weight: number): void {
+	for (let i = 0; i < sums.length; i++) {
+		sums[i] += weight * row[i];
+	}
+}
+
+// Unpremultiplies the vertical sums into destination row `dy`.
+function writeRow(sums: Float64Array, target: RgbaImage, dy: number): void {
 	const to = target.data;
-	const stride = width * 4;
+	const out = dy * sums.length;
+	for (let o = 0; o < sums.length; o += 4) {
+		const sumA = sums[o + 3];
+		const alpha = Math.floor((sumA + OUTPUT_DIVISOR / 2) / OUTPUT_DIVISOR);
+		if (alpha <= 0) {
+			continue;
+		}
+
+		// `Uint8ClampedArray` clamps the negative-lobe overshoot to 0..255.
+		to[out + o] = floorDiv(2 * sums[o] + sumA, 2 * sumA);
+		to[out + o + 1] = floorDiv(2 * sums[o + 1] + sumA, 2 * sumA);
+		to[out + o + 2] = floorDiv(2 * sums[o + 2] + sumA, 2 * sumA);
+		to[out + o + 3] = alpha;
+	}
+}
+
+/**
+ Vertical pass for a shrinking height, where one window spans up to the whole
+ source. Source rows are read once and added into every open window, at most 6,
+ so no filtered row has to be kept.
+ */
+function accumulateRows(
+	source: RgbaImage,
+	xs: LanczosAxis,
+	ys: LanczosAxis,
+	target: RgbaImage,
+): void {
+	const stride = target.width * 4;
+	const row = new Int32Array(stride);
+	// Sums of destination rows `done`, `done + 1`, ...
+	const open: Float64Array[] = [];
+	const spare: Float64Array[] = [];
+	let done = 0;
+	for (let sy = 0; done < target.height; sy++) {
+		for (
+			let dy = done + open.length;
+			dy < target.height && ys.first[dy] <= sy;
+			dy++
+		) {
+			open.push(spare.pop()?.fill(0) ?? new Float64Array(stride));
+		}
+
+		filterRow(source, sy, xs, row);
+		for (const [i, sums] of open.entries()) {
+			const dy = done + i;
+			addRow(sums, row, ys.weights[ys.offset[dy] + sy - ys.first[dy]]);
+		}
+
+		// Windows end in destination order.
+		while (open.length > 0 && ys.first[done] + ys.count[done] === sy + 1) {
+			const sums = open.shift()!;
+			writeRow(sums, target, done);
+			spare.push(sums);
+			done++;
+		}
+	}
+}
+
+// Vertical pass for a height that does not shrink: a window spans at most 6 rows.
+function ringRows(
+	source: RgbaImage,
+	xs: LanczosAxis,
+	ys: LanczosAxis,
+	target: RgbaImage,
+): void {
+	const stride = target.width * 4;
 	// Only the rows under the vertical window are kept, as a ring.
 	const rows = Array.from({length: ys.maxCount}, () => new Int32Array(stride));
 	const sums = new Float64Array(stride);
 	let filtered = 0;
-	for (let dy = 0; dy < height; dy++) {
+	for (let dy = 0; dy < target.height; dy++) {
 		const first = ys.first[dy];
 		const end = first + ys.count[dy];
 		for (let sy = Math.max(filtered, first); sy < end; sy++) {
@@ -587,28 +663,19 @@ function resizeLanczos(source: RgbaImage, size: Size): RgbaImage {
 		sums.fill(0);
 		for (let sy = first; sy < end; sy++) {
 			const weight = ys.weights[ys.offset[dy] + sy - first];
-			const row = rows[sy % rows.length];
-			for (let i = 0; i < stride; i++) {
-				sums[i] += weight * row[i];
-			}
+			addRow(sums, rows[sy % rows.length], weight);
 		}
 
-		const out = dy * stride;
-		for (let o = 0; o < stride; o += 4) {
-			const sumA = sums[o + 3];
-			const alpha = Math.floor((sumA + OUTPUT_DIVISOR / 2) / OUTPUT_DIVISOR);
-			if (alpha <= 0) {
-				continue;
-			}
-
-			// `Uint8ClampedArray` clamps the negative-lobe overshoot to 0..255.
-			to[out + o] = floorDiv(2 * sums[o] + sumA, 2 * sumA);
-			to[out + o + 1] = floorDiv(2 * sums[o + 1] + sumA, 2 * sumA);
-			to[out + o + 2] = floorDiv(2 * sums[o + 2] + sumA, 2 * sumA);
-			to[out + o + 3] = alpha;
-		}
+		writeRow(sums, target, dy);
 	}
+}
 
+function resizeLanczos(source: RgbaImage, size: Size): RgbaImage {
+	const target = createImage(size.width, size.height);
+	const xs = lanczosAxis(source.width, size.width);
+	const ys = lanczosAxis(source.height, size.height);
+	const vertical = size.height < source.height ? accumulateRows : ringRows;
+	vertical(source, xs, ys, target);
 	return target;
 }
 

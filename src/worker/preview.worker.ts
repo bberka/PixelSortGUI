@@ -6,7 +6,15 @@ import {
 import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
 import {createStageCache, renderStack} from '../engine/pipeline.ts';
 import {boxDownscale} from '../engine/resample.ts';
+import {
+	applyTransform,
+	IDENTITY_TRANSFORM,
+	transformKey,
+	type Size,
+	type SourceTransform,
+} from '../engine/transform.ts';
 import {Cancelled, type RgbaImage} from '../engine/types.ts';
+import {checkedDimensions, isIdentity, planProxy} from './geometry.ts';
 import type {
 	EngineErrorCode,
 	PreviewRequest,
@@ -15,6 +23,10 @@ import type {
 
 type RenderRequest = Extract<PreviewRequest, {type: 'render'}>;
 type LoadRequest = Extract<PreviewRequest, {type: 'loadSource'}>;
+// What the last `loadSource` asked for, as changed by `setTransform` and `setDragCap`.
+type Wanted = Omit<LoadRequest, 'type' | 'requestId' | 'transform'> & {
+	transform: SourceTransform;
+};
 
 type WorkerScope = {
 	postMessage(message: PreviewResponse, transfer?: Transferable[]): void;
@@ -26,6 +38,9 @@ type WorkerScope = {
 
 type Source = {
 	key: string;
+	// The key plus the transform, for the stage cache.
+	cacheKey: string;
+	// The image size after the transform.
 	width: number;
 	height: number;
 	settle: RgbaImage;
@@ -56,6 +71,7 @@ function yieldToEventLoop(): Promise<void> {
 }
 
 const cache = createStageCache();
+let wanted: Wanted | undefined;
 let source: Source | undefined;
 let loadCount = 0;
 let newestGeneration = 0;
@@ -80,11 +96,11 @@ function errorMessage(error: unknown): string {
 
 function deriveDrag(
 	settle: RgbaImage,
-	sourceWidth: number,
-	sourceHeight: number,
+	width: number,
+	height: number,
 	pixels: number,
 ): RgbaImage {
-	const size = renderSizeForPixelCap(sourceWidth, sourceHeight, pixels);
+	const size = renderSizeForPixelCap(width, height, pixels);
 	return size.width >= settle.width || size.height >= settle.height
 		? settle
 		: boxDownscale(settle, size.width, size.height);
@@ -96,18 +112,35 @@ function isStale(request: RenderRequest): boolean {
 	);
 }
 
-async function loadSource(request: LoadRequest): Promise<void> {
-	const {requestId, sourceKey, sourceWidth, sourceHeight, caps} = request;
+/**
+ Decodes the wanted source, applies its transform once and keeps the `settle`
+ and `drag` proxies of the result.
+ */
+async function loadProxies(requestId: number, spec: Wanted): Promise<void> {
+	const {sourceKey, sourceWidth, sourceHeight, transform} = spec;
 	loadCount++;
 	const load = loadCount;
 	source = undefined;
 	cache.clear();
 	try {
-		const size = renderSizeForPixelCap(sourceWidth, sourceHeight, caps.settle);
+		const effective = checkedDimensions(sourceWidth, sourceHeight, transform);
+		if ('error' in effective) {
+			scope.postMessage({
+				type: 'error',
+				requestId,
+				code: 'internal',
+				message: effective.error,
+			});
+			return;
+		}
+
+		const {width, height} = effective.size;
+		const target: Size = renderSizeForPixelCap(width, height, spec.caps.settle);
+		const plan = planProxy(sourceWidth, sourceHeight, transform, target);
 		const decoded = await decodeImage(
-			request.blob,
-			size.scale < 1
-				? {resizeWidth: size.width, resizeHeight: size.height}
+			spec.blob,
+			plan.decode.width < sourceWidth || plan.decode.height < sourceHeight
+				? {resizeWidth: plan.decode.width, resizeHeight: plan.decode.height}
 				: {},
 		);
 		if (load !== loadCount) {
@@ -120,8 +153,10 @@ async function loadSource(request: LoadRequest): Promise<void> {
 			return;
 		}
 
-		const settle = decoded.value;
-		const drag = deriveDrag(settle, sourceWidth, sourceHeight, caps.drag);
+		const settle = isIdentity(transform)
+			? decoded.value
+			: applyTransform(decoded.value, plan.transform);
+		const drag = deriveDrag(settle, width, height, spec.caps.drag);
 		const original = await createImageBitmap(toImageData(settle));
 		if (load !== loadCount) {
 			original.close();
@@ -130,8 +165,9 @@ async function loadSource(request: LoadRequest): Promise<void> {
 
 		source = {
 			key: sourceKey,
-			width: sourceWidth,
-			height: sourceHeight,
+			cacheKey: `${sourceKey}:${transformKey(transform)}`,
+			width,
+			height,
 			settle,
 			drag,
 		};
@@ -142,6 +178,7 @@ async function loadSource(request: LoadRequest): Promise<void> {
 				sourceKey,
 				settle: {width: settle.width, height: settle.height},
 				drag: {width: drag.width, height: drag.height},
+				effective: {width, height},
 				original,
 			},
 			[original],
@@ -193,7 +230,7 @@ async function runRender(request: RenderRequest, from: Source): Promise<void> {
 				sourceHeight: from.height,
 				debug: request.debug,
 				cache,
-				sourceKey: from.key,
+				sourceKey: from.cacheKey,
 				checkpoint,
 				onProgress(fraction) {
 					const now = performance.now();
@@ -284,7 +321,32 @@ scope.addEventListener('message', (event) => {
 	const message = event.data;
 	switch (message.type) {
 		case 'loadSource': {
-			void loadSource(message);
+			const {
+				type,
+				requestId,
+				transform = IDENTITY_TRANSFORM,
+				...rest
+			} = message;
+			wanted = {...rest, transform};
+			void loadProxies(requestId, wanted);
+			dropStalePending();
+			break;
+		}
+
+		case 'setTransform': {
+			const {requestId, sourceKey, transform} = message;
+			if (wanted?.sourceKey !== sourceKey) {
+				scope.postMessage({
+					type: 'error',
+					requestId,
+					code: 'internal',
+					message: 'No source is loaded for this transform.',
+				});
+				break;
+			}
+
+			wanted = {...wanted, transform};
+			void loadProxies(requestId, wanted);
 			dropStalePending();
 			break;
 		}
@@ -309,6 +371,10 @@ scope.addEventListener('message', (event) => {
 		}
 
 		case 'setDragCap': {
+			if (wanted) {
+				wanted.caps = {...wanted.caps, drag: message.pixels};
+			}
+
 			if (!source) {
 				break;
 			}
@@ -339,7 +405,10 @@ scope.addEventListener('message', (event) => {
 		}
 
 		case 'unloadSource': {
-			if (source?.key === message.sourceKey) {
+			if (wanted?.sourceKey === message.sourceKey) {
+				wanted = undefined;
+				// A decode still in flight must not bring the source back.
+				loadCount++;
 				source = undefined;
 				cache.clear();
 				dropStalePending();

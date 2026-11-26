@@ -70,6 +70,7 @@ import {
 import {Slider} from '@/components/ui/slider';
 import {ToggleGroup, ToggleGroupItem} from '@/components/ui/toggle-group';
 import type {ExportTask} from '@/render/coordinator.ts';
+import {projectDimensions} from '@/render/render-source.ts';
 import {
 	MAX_EXPORT_MAX_FILE_SIZE_KB,
 	MAX_EXPORT_QUALITY,
@@ -244,9 +245,11 @@ export function ExportDialog({
 	}, [projectId]);
 
 	const rawSettings = activeProject?.exportSettings;
-	const sourceWidth = activeProject?.sourceWidth ?? 1;
-	const sourceHeight = activeProject?.sourceHeight ?? 1;
-	const maxSourceSide = Math.max(sourceWidth, sourceHeight);
+	// Export sizes count pixels of the image after its geometry transform.
+	const {width: imageWidth, height: imageHeight} = activeProject
+		? projectDimensions(activeProject)
+		: {width: 1, height: 1};
+	const maxImageSide = Math.max(imageWidth, imageHeight);
 
 	const effectiveFormat = rawSettings
 		? effectiveFormatFor(rawSettings.format, supportedFormats)
@@ -281,9 +284,9 @@ export function ExportDialog({
 		const format = effectiveFormatFor(rawSettings.format, supportedFormats);
 		const quality = qualityFor(rawSettings, format);
 		const longestSide = clampCustomLongestSide(
-			rawSettings.customLongestSide ?? maxSourceSide,
-			sourceWidth,
-			sourceHeight,
+			rawSettings.customLongestSide ?? maxImageSide,
+			imageWidth,
+			imageHeight,
 		);
 		const initialLimitKb = rawSettings.maxFileSizeKb ?? null;
 		const initialLimitMode = fileSizeLimitModeFor(initialLimitKb);
@@ -318,9 +321,9 @@ export function ExportDialog({
 		activeProject,
 		rawSettings,
 		supportedFormats,
-		maxSourceSide,
-		sourceWidth,
-		sourceHeight,
+		maxImageSide,
+		imageWidth,
+		imageHeight,
 		exporting,
 		now,
 	]);
@@ -338,9 +341,9 @@ export function ExportDialog({
 		const maxSide = clampCustomLongestSide(
 			Number.isFinite(parsed)
 				? parsed
-				: (currentSettings.customLongestSide ?? maxSourceSide),
-			sourceWidth,
-			sourceHeight,
+				: (currentSettings.customLongestSide ?? maxImageSide),
+			imageWidth,
+			imageHeight,
 		);
 		return {
 			...currentSettings,
@@ -350,8 +353,8 @@ export function ExportDialog({
 
 	const outputDimensions = computeOutputDimensions(
 		liveSettings,
-		sourceWidth,
-		sourceHeight,
+		imageWidth,
+		imageHeight,
 	);
 	const shareSupported = canShare(effectiveFormat);
 	const offersSide = (activeProject.stackA?.instances.length ?? 0) > 0;
@@ -422,9 +425,9 @@ export function ExportDialog({
 		const nextCustomLongestSide =
 			nextSizeMode === 'custom'
 				? clampCustomLongestSide(
-						liveSettings.customLongestSide ?? maxSourceSide,
-						sourceWidth,
-						sourceHeight,
+						liveSettings.customLongestSide ?? maxImageSide,
+						imageWidth,
+						imageHeight,
 					)
 				: liveSettings.customLongestSide;
 		if (nextSizeMode === 'custom' && nextCustomLongestSide !== null) {
@@ -443,9 +446,9 @@ export function ExportDialog({
 		const next = clampCustomLongestSide(
 			Number.isFinite(parsed)
 				? parsed
-				: (currentSettings.customLongestSide ?? maxSourceSide),
-			sourceWidth,
-			sourceHeight,
+				: (currentSettings.customLongestSide ?? maxImageSide),
+			imageWidth,
+			imageHeight,
 		);
 		setLongestSideDraft(String(next));
 		if (next !== activeProject.exportSettings.customLongestSide) {
@@ -562,9 +565,9 @@ export function ExportDialog({
 		const finalLongest =
 			liveSettings.sizeMode === 'custom'
 				? clampCustomLongestSide(
-						Number.isFinite(parsedLongest) ? parsedLongest : maxSourceSide,
-						sourceWidth,
-						sourceHeight,
+						Number.isFinite(parsedLongest) ? parsedLongest : maxImageSide,
+						imageWidth,
+						imageHeight,
 					)
 				: liveSettings.customLongestSide;
 		const finalMaxFileSizeKb =
@@ -610,14 +613,14 @@ export function ExportDialog({
 
 		const requestedDims = computeOutputDimensions(
 			finalSettings,
-			sourceWidth,
-			sourceHeight,
+			imageWidth,
+			imageHeight,
 		);
 
 		let currentTask: ExportTask | null = null;
 		const task = bundle.coordinator.exportImage({
 			stack: sideStack(activeProject, offersSide ? exportSide : 'b'),
-			scale: toExportScale(finalSettings, sourceWidth, sourceHeight),
+			scale: toExportScale(finalSettings, imageWidth, imageHeight),
 			format: effectiveFormat,
 			quality: finalQuality,
 			maxFileSizeKb: finalMaxFileSizeKb,
@@ -878,7 +881,7 @@ export function ExportDialog({
 							type="number"
 							inputMode="numeric"
 							min={1}
-							max={maxSourceSide}
+							max={maxImageSide}
 							step={1}
 							disabled={exporting}
 							value={longestSideDraft}

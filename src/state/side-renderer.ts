@@ -1,3 +1,4 @@
+import {transformKey} from '../engine/transform.ts';
 import {canonicalStackJson} from '../engine/types.ts';
 import type {
 	RenderCoordinator,
@@ -73,7 +74,7 @@ export function createSideRenderer({
 				coordinator.setViewScale(viewScale);
 			}
 
-			const signature = `${target.source.key}\n${target.request.debug?.instanceId ?? ''}\n${canonicalStackJson(target.request.stack)}`;
+			const signature = `${target.source.key}\n${transformKey(target.source.transform)}\n${target.request.debug?.instanceId ?? ''}\n${canonicalStackJson(target.request.stack)}`;
 			const wasDragging = dragging;
 			dragging = target.dragging;
 			if (signature !== sent) {

@@ -1,6 +1,8 @@
 import {useEffect, useId, useRef, useState, type RefObject} from 'react';
 import {ArrowLeftIcon, ImageIcon, ImagesIcon, UploadIcon} from 'lucide-react';
-import {useAppStore} from '@/app/runtime-context.tsx';
+import {SourcePicture} from './source-picture.tsx';
+import {useSourcePreview} from './use-source-preview.ts';
+import {useAppRuntime, useAppStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover';
 import {ScrollArea} from '@/components/ui/scroll-area';
@@ -16,8 +18,9 @@ import {formatDimensions} from '@/features/library/library-format.ts';
 import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 
-// 44 px on a coarse pointer and on a phone layout (DESIGN.md section 4).
-export const IMAGE_BUTTON_CLASS = 'pointer-coarse:h-11';
+// 44 px on a coarse pointer and on the phone and tablet widths (DESIGN.md
+// section 4).
+export const IMAGE_BUTTON_CLASS = 'pointer-coarse:h-11 max-lg:h-11';
 
 export type ImageChooserProps = {
 	// Of the "Choose image" button.
@@ -32,6 +35,50 @@ export type ImageChooserProps = {
 };
 
 type View = 'sources' | 'library';
+
+// The project's library thumbnail. A project never opened has none yet, so its
+// photo stands in.
+function TilePicture({
+	projectId,
+	sourceHash,
+}: {
+	readonly projectId: string;
+	readonly sourceHash: string;
+}) {
+	const {repository} = useAppRuntime().bundle;
+	const [bare, setBare] = useState(false);
+	const preview = useSourcePreview(bare ? sourceHash : '', undefined);
+
+	useEffect(() => {
+		let cancelled = false;
+		void repository
+			.getThumbnail(projectId)
+			.then((thumbnail) => {
+				if (!cancelled) {
+					setBare(!thumbnail);
+				}
+			})
+			.catch(() => {});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId, repository]);
+
+	return (
+		<span
+			aria-hidden="true"
+			className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-sm bg-muted"
+		>
+			{preview.status === 'ready' && preview.image ? (
+				<SourcePicture image={preview.image} />
+			) : (
+				<ImageIcon className="size-5 text-muted-foreground" />
+			)}
+			<CardThumbnail visible projectId={projectId} />
+		</span>
+	);
+}
 
 function LibraryGrid({
 	value,
@@ -78,13 +125,10 @@ function LibraryGrid({
 									onChoose(project.sourceHash);
 								}}
 							>
-								<span className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-sm bg-muted">
-									<ImageIcon
-										aria-hidden="true"
-										className="size-5 text-muted-foreground"
-									/>
-									<CardThumbnail visible projectId={project.id} />
-								</span>
+								<TilePicture
+									projectId={project.id}
+									sourceHash={project.sourceHash}
+								/>
 								<span className="block w-full truncate px-0.5 pt-1 text-xs leading-4 font-medium">
 									{project.name}
 								</span>
@@ -212,7 +256,7 @@ export function ImageChooser({
 			size="sm"
 			aria-describedby={describedBy}
 			aria-disabled={busy || undefined}
-			className={cn(IMAGE_BUTTON_CLASS, phone && 'h-11', busy && 'opacity-50')}
+			className={cn(IMAGE_BUTTON_CLASS, busy && 'opacity-50')}
 		>
 			Choose image
 		</Button>

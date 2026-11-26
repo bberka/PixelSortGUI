@@ -861,6 +861,15 @@ for (const viewport of PROOF_VIEWPORTS) {
 		await addEffect(page, 'Image blend');
 		await pickFromLibrary(page, 'red');
 		await expectPreview(page, [...RED, 255]);
+		// 44 px targets below the desktop width (DESIGN.md section 4).
+		if (viewport.width < 1024) {
+			for (const control of [chooseButton(page), clearButton(page)]) {
+				expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(
+					44,
+				);
+			}
+		}
+
 		await assertNoA11yViolations(page);
 		await chooseButton(page).click();
 		await chooser(page).getByRole('button', {name: 'From library'}).click();

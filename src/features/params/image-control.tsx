@@ -1,16 +1,16 @@
-import {useEffect, useRef} from 'react';
+import {useRef} from 'react';
 import {ImageIcon, XIcon} from 'lucide-react';
 import type {ImageSpec} from './format.ts';
 import {controlId} from './ids.ts';
 import {ImageChooser} from './image-chooser.tsx';
 import {useImagePick, type ImageTarget} from './image-pick.tsx';
 import {ParamRow} from './param-row.tsx';
+import {SourcePicture} from './source-picture.tsx';
 import {useSourcePreview, type SourcePreview} from './use-source-preview.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
 import {formatDimensions} from '@/features/library/library-format.ts';
-import {cn} from '@/lib/utils';
 
 export type ImageControlProps = {
 	readonly instanceId: string;
@@ -20,29 +20,7 @@ export type ImageControlProps = {
 };
 
 function Thumbnail({preview}: {readonly preview: SourcePreview}) {
-	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const image = preview.status === 'ready' ? preview.image : undefined;
-
-	useEffect(() => {
-		const canvas = canvasRef.current;
-		if (!canvas || !image) {
-			return;
-		}
-
-		canvas.width = image.width;
-		canvas.height = image.height;
-		canvas
-			.getContext('2d')
-			?.putImageData(
-				new ImageData(
-					image.data as Uint8ClampedArray<ArrayBuffer>,
-					image.width,
-					image.height,
-				),
-				0,
-				0,
-			);
-	}, [image]);
 
 	return (
 		<span
@@ -51,7 +29,7 @@ function Thumbnail({preview}: {readonly preview: SourcePreview}) {
 			data-slot="image-thumbnail"
 		>
 			{image ? (
-				<canvas ref={canvasRef} className="size-full object-cover" />
+				<SourcePicture image={image} />
 			) : (
 				<ImageIcon className="size-4 text-muted-foreground" />
 			)}
@@ -136,7 +114,7 @@ export function ImageControl({
 									variant="ghost"
 									size="icon-sm"
 									aria-label="Clear image"
-									className={cn('pointer-coarse:size-11 max-sm:size-11')}
+									className="pointer-coarse:size-11 max-lg:size-11"
 									onClick={() => {
 										choose(target, '');
 										// This button goes away with the image.

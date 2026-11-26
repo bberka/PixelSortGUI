@@ -236,6 +236,16 @@ describe('ImageControl', () => {
 		expect(await repository.getSourceSizes()).toStrictEqual(sizes);
 	});
 
+	it('shows the photo of a project that has no thumbnail yet', async () => {
+		await setup();
+		await press('Choose image');
+		await press('From library');
+
+		expect(
+			document.querySelectorAll('[aria-label="Library images"] canvas'),
+		).toHaveLength(2);
+	});
+
 	it('stores a device file with its commit', async () => {
 		const {image, repository} = await setup();
 

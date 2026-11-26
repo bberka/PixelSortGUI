@@ -1,5 +1,6 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
+import {bayerDitherEffect} from './bayer-dither.ts';
 import {blockShuffleEffect} from './block-shuffle.ts';
 import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
@@ -22,6 +23,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	posterizeEffect,
 	scanlineWaveEffect,
 	mirrorFoldEffect,
+	bayerDitherEffect,
 ];
 
 export const runtimeEffectRegistry = createRegistry(runtimeEffects);

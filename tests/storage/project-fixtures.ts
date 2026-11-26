@@ -81,6 +81,7 @@ export function projectInput(
 		id: '8b8f1c5e-2f0a-4c47-9d7e-0c0f4a7d2b11',
 		name: 'Night Drive / take 2',
 		sourceHash: source.sha256,
+		referencedSourceHashes: [source.sha256],
 		sourceWidth: source.width,
 		sourceHeight: source.height,
 		transform: CROPPED,

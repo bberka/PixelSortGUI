@@ -175,17 +175,19 @@ async function upgrade(idb: IDBFactory) {
 	return {database, repository};
 }
 
-describe('database upgrade from version 1 to 2 (persistence.md section 8.1)', () => {
+describe('database upgrade from version 1 (persistence.md section 8.1)', () => {
 	it('adds geometry to every project and history entry and keeps all other data', async () => {
 		const idb = new IDBFactory();
 		await createV1Database(idb);
 		const {database, repository} = await upgrade(idb);
 
-		expect(DB_VERSION).toBe(2);
-		expect(database.version).toBe(2);
-		expect((await repository.getSchemaInfo())?.dbVersion).toBe(2);
+		expect(database.version).toBe(DB_VERSION);
+		expect((await repository.getSchemaInfo())?.dbVersion).toBe(DB_VERSION);
 
+		// Version 3 ran after version 2 and kept what it wrote.
+		const references = {referencedSourceHashes: ['a'.repeat(64)]};
 		const identity = {
+			...references,
 			transform: IDENTITY_TRANSFORM,
 			effectiveWidth: 400,
 			effectiveHeight: 300,
@@ -201,12 +203,14 @@ describe('database upgrade from version 1 to 2 (persistence.md section 8.1)', ()
 		// A stored transform survives and sizes the record.
 		expect(upgraded.get('turned')).toEqual({
 			...projects[2],
+			...references,
 			effectiveWidth: 300,
 			effectiveHeight: 400,
 		});
 		// An invalid one is left for the read-time repair and never blocks opening.
 		expect(upgraded.get('broken')).toEqual({
 			...projects[3],
+			...references,
 			effectiveWidth: 400,
 			effectiveHeight: 300,
 		});
@@ -260,11 +264,13 @@ describe('database upgrade from version 1 to 2 (persistence.md section 8.1)', ()
 		repository.close();
 	});
 
-	it('creates a fresh database at version 2', async () => {
+	it('creates a fresh database at the current version', async () => {
 		const opened = await openStorage({indexedDB: new IDBFactory()});
 
 		expect(opened.persistence).toBe('indexeddb');
-		expect((await opened.repository.getSchemaInfo())?.dbVersion).toBe(2);
+		expect((await opened.repository.getSchemaInfo())?.dbVersion).toBe(
+			DB_VERSION,
+		);
 		opened.repository.close();
 	});
 });

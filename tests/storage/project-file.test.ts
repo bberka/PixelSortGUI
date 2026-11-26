@@ -200,7 +200,13 @@ describe('readProjectFile', () => {
 		const input = projectInput();
 		const contents = await readProjectFile(await saved(input), NAME);
 
-		const {effectiveWidth, effectiveHeight, ...project} = input.project;
+		// Derived on import, so `project.json` leaves them out.
+		const {
+			effectiveWidth,
+			effectiveHeight,
+			referencedSourceHashes,
+			...project
+		} = input.project;
 		expect(contents.project).toStrictEqual({
 			...project,
 			exportSettings: input.project.exportSettings,

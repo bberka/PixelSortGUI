@@ -1,5 +1,6 @@
 // The backup format: types, limits and validation (persistence.md section 8.4).
 // `backup.ts` reads and writes the archive.
+import {projectSourceHashes, stripSourceReferences} from './extra-sources.ts';
 import {
 	booleanValue,
 	ensure,
@@ -141,21 +142,27 @@ export function backupFileName(date: Date): string {
 	return `glitch-backup-${fileTimestamp(date)}.zip`;
 }
 
-// The sources a project needs. T8.8 adds the `image` parameters of the stacks
-// and history here (persistence.md section 8.4.4).
-export function backupSourceHashes(
-	project: Pick<ProjectRecord, 'sourceHash'>,
-): string[] {
-	return [project.sourceHash];
-}
+// The sources a project needs in a backup that holds the history given
+// (persistence.md section 8.4.4).
+export const backupSourceHashes = projectSourceHashes;
 
 // The image bytes of a backup of `projects`, each shared source counted once.
 export function estimateBackupBytes(
-	projects: ReadonlyArray<Pick<ProjectRecord, 'sourceHash'>>,
+	projects: ReadonlyArray<
+		Pick<
+			ProjectRecord,
+			'sourceHash' | 'stack' | 'stackA' | 'referencedSourceHashes'
+		>
+	>,
 	sourceSizes: Readonly<Record<string, number>>,
+	includeHistory = true,
 ): number {
 	const hashes = new Set(
-		projects.flatMap((project) => backupSourceHashes(project)),
+		projects.flatMap((project) =>
+			includeHistory
+				? project.referencedSourceHashes
+				: backupSourceHashes(project),
+		),
 	);
 	let bytes = 0;
 	for (const hash of hashes) {
@@ -291,7 +298,7 @@ function presetValue(value: unknown): UserPresetRecord {
 		id,
 		name,
 		nameLower: name.toLocaleLowerCase('en'),
-		stack: stackValue(preset.stack, 'preset stack'),
+		stack: stripSourceReferences(stackValue(preset.stack, 'preset stack')),
 		createdAt: timestamp(preset.createdAt, 'preset createdAt'),
 		updatedAt: timestamp(preset.updatedAt, 'preset updatedAt'),
 	};

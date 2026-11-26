@@ -54,6 +54,7 @@ export * from './backup-error.ts';
 export * from './backup-format.ts';
 export * from './backup-transfer.ts';
 export * from './db.ts';
+export * from './extra-sources.ts';
 export * from './geometry.ts';
 export * from './helpers.ts';
 export * from './memory-adapter.ts';

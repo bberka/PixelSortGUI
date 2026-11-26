@@ -1,7 +1,7 @@
 import type {ComponentProps, ReactNode} from 'react';
 import {ImportFeedback} from './import-feedback.tsx';
 import {useImageImport, type ImageImportOptions} from './use-image-import.ts';
-import {useImagePicker} from './use-image-picker.ts';
+import {IMPORT_ACCEPT, useImagePicker} from './use-image-picker.ts';
 import {Button} from '@/components/ui/button';
 
 export type ImportImagesButtonProps = {
@@ -39,7 +39,7 @@ export function ImportImagesButton({
 				multiple
 				hidden
 				type="file"
-				accept="image/*"
+				accept={IMPORT_ACCEPT}
 				onChange={picker.onInputChange}
 			/>
 			<Button

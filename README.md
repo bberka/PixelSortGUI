@@ -4,7 +4,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 
 ## What works today
 
-- Import photos with a file picker or by dragging files onto the window. Several files can be imported at once. Any format your browser can decode works, such as JPEG, PNG, WebP, GIF (first frame), BMP and AVIF. Images over 16,384 pixels on the longest side or over 200 MB are refused. Images over 50 megapixels offer a choice to import at 50 megapixels or import anyway.
+- Import photos with a file picker or by dragging files onto the window. Several files can be imported at once. Any format your browser can decode works, such as JPEG, PNG, WebP, GIF, BMP and AVIF. An animated GIF, WebP, APNG or AVIF imports its first frame and shows a notice. HEIC/HEIF and camera RAW files are refused with a message saying what to convert them to. Images over 16,384 pixels on the longest side or over 200 MB are refused. Images over 50 megapixels offer a choice to import at 50 megapixels or import anyway.
 - Library of saved projects with thumbnails. Open, rename, duplicate and delete a project.
 - Effect stack: add effects, turn each one on or off, reorder, duplicate and remove them.
 - Pixel sort effect: sort direction by angle, selection by threshold range, edges or whole line, interval length with jitter and skip chance, sort key (luma, lightness, value, saturation, hue, red, green, blue), order (ascending, descending, shuffle, random direction), and fill (sort, average, gradient).

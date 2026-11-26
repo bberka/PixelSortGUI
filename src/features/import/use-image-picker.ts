@@ -1,6 +1,12 @@
 import {useRef, type ChangeEvent, type RefObject} from 'react';
 
 /**
+ The picker filter. AVIF, BMP, and GIF are listed by extension because not
+ every operating system maps them to an `image/*` type.
+ */
+export const IMPORT_ACCEPT = 'image/*,.avif,.bmp,.gif';
+
+/**
  The hidden file input behind every import trigger (F1, AC-F19.1). Activating
  the visible button opens the system picker from a keyboard or a pointer
  alike; the input is cleared after each pick so choosing the same file twice

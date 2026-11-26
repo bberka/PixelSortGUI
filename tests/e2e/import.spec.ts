@@ -113,7 +113,7 @@ test('three JPEGs chosen through the picker become three projects and the first 
 		.locator('input[type="file"]')
 		.first()
 		.getAttribute('accept');
-	expect(accept).toBe('image/*');
+	expect(accept).toBe('image/*,.avif,.bmp,.gif');
 
 	const fixtures = [
 		await makeImage(page, {

@@ -242,6 +242,229 @@ function makeDecodeError(error: unknown): CodecError {
 	};
 }
 
+export type RefusedFormat = 'heic' | 'raw';
+
+export type FormatInfo = {
+	/**
+	Set when the file is a format the app refuses to import.
+	*/
+	readonly refused?: RefusedFormat;
+	readonly animated: boolean;
+};
+
+const RAW_EXTENSION = /\.(?:dng|cr2|cr3|nef|arw|raf|orf|rw2)$/i;
+const HEIC_EXTENSION = /\.(?:heic|heif)$/i;
+const RAW_SIGNATURES = ['FUJIFILMCCD-RAW', 'IIRO', 'IIRS', 'MMOR', 'IIU\0'];
+const HEVC_BRANDS = new Set([
+	'heic',
+	'heix',
+	'heim',
+	'heis',
+	'hevc',
+	'hevx',
+	'hevm',
+	'hevs',
+]);
+const HEIF_CONTAINER_BRANDS = new Set(['mif1', 'msf1']);
+const HEADER_BYTES = 512;
+const READ_CHUNK_BYTES = 65_536;
+
+type ByteReader = (offset: number, length: number) => Promise<Uint8Array>;
+
+/**
+ Serves small reads from one cached chunk, so walking a large file block by
+ block never holds the whole file in memory. A read past the end is short.
+ */
+function createByteReader(blob: Blob): ByteReader {
+	let start = 0;
+	let chunk = new Uint8Array();
+
+	return async (offset, length) => {
+		const end = Math.min(offset + length, blob.size);
+		if (offset < start || end > start + chunk.length) {
+			start = offset;
+			chunk = new Uint8Array(
+				await blob
+					.slice(offset, offset + Math.max(length, READ_CHUNK_BYTES))
+					.arrayBuffer(),
+			);
+		}
+
+		return chunk.subarray(offset - start, Math.max(offset, end) - start);
+	};
+}
+
+function ascii(bytes: Uint8Array, offset: number, length: number): string {
+	return String.fromCodePoint(...bytes.subarray(offset, offset + length));
+}
+
+function uint32(bytes: Uint8Array, offset: number): number {
+	return new DataView(bytes.buffer, bytes.byteOffset).getUint32(offset);
+}
+
+/**
+ The major brand followed by the compatible brands of an ISO base media file
+ (HEIC, AVIF, CR3), or an empty list for any other file.
+ */
+function ftypBrands(header: Uint8Array): readonly string[] {
+	if (header.length < 12 || ascii(header, 4, 4) !== 'ftyp') {
+		return [];
+	}
+
+	const end = Math.min(uint32(header, 0), header.length);
+	const brands = [ascii(header, 8, 4)];
+	for (let offset = 16; offset + 4 <= end; offset += 4) {
+		brands.push(ascii(header, offset, 4));
+	}
+
+	return brands;
+}
+
+function refusedFormat(
+	header: Uint8Array,
+	fileName: string,
+): RefusedFormat | undefined {
+	const brands = ftypBrands(header);
+	const major = brands[0] ?? '';
+	const isCr2 = ascii(header, 0, 4) === 'II*\0' && ascii(header, 8, 2) === 'CR';
+
+	if (
+		RAW_EXTENSION.test(fileName) ||
+		isCr2 ||
+		major === 'crx ' ||
+		RAW_SIGNATURES.some(
+			(signature) => ascii(header, 0, signature.length) === signature,
+		)
+	) {
+		return 'raw';
+	}
+
+	if (
+		HEIC_EXTENSION.test(fileName) ||
+		HEVC_BRANDS.has(major) ||
+		(HEIF_CONTAINER_BRANDS.has(major) &&
+			!brands.includes('avif') &&
+			!brands.includes('avis'))
+	) {
+		return 'heic';
+	}
+
+	return undefined;
+}
+
+/**
+ Walks the GIF block structure until a second image block, the trailer, or the
+ end of the file.
+ */
+async function isAnimatedGif(read: ByteReader): Promise<boolean> {
+	// Bit 7 flags a color table of 2 ^ (low three bits + 1) RGB entries.
+	const colorTableBytes = (packed: number) =>
+		packed >= 128 ? 3 * 2 ** ((packed % 8) + 1) : 0;
+	const skipSubBlocks = async (from: number): Promise<number | undefined> => {
+		let offset = from;
+		for (;;) {
+			const [size] = await read(offset, 1);
+			if (size === undefined) {
+				return undefined;
+			}
+
+			offset += size + 1;
+			if (size === 0) {
+				return offset;
+			}
+		}
+	};
+
+	const screen = await read(0, 13);
+	let offset: number | undefined = 13 + colorTableBytes(screen[10] ?? 0);
+	let frames = 0;
+
+	while (offset !== undefined) {
+		const [introducer] = await read(offset, 1);
+		if (introducer === 0x21) {
+			offset = await skipSubBlocks(offset + 2);
+		} else if (introducer === 0x2c) {
+			frames++;
+			if (frames > 1) {
+				return true;
+			}
+
+			const descriptor = await read(offset, 10);
+			// Descriptor, local color table, then the LZW minimum code size byte.
+			offset = await skipSubBlocks(
+				offset + 11 + colorTableBytes(descriptor[9] ?? 0),
+			);
+		} else {
+			return false;
+		}
+	}
+
+	return false;
+}
+
+async function isAnimatedPng(read: ByteReader): Promise<boolean> {
+	let offset = 8;
+	for (;;) {
+		const chunk = await read(offset, 12);
+		if (chunk.length < 8) {
+			return false;
+		}
+
+		const type = ascii(chunk, 4, 4);
+		if (type === 'acTL') {
+			return chunk.length === 12 && uint32(chunk, 8) > 1;
+		}
+
+		if (type === 'IDAT') {
+			return false;
+		}
+
+		offset += uint32(chunk, 0) + 12;
+	}
+}
+
+async function isAnimated(
+	header: Uint8Array,
+	read: ByteReader,
+): Promise<boolean> {
+	if (['GIF87a', 'GIF89a'].includes(ascii(header, 0, 6))) {
+		return isAnimatedGif(read);
+	}
+
+	if (ascii(header, 0, 8) === '\u0089PNG\r\n\u001A\n') {
+		return isAnimatedPng(read);
+	}
+
+	// Bit 1 of the VP8X flags byte is the animation flag.
+	return ascii(header, 0, 4) === 'RIFF' && ascii(header, 8, 4) === 'WEBP'
+		? ascii(header, 12, 4) === 'VP8X' &&
+				Math.floor((header[20] ?? 0) / 2) % 2 === 1
+		: ftypBrands(header).includes('avis');
+}
+
+/**
+ Reads the header of a chosen file before it reaches the browser decoder:
+ whether it is a refused format (HEIC/HEIF, camera RAW) and whether it holds
+ an animation, of which only the first frame is imported (engine.md section
+ 16.4). A file that cannot be read or parsed is left to the decoder.
+ */
+export async function inspectImageFormat(
+	blob: Blob,
+	fileName: string,
+): Promise<FormatInfo> {
+	try {
+		const read = createByteReader(blob);
+		const header = await read(0, HEADER_BYTES);
+		const refused = refusedFormat(header, fileName);
+		return refused
+			? {refused, animated: false}
+			: {animated: await isAnimated(header, read)};
+	} catch {
+		const refused = refusedFormat(new Uint8Array(), fileName);
+		return {refused, animated: false};
+	}
+}
+
 export async function probeImageDimensions(
 	blob: Blob,
 	runtime: DecodeRuntime = getDefaultRuntime(),

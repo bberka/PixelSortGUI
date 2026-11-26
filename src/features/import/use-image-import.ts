@@ -1,7 +1,10 @@
 import {useEffect, useRef, useState} from 'react';
+import {toast} from 'sonner';
 import {downscaleToPixelCap, type DownscaledSource} from './downscale.ts';
 import {
+	firstFrameNotice,
 	problemForCodecError,
+	problemForRefusedFormat,
 	problemForStorageError,
 	type ImportProblem,
 } from './import-problems.ts';
@@ -10,6 +13,7 @@ import {useAppStore} from '@/app/runtime-context.tsx';
 import {
 	checkDimensionLimits,
 	checkFileSizeLimit,
+	inspectImageFormat,
 	probeImageDimensions,
 	type CodecResult,
 	type ImageDimensions,
@@ -58,6 +62,14 @@ export type ImageImport = {
 };
 
 const SAVE_FRACTION = 0.95;
+
+type AcceptedImage = {
+	readonly input: CreateProjectInput;
+	/**
+	Set for an animated file: the name to announce after it is saved.
+	*/
+	readonly animatedFileName?: string;
+};
 
 /**
  The import flow: every chosen file is read and checked (size, decodability,
@@ -114,7 +126,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		file: File,
 		index: number,
 		total: number,
-	): Promise<CreateProjectInput | ImportProblem | null> => {
+	): Promise<AcceptedImage | ImportProblem | null> => {
 		const sizeError = checkFileSizeLimit(file.size);
 		if (sizeError) {
 			return problemForCodecError(file.name, sizeError);
@@ -124,6 +136,11 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 			label: `Checking ${file.name} (${index + 1} of ${total})`,
 			fraction: (index + 0.5) / total,
 		});
+		const format = await inspectImageFormat(file, file.name);
+		if (format.refused) {
+			return problemForRefusedFormat(file.name, format.refused);
+		}
+
 		const probed = await probe(file);
 		if (!probed.ok) {
 			return problemForCodecError(file.name, probed.error);
@@ -169,12 +186,15 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		}
 
 		return {
-			name: file.name,
-			blob,
-			mimeType: mimeType || undefined,
-			width: sourceWidth,
-			height: sourceHeight,
-			stripExtension: true,
+			input: {
+				name: file.name,
+				blob,
+				mimeType: mimeType || undefined,
+				width: sourceWidth,
+				height: sourceHeight,
+				stripExtension: true,
+			},
+			animatedFileName: format.animated ? file.name : undefined,
 		};
 	};
 
@@ -185,7 +205,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 
 		busyRef.current = true;
 		void (async () => {
-			const accepted: CreateProjectInput[] = [];
+			const accepted: AcceptedImage[] = [];
 			const found: ImportProblem[] = [];
 			try {
 				for (const [index, file] of files.entries()) {
@@ -219,7 +239,13 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 				});
 
 				try {
-					await importImages(accepted);
+					await importImages(accepted.map((image) => image.input));
+					for (const {animatedFileName} of accepted) {
+						if (animatedFileName !== undefined) {
+							toast.message(firstFrameNotice(animatedFileName));
+						}
+					}
+
 					announce(
 						accepted.length === 1
 							? 'Imported 1 image'
@@ -227,7 +253,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 					);
 				} catch (error) {
 					if (!isQuotaExceededError(error)) {
-						found.push(problemForStorageError(accepted[0].name, error));
+						found.push(problemForStorageError(accepted[0].input.name, error));
 					}
 				}
 			} finally {

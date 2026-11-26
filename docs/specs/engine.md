@@ -669,7 +669,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) has been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 

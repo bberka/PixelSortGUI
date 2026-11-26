@@ -266,7 +266,8 @@ function renderLine(
 	}
 }
 
-function inputWords(image: RgbaImage): Uint32Array {
+// The image as one word per pixel, copied when its bytes are not word aligned.
+export function inputWords(image: RgbaImage): Uint32Array {
 	const {data} = image;
 	const length = image.width * image.height;
 	if (data.byteOffset % 4 === 0) {

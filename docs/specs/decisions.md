@@ -294,6 +294,24 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Cost:** The cloud folder is not a single file that can be imported by hand.
 - **Revisit if:** Users need one downloadable file in the cloud, or merged histories.
 
+### D42. Phone editor: docked panel, one control at a time (2026-11-26)
+
+- **Request:** "refactor mobile ui to be better ... the edit ui is just annoying, idk find a better way".
+- **Found at 390 × 844:** the three-detent sheet left room for one or two controls, left a 28 px strip of photo when expanded and no controls when collapsed; each numeric control was three lines tall; a swipe over a slider changed it instead of scrolling; eight unlabelled icons made up the toolbar; the crop buttons sat below the fold.
+- **Options considered:** (a) Keep the sheet and tighten spacing; (b) a see-through overlay of controls on the photo; (c) a docked panel under the canvas that shows one chosen control, with a second snap point for the full list; (d) a full-screen editing mode per parameter.
+- **Choice:** Option (c) (DESIGN.md section 6.4). The toolbar moves under the canvas with text labels. The split orientation button moves to the split side switcher on phones so seven buttons fit.
+- **Reason:** (a) cannot give both a visible photo and reachable controls. (b) hides the pixels being tuned. (d) adds taps. (c) keeps the photo above half the screen, needs one tap to reach any parameter, and has nothing to scroll while dragging.
+- **Cost:** Seeing two parameters at once needs the all-controls state. Switching a non-selected effect off takes two taps.
+- **Revisit if:** Phones become acceptance targets and testing on real devices shows otherwise.
+
+### D43. Keyboard hints only where a keyboard is likely (2026-11-26)
+
+- **Request:** "change how the keybinds shown".
+- **Choice:** One media rule, `(pointer: coarse) and (hover: none)`, hides every mention of a key. Elsewhere hints live only in tooltips, menus and the Guide's shortcut section; the empty Library's key list is removed (DESIGN.md section 8.4).
+- **Reason:** A phone has no keys to press, and the loose key list on the start screen was noise everywhere. Browsers cannot report whether a keyboard is attached, so the primary pointer is the closest signal.
+- **Cost:** A tablet with a keyboard shows no hints, though the shortcuts work.
+- **Revisit if:** Browsers expose keyboard presence.
+
 ---
 
 ## Open questions for the owner

@@ -399,13 +399,19 @@ export async function encodeImage(
 		}
 
 		// Progressive dimension downscaling (PNG or lossy that still exceeds maxBytes at quality floor).
-		const minW = Math.min(width, MIN_SIZE_LIMITED_SIDE);
-		const minH = Math.min(height, MIN_SIZE_LIMITED_SIDE);
+		const minScale = Math.min(
+			1,
+			MIN_SIZE_LIMITED_SIDE / Math.min(width, height),
+		);
 		let scale = 1;
 		let currentW = width;
 		let currentH = height;
 
 		for (let step = 0; step < MAX_SCALE_STEPS; step++) {
+			if (scale <= minScale) {
+				break;
+			}
+
 			if (options.isCancelled?.()) {
 				return {
 					ok: false,
@@ -415,12 +421,17 @@ export async function encodeImage(
 
 			const ratio = clampNumber(
 				Math.sqrt(maxBytes / Math.max(1, bestBlob.size)) * 0.92,
-				0.5,
+				minScale / scale,
 				0.9,
 			);
-			scale *= ratio;
-			const nextW = Math.max(minW, Math.round(width * scale));
-			const nextH = Math.max(minH, Math.round(height * scale));
+			let nextScale = Math.max(minScale, scale * ratio);
+			if (step === MAX_SCALE_STEPS - 1 && nextScale > minScale) {
+				nextScale = minScale;
+			}
+
+			scale = nextScale;
+			const nextW = Math.max(1, Math.round(width * scale));
+			const nextH = Math.max(1, Math.round(height * scale));
 			if (nextW === currentW && nextH === currentH) {
 				break;
 			}

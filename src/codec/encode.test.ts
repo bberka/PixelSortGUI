@@ -304,6 +304,205 @@ describe('encodeImage', () => {
 		expect(result.value.width).toBeGreaterThanOrEqual(64);
 		expect(result.value.height).toBeGreaterThanOrEqual(64);
 	});
+
+	it('preserves aspect ratio when downscaling a wide image to the 64 px short-side floor', async () => {
+		const width = 8000;
+		const height = 500;
+		const image = makeImage(width, height, []);
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage: vi.fn()}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					const size = Math.max(5000, c.width * c.height);
+					return new Blob([new Uint8Array(size)], {
+						type: opts?.type ?? 'image/png',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, w, h) => ({
+				data,
+				width: w,
+				height: h,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		const result = await encodeImage(
+			image,
+			{format: 'png', maxBytes: 1000},
+			runtime,
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			return;
+		}
+
+		expect(result.value.targetMet).toBe(false);
+		expect(result.value.height).toBe(64);
+		expect(result.value.width).toBe(1024);
+		expect(result.value.width / result.value.height).toBeCloseTo(
+			width / height,
+			5,
+		);
+	});
+
+	it('reaches the 64 px floor on a large 8000x6000 image with a tiny limit', async () => {
+		const image = makeImage(8000, 6000, []);
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage: vi.fn()}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					// Slowly shrinking size so even without a big first jump it must reach the floor.
+					const size = 2000 + Math.round(c.width * c.height * 0.01);
+					return new Blob([new Uint8Array(size)], {
+						type: opts?.type ?? 'image/png',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, w, h) => ({
+				data,
+				width: w,
+				height: h,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		const result = await encodeImage(
+			image,
+			{format: 'png', maxBytes: 1000},
+			runtime,
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			return;
+		}
+
+		expect(result.value.targetMet).toBe(false);
+		expect(result.value.height).toBe(64);
+		expect(result.value.width).toBe(85);
+	});
+
+	it('downscales lossy JPEG after quality hits 10 and reports progress', async () => {
+		const image = makeImage(400, 200, []);
+		const drawImage = vi.fn();
+		const progressValues: number[] = [];
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					const q = opts?.quality ?? 0.92;
+					const size = Math.round(c.width * c.height * (0.2 + q));
+					return new Blob([new Uint8Array(size)], {
+						type: opts?.type ?? 'image/jpeg',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, w, h) => ({
+				data,
+				width: w,
+				height: h,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		// At 400x200, q=0.10 -> 24,000 B (> 10,000 B), so it must downscale.
+		const result = await encodeImage(
+			image,
+			{
+				format: 'jpeg',
+				quality: 92,
+				maxBytes: 10_000,
+				onProgress(fraction) {
+					progressValues.push(fraction);
+				},
+			},
+			runtime,
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			return;
+		}
+
+		expect(result.value.targetMet).toBe(true);
+		expect(result.value.blob.size).toBeLessThanOrEqual(10_000);
+		expect(result.value.width).toBeLessThan(400);
+		expect(result.value.height).toBeLessThan(200);
+		expect(drawImage).toHaveBeenCalled();
+		expect(progressValues.length).toBeGreaterThan(0);
+		expect(progressValues.every((v) => v >= 0 && v <= 1)).toBe(true);
+	});
+
+	it('aborts size-limited encoding when isCancelled returns true', async () => {
+		const image = makeImage(400, 200, []);
+		let calls = 0;
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage: vi.fn()}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					calls++;
+					return new Blob([new Uint8Array(c.width * c.height)], {
+						type: opts?.type ?? 'image/jpeg',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, w, h) => ({
+				data,
+				width: w,
+				height: h,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		const result = await encodeImage(
+			image,
+			{
+				format: 'jpeg',
+				quality: 92,
+				maxBytes: 1000,
+				isCancelled: () => calls >= 1,
+			},
+			runtime,
+		);
+		expect(result.ok).toBe(false);
+		if (result.ok) {
+			return;
+		}
+
+		expect(result.error.code).toBe('encode-failed');
+		expect(result.error.message).toMatch(/cancelled/i);
+	});
 });
 
 describe('probeEncodeFormat & probeSupportedEncodeFormats', () => {

@@ -414,6 +414,22 @@ export function ExportDialog({
 		}
 	};
 
+	const parseCustomSizeDraftKb = (
+		draft: string,
+		unit: FileSizeUnit,
+		fallbackKb: number,
+	): number => {
+		const trimmed = draft.trim();
+		if (trimmed.length === 0) {
+			return fallbackKb;
+		}
+
+		const parsed = Number(trimmed);
+		return Number.isFinite(parsed) && parsed > 0
+			? parseCustomFileSizeToKb(parsed, unit)
+			: fallbackKb;
+	};
+
 	const handleSizeLimitModeChange = (mode: FileSizeLimitMode) => {
 		setSizeLimitMode(mode);
 		if (mode === 'off') {
@@ -422,10 +438,11 @@ export function ExportDialog({
 		}
 
 		if (mode === 'custom') {
-			const parsed = Number(customSizeLimitDraft);
-			const nextKb = Number.isFinite(parsed)
-				? parseCustomFileSizeToKb(parsed, customSizeLimitUnit)
-				: (liveSettings.maxFileSizeKb ?? 1024);
+			const nextKb = parseCustomSizeDraftKb(
+				customSizeLimitDraft,
+				customSizeLimitUnit,
+				liveSettings.maxFileSizeKb ?? 1024,
+			);
 			const displayValue =
 				customSizeLimitUnit === 'MB'
 					? Number((nextKb / 1024).toFixed(2))
@@ -441,10 +458,11 @@ export function ExportDialog({
 
 	const commitCustomSizeLimitInput = (unitOverride?: FileSizeUnit) => {
 		const unit = unitOverride ?? customSizeLimitUnit;
-		const parsed = Number(customSizeLimitDraft);
-		const nextKb = Number.isFinite(parsed)
-			? parseCustomFileSizeToKb(parsed, unit)
-			: (liveSettings.maxFileSizeKb ?? 1024);
+		const nextKb = parseCustomSizeDraftKb(
+			customSizeLimitDraft,
+			unit,
+			liveSettings.maxFileSizeKb ?? 1024,
+		);
 		const displayValue =
 			unit === 'MB' ? Number((nextKb / 1024).toFixed(2)) : nextKb;
 		setCustomSizeLimitDraft(String(displayValue));
@@ -460,12 +478,11 @@ export function ExportDialog({
 
 		const nextUnit: FileSizeUnit = value;
 		setCustomSizeLimitUnit(nextUnit);
-		const currentKb =
-			liveSettings.maxFileSizeKb ??
-			parseCustomFileSizeToKb(
-				Number(customSizeLimitDraft),
-				customSizeLimitUnit,
-			);
+		const currentKb = parseCustomSizeDraftKb(
+			customSizeLimitDraft,
+			customSizeLimitUnit,
+			liveSettings.maxFileSizeKb ?? 1024,
+		);
 		const nextDisplay =
 			nextUnit === 'MB' ? Number((currentKb / 1024).toFixed(2)) : currentKb;
 		setCustomSizeLimitDraft(String(nextDisplay));
@@ -511,9 +528,10 @@ export function ExportDialog({
 			sizeLimitMode === 'off'
 				? null
 				: sizeLimitMode === 'custom'
-					? parseCustomFileSizeToKb(
-							Number(customSizeLimitDraft),
+					? parseCustomSizeDraftKb(
+							customSizeLimitDraft,
 							customSizeLimitUnit,
+							liveSettings.maxFileSizeKb ?? 1024,
 						)
 					: clampMaxFileSizeKb(Number(sizeLimitMode));
 		const finalSettings: ExportSettings = {

@@ -20,6 +20,8 @@ export const MAX_PRESET_NAME_LENGTH = 80;
 export const MIN_EXPORT_QUALITY = 50;
 export const MAX_EXPORT_QUALITY = 100;
 export const DEFAULT_EXPORT_QUALITY = 92;
+export const MIN_EXPORT_MAX_FILE_SIZE_KB = 10;
+export const MAX_EXPORT_MAX_FILE_SIZE_KB = 102_400;
 export const MIN_ZOOM = 0.01;
 export const MAX_ZOOM = 32;
 export const DEFAULT_SPLIT_POSITION = 0.5;
@@ -52,6 +54,7 @@ export type ExportSettings = {
 	quality: number;
 	sizeMode: ExportSizeMode;
 	customLongestSide: number | null;
+	maxFileSizeKb?: number | null;
 };
 
 export type ProjectRecord = {

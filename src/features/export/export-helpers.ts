@@ -11,7 +11,9 @@ import {
 } from '@/codec/encode.ts';
 import {
 	DEFAULT_EXPORT_QUALITY,
+	MAX_EXPORT_MAX_FILE_SIZE_KB,
 	MAX_EXPORT_QUALITY,
+	MIN_EXPORT_MAX_FILE_SIZE_KB,
 	MIN_EXPORT_QUALITY,
 	type ExportSettings,
 } from '@/storage/types.ts';
@@ -142,6 +144,80 @@ export function resolveDownloadFilename(
 	return IMAGE_EXTENSION_RE.test(cleaned)
 		? `${cleaned.replace(IMAGE_EXTENSION_RE, '')}.${ext}`
 		: `${cleaned}.${ext}`;
+}
+
+export const FILE_SIZE_LIMIT_PRESETS_KB = [
+	500, 1024, 2048, 5120, 10_240,
+] as const;
+
+export type FileSizeLimitPresetKb = (typeof FILE_SIZE_LIMIT_PRESETS_KB)[number];
+export type FileSizeLimitMode = 'off' | `${FileSizeLimitPresetKb}` | 'custom';
+export type FileSizeUnit = 'KB' | 'MB';
+
+export function clampMaxFileSizeKb(value: number): number {
+	if (!Number.isFinite(value)) {
+		return 1024;
+	}
+
+	return Math.min(
+		MAX_EXPORT_MAX_FILE_SIZE_KB,
+		Math.max(MIN_EXPORT_MAX_FILE_SIZE_KB, Math.round(value)),
+	);
+}
+
+export function fileSizeLimitModeFor(
+	maxFileSizeKb: number | null | undefined,
+): FileSizeLimitMode {
+	if (typeof maxFileSizeKb !== 'number' || !Number.isFinite(maxFileSizeKb)) {
+		return 'off';
+	}
+
+	const clamped = clampMaxFileSizeKb(maxFileSizeKb);
+	for (const preset of FILE_SIZE_LIMIT_PRESETS_KB) {
+		if (clamped === preset) {
+			return `${preset}`;
+		}
+	}
+
+	return 'custom';
+}
+
+export function formatFileSizeLimitLabel(kb: number): string {
+	if (kb >= 1024 && kb % 1024 === 0) {
+		return `${kb / 1024} MB`;
+	}
+
+	return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+}
+
+export function formatByteSize(bytes: number): string {
+	if (!Number.isFinite(bytes) || bytes < 0) {
+		return '0 B';
+	}
+
+	if (bytes < 1024) {
+		return `${Math.round(bytes)} B`;
+	}
+
+	const kb = bytes / 1024;
+	if (kb < 1024) {
+		return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+	}
+
+	const mb = kb / 1024;
+	return `${mb < 10 ? mb.toFixed(2) : mb.toFixed(1)} MB`;
+}
+
+export function parseCustomFileSizeToKb(
+	value: number,
+	unit: FileSizeUnit,
+): number {
+	if (!Number.isFinite(value)) {
+		return 1024;
+	}
+
+	const kb = unit === 'MB' ? value * 1024 : value;
+	return clampMaxFileSizeKb(kb);
 }
 
 export function clampQuality(value: number): number {

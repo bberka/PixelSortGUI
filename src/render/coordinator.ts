@@ -118,6 +118,8 @@ export type ExportOptions = {
 	format: ExportFormat;
 	// 0..100. Ignored for PNG.
 	quality?: number;
+	// Optional maximum output file size in KB (10..102400).
+	maxFileSizeKb?: number | null;
 	onProgress?: (stage: ExportStage, fraction: number) => void;
 };
 
@@ -129,6 +131,8 @@ export type ExportOutcome =
 			height: number;
 			mime: string;
 			totalMs: number;
+			effectiveQuality?: number;
+			targetMet?: boolean;
 	  }
 	| {status: 'cancelled'}
 	| {status: 'error'; error: {code: EngineErrorCode; message: string}};
@@ -769,8 +773,25 @@ export function createRenderCoordinator(
 					}
 
 					case 'exported': {
-						const {file, width, height, mime, totalMs} = response;
-						finish({status: 'done', file, width, height, mime, totalMs});
+						const {
+							file,
+							width,
+							height,
+							mime,
+							totalMs,
+							effectiveQuality,
+							targetMet,
+						} = response;
+						finish({
+							status: 'done',
+							file,
+							width,
+							height,
+							mime,
+							totalMs,
+							effectiveQuality,
+							targetMet,
+						});
 						break;
 					}
 
@@ -800,6 +821,7 @@ export function createRenderCoordinator(
 			scale: options.scale,
 			format: options.format,
 			quality: options.quality ?? 92,
+			maxFileSizeKb: options.maxFileSizeKb ?? null,
 			stack: options.stack,
 		});
 		return cancel;

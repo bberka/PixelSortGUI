@@ -91,6 +91,8 @@ export type ExportRequest =
 			format: ExportFormat;
 			// 0..100. Ignored for PNG.
 			quality: number;
+			// Optional maximum output file size in KB (10..102400).
+			maxFileSizeKb?: number | null;
 	  } & StackRequest)
 	| ({
 			type: 'renderFull';
@@ -111,6 +113,8 @@ export type ExportResponse =
 			height: number;
 			mime: string;
 			totalMs: number;
+			effectiveQuality?: number;
+			targetMet?: boolean;
 	  }
 	| {
 			type: 'fullRendered';

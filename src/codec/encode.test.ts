@@ -153,6 +153,157 @@ describe('encodeImage', () => {
 			expect(r2.error.code).toBe('out-of-memory');
 		}
 	});
+
+	it('binary-searches JPEG quality to fit within maxBytes without scaling when possible', async () => {
+		const image = makeImage(
+			200,
+			100,
+			Array.from({length: 200 * 100 * 4}, () => 128),
+		);
+		const drawImage = vi.fn();
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					const q = opts?.quality ?? 0.92;
+					const size = Math.round(c.width * c.height * (0.2 + q));
+					return new Blob([new Uint8Array(size)], {
+						type: opts?.type ?? 'image/jpeg',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, width, height) => ({
+				data,
+				width,
+				height,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		// At 200x100: q=0.92 -> 22,400 B; q=0.50 -> 14,000 B; q=0.10 -> 6,000 B.
+		// Target 14,500 B should fit at full 200x100 with effectiveQuality around 52.
+		const result = await encodeImage(
+			image,
+			{format: 'jpeg', quality: 92, maxBytes: 14_500},
+			runtime,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.value.targetMet).toBe(true);
+			expect(result.value.width).toBe(200);
+			expect(result.value.height).toBe(100);
+			expect(result.value.blob.size).toBeLessThanOrEqual(14_500);
+			expect(result.value.effectiveQuality).toBeGreaterThanOrEqual(45);
+			expect(result.value.effectiveQuality).toBeLessThanOrEqual(55);
+		}
+
+		expect(drawImage).not.toHaveBeenCalled();
+	});
+
+	it('scales PNG dimensions down to fit within maxBytes and reports targetMet', async () => {
+		const image = makeImage(
+			400,
+			200,
+			Array.from({length: 400 * 200 * 4}, () => 64),
+		);
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage: vi.fn()}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					const size = c.width * c.height;
+					return new Blob([new Uint8Array(size)], {
+						type: opts?.type ?? 'image/png',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, width, height) => ({
+				data,
+				width,
+				height,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		// 400x200 = 80,000 B; target 20,000 B -> should scale down until <= 20,000 B.
+		const result = await encodeImage(
+			image,
+			{format: 'png', maxBytes: 20_000},
+			runtime,
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			return;
+		}
+
+		expect(result.value.targetMet).toBe(true);
+		expect(result.value.blob.size).toBeLessThanOrEqual(20_000);
+		expect(result.value.width).toBeLessThan(400);
+		expect(result.value.height).toBeLessThan(200);
+		expect(result.value.effectiveQuality).toBeUndefined();
+	});
+
+	it('reports targetMet: false when even minimum size exceeds maxBytes', async () => {
+		const image = makeImage(
+			200,
+			200,
+			Array.from({length: 200 * 200 * 4}, () => 0),
+		);
+		const makeCanvas = (): EncodeCanvas => {
+			const c: EncodeCanvas = {
+				width: 1,
+				height: 1,
+				getContext: () => ({putImageData: vi.fn(), drawImage: vi.fn()}),
+				convertToBlob: vi.fn(async (opts?: ImageEncodeOptions) => {
+					const size = Math.max(5000, c.width * c.height);
+					return new Blob([new Uint8Array(size)], {
+						type: opts?.type ?? 'image/png',
+					});
+				}),
+			};
+			return c;
+		};
+
+		const runtime: EncodeRuntime = {
+			createCanvas: makeCanvas,
+			createScratchCanvas: makeCanvas,
+			createImageData: (data, width, height) => ({
+				data,
+				width,
+				height,
+				colorSpace: 'srgb',
+			}),
+		};
+
+		const result = await encodeImage(
+			image,
+			{format: 'png', maxBytes: 1000},
+			runtime,
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			return;
+		}
+
+		expect(result.value.targetMet).toBe(false);
+		expect(result.value.width).toBeGreaterThanOrEqual(64);
+		expect(result.value.height).toBeGreaterThanOrEqual(64);
+	});
 });
 
 describe('probeEncodeFormat & probeSupportedEncodeFormats', () => {

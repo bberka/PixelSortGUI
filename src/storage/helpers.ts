@@ -6,10 +6,12 @@ import {
 import {
 	DEFAULT_EXPORT_QUALITY,
 	DEFAULT_SPLIT_POSITION,
+	MAX_EXPORT_MAX_FILE_SIZE_KB,
 	MAX_EXPORT_QUALITY,
 	MAX_PRESET_NAME_LENGTH,
 	MAX_PROJECT_NAME_LENGTH,
 	MAX_ZOOM,
+	MIN_EXPORT_MAX_FILE_SIZE_KB,
 	MIN_EXPORT_QUALITY,
 	MIN_ZOOM,
 	StorageValidationError,
@@ -48,6 +50,7 @@ export function createDefaultExportSettings(): ExportSettings {
 		quality: DEFAULT_EXPORT_QUALITY,
 		sizeMode: 'full',
 		customLongestSide: null,
+		maxFileSizeKb: null,
 	};
 }
 
@@ -140,9 +143,19 @@ export function normalizeExportSettings(
 				MAX_EXPORT_QUALITY,
 			)
 		: DEFAULT_EXPORT_QUALITY;
+	const rawMaxSize = exportSettings.maxFileSizeKb;
+	const maxFileSizeKb =
+		typeof rawMaxSize === 'number' && Number.isFinite(rawMaxSize)
+			? clamp(
+					Math.round(rawMaxSize),
+					MIN_EXPORT_MAX_FILE_SIZE_KB,
+					MAX_EXPORT_MAX_FILE_SIZE_KB,
+				)
+			: null;
 	return {
 		...exportSettings,
 		quality,
+		maxFileSizeKb,
 	};
 }
 

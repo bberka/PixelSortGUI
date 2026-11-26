@@ -2,6 +2,7 @@ import {useMemo, useRef, useState, type PointerEvent} from 'react';
 import {AddEffectPicker} from './add-effect-picker.tsx';
 import {StackRow} from './stack-row.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
+import {cn} from '@/lib/utils';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
@@ -155,7 +156,12 @@ export function EffectStackPanel({
 
 	if (instances.length === 0) {
 		return (
-			<div className="flex h-full w-full items-center justify-center gap-2 px-2 md:flex-col">
+			<div
+				className={cn(
+					'flex h-full w-full items-center justify-center gap-2 px-2',
+					!compact && 'flex-col',
+				)}
+			>
 				<p className="text-sm text-muted-foreground">No effects yet</p>
 				{picker}
 			</div>
@@ -169,20 +175,35 @@ export function EffectStackPanel({
 	) : null;
 
 	return (
-		<div className="flex h-full min-h-0 w-full items-center gap-1.5 px-1.5 md:flex-col md:items-stretch md:gap-2 md:px-2 md:py-2">
-			<div className="flex shrink-0 items-center gap-1.5 md:w-full md:flex-col md:items-stretch">
+		<div
+			className={cn(
+				'flex h-full min-h-0 w-full',
+				compact
+					? 'items-center gap-1.5 px-1.5'
+					: 'flex-col items-stretch gap-2 px-2 py-2',
+			)}
+		>
+			<div
+				className={cn(
+					'flex shrink-0 gap-1.5',
+					compact ? 'items-center' : 'w-full flex-col items-stretch',
+				)}
+			>
 				{picker}
 				{limitNote}
 			</div>
 			<ScrollArea
-				orientation="both"
+				orientation={compact ? 'horizontal' : 'vertical'}
 				tabStop={false}
 				className="min-h-0 min-w-0 flex-1 self-stretch"
-				viewportClassName="[&>div]:h-full"
+				viewportClassName={compact ? '[&>div]:h-full' : undefined}
 			>
 				<ul
 					ref={listRef}
-					className="flex h-full items-center gap-1 md:h-auto md:flex-col md:items-stretch"
+					className={cn(
+						'flex gap-1',
+						compact ? 'h-full items-center' : 'flex-col items-stretch',
+					)}
 					onPointerDown={handlePointerDown}
 					onPointerMove={handlePointerMove}
 					onPointerUp={handlePointerUp}

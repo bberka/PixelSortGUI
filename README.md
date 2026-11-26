@@ -14,6 +14,7 @@ PixelSortGUI is an editor for glitch art and pixel sorting of still photos. It r
 - Parameter panel built from each effect's definition: sliders, a range slider, an angle control, switches, choice lists, a random seed, exact number entry, per-parameter reset, "Reset all" and a "Randomize" button that gives every parameter a random valid value. Each effect also has a mix amount and a blend setting.
 - Preview canvas with zoom (including a Fit option) and pan, by wheel, keyboard and touch pinch.
 - Compare view: toggle or hold Compare (button or `\`) to view the original image, and split view (`S`) with a draggable and keyboard-operable vertical divider.
+- Responsive editor layouts: a fixed right sidebar on desktop, a resizable and collapsible docked bottom panel on tablet, a horizontal stack strip with a three-detent bottom sheet on portrait phone, and a collapsible right drawer on landscape phone.
 - Export as PNG, JPEG or WebP (WebP only where the browser can encode it). JPEG and WebP have a quality setting. Size is full, half, quarter or a custom longest side. You can set the file name.
 - Settings: theme (System, Light or True Black), storage usage and storage protection status, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, and a link to their full licence texts.
 

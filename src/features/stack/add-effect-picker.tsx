@@ -75,10 +75,10 @@ export function AddEffectPicker({
 			aria-label="Add effect"
 			aria-describedby={describedBy}
 			disabled={disabled}
-			className="max-md:h-11 max-md:w-11 max-md:px-0 md:w-full md:justify-start"
+			className={compact ? 'h-11 w-11 px-0' : 'w-full justify-start'}
 		>
 			<PlusIcon aria-hidden="true" />
-			<span className="max-md:hidden">Add effect</span>
+			{compact ? null : <span>Add effect</span>}
 		</Button>
 	);
 

@@ -9,6 +9,7 @@ Updated with multi-image blending (`imageBlend`, F26) spec by Gemini 4 Neon (Ant
 Updated with exact geometry rounding and resampling rules (section 16.3) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with split side rendering by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated `imageBlend` extra sources, sampling arithmetic and unlisted effects by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
+Updated with the worker and coordinator extra-source pipeline by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift engine spec
 
@@ -459,6 +460,16 @@ The main-thread render coordinator (`src/render/coordinator.ts`) owns the previe
 
 Export of either side goes through `exportImage` on the main coordinator, which takes the stack as an argument.
 
+**Extra sources** (product.md F26, 16.5). Each coordinator, so side A too, loads what its own stack references and holds only that:
+
+- A **reference** is a parameter value of 64 lowercase hex digits in any instance of the stack, enabled or not ([persistence.md section 8.5](persistence.md#85-multi-image-source-reference-counting-and-gc-f26)). It may name the project's own source, which is then loaded a second time as an extra source, without the geometry transform.
+- The app gives every coordinator that renders a stack a loader that reads a source from storage by hash. `setStack` asks it for each new reference, sends `loadExtraSource` when it answers, and sends `unloadExtraSource` for each source the stack no longer references. Closing the project unloads them all.
+- Renders do not wait. A frame rendered before a source arrived shows the effect's input unchanged, carries the `missing-source` warning and is marked `sourcesPending`, so that no thumbnail is made of it.
+- When the worker answers `extraSourceLoaded`, the coordinator starts a new generation: the `full` result is discarded and the newest stack is rendered again, at `settle`, or at `drag` while a control is being moved. Nothing is rendered again after `cancel()` until the next `setStack`. No `full` render starts while a source is pending.
+- A source that storage does not hold, or fails to read, stays missing (a failed read also raises an `error` event). Each later `setStack` that is not a drag asks for it again. A source the worker cannot decode raises an `error` event and is not tried again until the stack drops and names it again, or the worker restarts. When a pending source ends up in either state, the stack is rendered once more, so that the displayed frame is no longer marked pending.
+- A restarted preview worker is sent every extra source again, after `loadSource`, from the blobs the coordinator holds.
+- `exportImage` and `full` renders send the sources that the **enabled** instances of their stack reference. An export reads the ones the coordinator does not hold from storage first, so it can export a stack that was never previewed, such as side A through the main coordinator. A source storage does not hold is left out (the export then matches the preview); a failed read fails the export.
+
 **Crop preview** (product.md F20). Crop mode shows the whole oriented image without effects. While it is on, the app runs one more coordinator from the same factory (`src/state/crop-preview.ts`) that loads the source with only the rotation and flips and is never given a stack, and the canvas draws its `original` bitmap. A rotation or flip in crop mode sends it a new transform. It is disposed when crop mode ends or the project closes. The main coordinator keeps the committed transform throughout, so an export during crop mode uses the saved crop.
 
 ### 8.4 Cancellation
@@ -470,7 +481,7 @@ A worker cannot read new messages while a synchronous loop runs, and `SharedArra
 
 ### 8.5 Stage cache
 
-The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. The preview worker's `sourceKey` names the source bytes and the geometry transform (16.3). Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source, the transform or the render size changes to free memory. Debug renders read earlier stages from the cache but never write to it.
+The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. The preview worker's `sourceKey` names the source bytes and the geometry transform (16.3). Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source, the transform or the render size changes to free memory. The key does not name the size of an extra source's proxy, so the preview worker replaces its cache with a new one when it unloads an extra source or a `drag` proxy of one changes size; a render already in flight keeps writing to the old cache, which is dropped. Debug renders read earlier stages from the cache but never write to it.
 
 ### 8.6 Progressive refinement
 
@@ -544,18 +555,23 @@ type PreviewRequest =
 	| ({type: 'render'; jobId: number; generation: number; sourceKey: string; level: 'drag' | 'settle'} & StackRequest)
 	| {type: 'cancel'; belowGeneration: number}
 	| {type: 'setDragCap'; pixels: number}
-	| {type: 'unloadSource'; sourceKey: string};
+	| {type: 'unloadSource'; sourceKey: string}
+	| {type: 'loadExtraSource'; requestId: number; sha256: string; blob: Blob; sourceWidth: number; sourceHeight: number}
+	| {type: 'unloadExtraSource'; sha256: string};
 
 type PreviewResponse =
 	| {type: 'sourceLoaded'; requestId: number; sourceKey: string; settle: {width: number; height: number}; drag: {width: number; height: number}; effective?: {width: number; height: number}; original: ImageBitmap}
 	| {type: 'progress'; jobId: number; fraction: number}
 	| {type: 'rendered'; jobId: number; generation: number; level: 'drag' | 'settle'; width: number; height: number; bitmap: ImageBitmap; totalMs: number; perInstanceMs: number[]; warnings: PipelineResult['warnings']}
 	| {type: 'cancelled'; jobId: number}
+	| {type: 'extraSourceLoaded'; requestId: number; sha256: string}
 	| {type: 'error'; jobId?: number; requestId?: number; code: EngineErrorCode; message: string};
 
+type ExtraSourceFile = {sha256: string; blob: Blob; sourceWidth: number; sourceHeight: number};
+
 type ExportRequest =
-	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number; transform?: SourceTransform} & StackRequest)
-	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number; transform?: SourceTransform} & StackRequest);
+	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number; transform?: SourceTransform; extraSources?: readonly ExtraSourceFile[]} & StackRequest)
+	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number; transform?: SourceTransform; extraSources?: readonly ExtraSourceFile[]} & StackRequest);
 
 type ExportResponse =
 	| {type: 'progress'; jobId: number; stage: 'decode' | 'render' | 'encode'; fraction: number}
@@ -1198,10 +1214,13 @@ Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceH
   - `PipelineWarning['code']` adds `'missing-source'`. When `imageBlend` has a non-empty `params.image` that `ctx.getSource` cannot resolve, it copies `input` to `output` unchanged and the pipeline records `{instanceId, code: 'missing-source'}` (section 4.3).
 - **Stage cache (`src/engine/pipeline.ts`):** `stageCacheKey` already hashes `canonicalStackJson(enabledPrefix)`, which contains `params.image` (an immutable content-addressed SHA-256). A stage at or after a missing source is neither read nor stored, so a render made before an extra source arrived is never reused, and the worker does not need to clear the cache when it loads one.
 - **Preview worker (`src/worker/protocol.ts`, `src/worker/preview.worker.ts`):**
-  - `PreviewRequest` adds `{type: 'loadExtraSource'; requestId: number; sha256: string; blob: Blob; width: number; height: number}` and `{type: 'unloadExtraSource'; sha256: string}`.
-  - `PreviewResponse` adds `{type: 'extraSourceLoaded'; requestId: number; sha256: string}`.
-  - Each extra source is stored in the preview worker as a `settle` proxy (capped at `SETTLE_PIXEL_CAP` = 4 MP) and a `drag` proxy (derived via `boxDownscale` to the active `drag` cap and updated on `setDragCap`). Maximum 8 distinct extra sources per project (`<= 160 MiB` total proxy memory at 4 MP settle + 1 MP drag).
+  - `PreviewRequest` adds `{type: 'loadExtraSource'; requestId: number; sha256: string; blob: Blob; sourceWidth: number; sourceHeight: number}` and `{type: 'unloadExtraSource'; sha256: string}`. `sourceWidth` and `sourceHeight` are the size of the stored image, which the worker passes on in each `ExtraSource`.
+  - `PreviewResponse` adds `{type: 'extraSourceLoaded'; requestId: number; sha256: string}`. A source that cannot be decoded is answered by `error` with the `requestId`.
+  - Each extra source is stored in the preview worker as a `settle` proxy (`renderSizeForPixelCap` of the stored size at `SETTLE_PIXEL_CAP` = 4 MP) and a `drag` proxy (derived via `boxDownscale` to the active `drag` cap and updated on `loadSource` and `setDragCap`). Extra sources are decoded one at a time. `loadSource`, `setTransform` and `unloadSource` leave them in place, and loading a hash that is already loaded is answered without decoding. Maximum 8 distinct extra sources per project (`<= 160 MiB` total proxy memory at 4 MP settle + 1 MP drag).
+  - A render uses the extra sources that were loaded when it started, at the proxy of its level.
 - **Export worker (`src/worker/export.worker.ts`):**
-  - `ExportRequest` (`export` and `renderFull`) adds `extraSources?: ReadonlyArray<{sha256: string; blob: Blob; width: number; height: number}>`.
-  - Decodes each referenced extra source at `renderSize(width, height, job.scale)` (full size for `renderFull` / `scale === 1`) before `renderStack`, releasing decoded buffers after export completes.
+  - `ExportRequest` (`export` and `renderFull`) adds `extraSources?: ReadonlyArray<{sha256: string; blob: Blob; sourceWidth: number; sourceHeight: number}>`.
+  - Decodes each of them, one at a time, at `renderSize(sourceWidth, sourceHeight, job.scale)` (full size for `renderFull` / `scale === 1`) before `renderStack`, releasing decoded buffers when the render ends. A source that cannot be decoded fails the job with that decode error.
+- **Geometry (16.3):** the transform belongs to the project's source. It never applies to an extra source, which is decoded whole. It still affects the blend through the base image: `ctx.sourceWidth`, `ctx.sourceHeight` and `ctx.scale` are those of the effective image, so `tile` and `none` place one extra-source pixel on one effective-image pixel at scale 1.
+- **Render coordinator:** which sources are loaded, and when the stack is rendered again, is in section 8.3.
 - **Determinism:** Uses only `DIRECTION_TABLE`, exact integer blend/alpha formulas, and deterministic bilinear sampling. Output bytes are identical across runs, browsers, and Node for identical decoded input pixels.

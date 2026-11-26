@@ -202,7 +202,9 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 					projectTransform(project),
 					step,
 				);
-				// The unsaved box turns with the image.
+				await save(project, transform);
+				// The unsaved box turns with the image. Read it only now: it can be
+				// moved or cancelled while the save runs.
 				const {cropping, draft, aspect} = geometry();
 				const box =
 					cropping &&
@@ -211,7 +213,6 @@ function createGeometryController(bundle: AppStoreBundle): GeometryController {
 						projectOrientedDimensions(project),
 						step,
 					);
-				await save(project, transform);
 				patch({
 					aspect: turnAspect(aspect, step),
 					draft: box

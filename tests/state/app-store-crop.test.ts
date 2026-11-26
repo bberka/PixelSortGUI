@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vite-plus/test';
+import {describe, expect, it, vi} from 'vite-plus/test';
 import {geometryController} from '../../src/features/transform/geometry-controller.ts';
 import type {SourceInfo} from '../../src/render/coordinator.ts';
 import {CLOSED_GEOMETRY, draftCrop} from '../../src/state/geometry.ts';
@@ -27,6 +27,19 @@ async function setup() {
 		box,
 		controller: geometryController(bundle),
 	};
+}
+
+// Holds the next history write until `release`, so a test can act during it.
+function holdSave({repository}: Awaited<ReturnType<typeof setup>>['bundle']) {
+	const started = Promise.withResolvers<void>();
+	const released = Promise.withResolvers<void>();
+	const commit = repository.commitStack.bind(repository);
+	vi.spyOn(repository, 'commitStack').mockImplementationOnce(async (input) => {
+		started.resolve();
+		await released.promise;
+		return commit(input);
+	});
+	return {started: started.promise, release: released.resolve};
 }
 
 const sentTransforms = (side: FakeCoordinator) =>
@@ -98,6 +111,31 @@ describe('crop mode', () => {
 		]);
 		expect(project().transform.rotation).toBe(270);
 		expect(bundle.store.getState().history).toHaveLength(4);
+	});
+
+	it('turns the box as it stands when the flip has saved, not as it was clicked', async () => {
+		const {bundle, controller, box} = await setup();
+		controller.open();
+		const save = holdSave(bundle);
+		const flipped = controller.orient('flipV');
+		await save.started;
+		controller.setBox({x: 10, y: 5, width: 20, height: 10});
+		save.release();
+		await flipped;
+		expect(box()).toEqual({x: 10, y: 15, width: 20, height: 10});
+	});
+
+	it('keeps a crop cancelled during a flip cancelled', async () => {
+		const {bundle, controller, geometry} = await setup();
+		controller.open();
+		controller.setBox({x: 10, y: 5, width: 20, height: 10});
+		const save = holdSave(bundle);
+		const flipped = controller.orient('flipV');
+		await save.started;
+		controller.cancelCrop();
+		save.release();
+		await flipped;
+		expect(geometry()).toMatchObject({cropping: false, draft: null});
 	});
 
 	it('drops an unsaved box when the saved geometry changes under it', async () => {

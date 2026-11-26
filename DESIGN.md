@@ -1,6 +1,7 @@
 Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and image blend (F26) UI specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with split orientation and per-side stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 
 # Drift design system
 
@@ -269,13 +270,17 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 - **Canvas rendering (F8, F13):** Displays the active `ImageBitmap` (or `2,048 × 2,048` tiles for `full` renders) on an `<canvas>` sized to `clientWidth * devicePixelRatio` × `clientHeight * devicePixelRatio`. Above 200% zoom, sets `ctx.imageSmoothingEnabled = false` so individual pixels stay crisp. Transparent areas render over the `--checker-a` / `--checker-b` `16 × 16 CSS px` checkerboard.
 - **Compare and Split overlays (F11):**
   - When Compare toggle/hold is active, draw the `original` `settle` bitmap aligned to the exact same zoom and pan transform, and display a top-left pill `"Original"` (AC-F11.1).
-  - In Split view, clip the source bitmap to `[0, splitX]` and the rendered result to `[splitX, canvasWidth]`. Draw a `2 px` vertical line (`#ffffff` with `1 px` `#000000` casing so it stays visible over any photo) and a `44 × 44 CSS px` circular grab handle at vertical midpoint (`role="separator"`, `aria-orientation="vertical"`, `aria-label="Compare split position"`, `aria-valuemin="0"`, `aria-valuemax="100"`). Small corner pills label `"Original"` (top-left) and `"Edited"` (top-right).
+  - In Split view, clip side A to `[0, splitX]` and side B to `[splitX, canvasWidth]` (vertical), or side A to `[0, splitY]` and side B to `[splitY, canvasHeight]` (horizontal), both under the same zoom and pan transform. Side A draws its rendered frame, or the source bitmap while its stack is empty or its first frame is pending. Draw a `2 px` line across the canvas (`#ffffff` with `1 px` `#000000` casing so it stays visible over any photo) and a `44 × 44 CSS px` circular grab handle at its midpoint (`role="separator"`, `aria-orientation` matching the line, `aria-label="Compare split position"`, `aria-valuemin="0"`, `aria-valuemax="100"`; `MoveHorizontal` and `ew-resize` when vertical, `MoveVertical` and `ns-resize` when horizontal).
+  - Each side has a small pill reading `"Original"` while its stack is empty, otherwise `"A"` or `"B"`: side A top-left; side B top-right (vertical) or bottom-right (horizontal). In a horizontal split the `"Rendering full resolution"` pill moves to the top-right.
+  - **Split side bar** (`src/features/stack/split-side-bar.tsx`): a `44 px` row at the top of the effects panel (desktop sidebar, tablet bottom panel, phone above the stack strip, landscape drawer), present only while the split view is on and hidden with a collapsed panel. It holds the label `"Editing"`, an outline `ToggleGroup` (`"A · Left"` / `"B · Right"`, or `"A · Top"` / `"B · Bottom"`), and two ghost icon `Button`s with tooltips: `"Copy to other side"` (`Copy`) and `"Swap sides"` (`ArrowLeftRight`, or `ArrowUpDown` when horizontal). On portrait phone the Half detent shrinks by the row's height so the canvas keeps `40%` of the viewport.
+  - **Toolbar:** the Split button's icon is `Columns2` (vertical) or `Rows2` (horizontal). Beside it, an icon button (`RotateCwSquare`) switches orientation; its name states the target, `"Switch to top/bottom split"` or `"Switch to left/right split"`.
 - **Selection debug view (F6):** While `"Show selection"` is on for a `pixelSort` instance, show a top-left pill `"Selection preview (not exported)"`.
 - **Effect stack row (F4):** Shows drag grip (`GripVertical`), effect label, enabled `Switch`, and when off displays BOTH an `EyeOff` icon and the text `"Off"` (AC-F4.2). An unknown or newer-version instance renders with a dashed border, label `"Unsupported effect (<type> v<version>)"`, no parameter controls, and only Move up / Move down / Remove menu items (AC-F4.6).
 - **Export dialog (F12):**
   - Format: `ToggleGroup` showing `PNG`, `JPEG`, `WebP` (omitted when startup `convertToBlob` probe fails, AC-F12.2), `BMP`, and `TIFF`.
   - Quality: `Slider` + `Input` (`50` to `100`, default `92`), shown only for `JPEG` and `WebP`.
   - Size: `ToggleGroup` (`Full`, `1/2`, `1/4`, `Custom`). Choosing `Custom` reveals a `"Longest side (px)"` numeric input capped at `max(sourceWidth, sourceHeight)`. Below the control, display exact output dimensions computed by `renderSize` (e.g. `"2000 × 1500 px"`).
+  - Side: shown first, only when side A has effects: `ToggleGroup` with the same two labels as the split side bar, B selected on every open.
   - Filename: text `Input` prefilled `<project name>-<YYYYMMDD-HHmmss>.<ext>`.
   - Actions: `"Download"` primary button, `"Share"` secondary button (shown only when `navigator.canShare?.({files: [...]})` is true), and during export a `Progress` bar with stage label (`Decoding`, `Rendering`, `Encoding`) and `"Cancel"` button (AC-F12.4).
 - **Settings and About (F14, F15, F16):**
@@ -365,11 +370,13 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | `Ctrl+Shift+Z` / `Cmd+Shift+Z` / `Ctrl+Y` | Editor | Redo commit (AC-F9.1) |
 | `\` | Editor | Toggle Compare (tap) or peek Original (hold > 300 ms) (F11) |
 | `S` | Editor | Toggle Split compare view (F11) |
+| `Shift+S` | Editor | Switch between left/right and top/bottom split, turning the split view on (F11) |
 | `+` / `=` and `-` | Editor | Zoom in / out by factor of 2 around canvas centre (F13) |
 | `0` | Editor | Zoom to Fit (F13) |
 | `1` | Editor | Zoom to 100% (F13) |
 | `Arrow` keys | Canvas focused | Pan by 10% of viewport width/height (F13) |
-| `ArrowLeft` / `ArrowRight` (`+ Shift`) | Split divider focused | Move split divider by 1% (10% with Shift) (AC-F11.3) |
+| `ArrowLeft` / `ArrowRight` (`+ Shift`) | Vertical split divider focused | Move split divider by 1% (10% with Shift) (AC-F11.3) |
+| `ArrowUp` / `ArrowDown` (`+ Shift`) | Horizontal split divider focused | Move split divider by 1% (10% with Shift) (AC-F11.6) |
 | `Arrow` keys (`+ Shift`) | Slider focused | Change value by 1 step (10 steps with Shift); burst with ≤ 500 ms gaps creates 1 commit (AC-F5.4) |
 | `Alt+ArrowUp` / `Alt+ArrowDown` | Effect stack row focused | Move selected effect instance up / down 1 position (AC-F4.3) |
 | `Escape` | Any modal / menu / sheet | Close overlay and restore focus to its trigger |

@@ -104,6 +104,8 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@': path.resolve(import.meta.dirname, './src'),
+			// `utif2` inflates Deflate TIFFs through pako; see src/codec/inflate.ts.
+			pako: path.resolve(import.meta.dirname, './src/codec/inflate.ts'),
 		},
 	},
 	server: {

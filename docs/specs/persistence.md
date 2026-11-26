@@ -57,7 +57,7 @@ type ViewState = {
 	splitPosition: number; // 0..1, fraction from left edge; default 0.5
 };
 
-type ExportFormat = 'png' | 'jpeg' | 'webp';
+type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
 type ExportSizeMode = 'full' | 'half' | 'quarter' | 'custom';
 
 type ExportSettings = {
@@ -247,7 +247,7 @@ When `F20` (geometry tools) lands, `DB_VERSION` in `src/storage/types.ts` bumps 
   - `transform: SourceTransform` (full snapshot of the project's geometry at that commit, alongside `stack`).
 - `ThumbnailRecord.stackSignature` becomes `canonicalJson({transform, stack})` so any geometry commit invalidates and regenerates the project thumbnail.
 - `UserPresetRecord` is **unchanged**: presets store `EffectStack` only, so applying a preset never overwrites a project's crop, rotation, flip, or resize (AC-F20.6).
-- `ExportFormat` expands to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'` when `F21` lands (no DB version bump required because `exportSettings.format` is a plain string validated on read).
+- `ExportFormat` gains `'avif'` when AVIF export (`F21`) lands (no DB version bump required because `exportSettings.format` is a plain string validated on read).
 
 **Migration (`dbMigrations[1]` in `src/storage/db.ts`):**
 

@@ -1,12 +1,30 @@
+import {boxDownscale} from '../engine/resample.ts';
 import type {RgbaImage} from '../engine/types.ts';
-import {isMemoryError, type CodecError, type CodecResult} from './decode.ts';
+import {BMP_HEADER_BYTES, bmpBytesPerPixel, writeBmp} from './bmp-writer.ts';
+import {
+	isMemoryError,
+	renderSizeForPixelCap,
+	type CodecError,
+	type CodecResult,
+} from './decode.ts';
+import {encodeTiff} from './tiff.ts';
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp';
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
+/**
+The formats the browser's canvas encodes; BMP and TIFF are written here.
+*/
+export type CanvasFormat = 'png' | 'jpeg' | 'webp';
+
+export function isLossyFormat(format: ExportFormat): format is 'jpeg' | 'webp' {
+	return format === 'jpeg' || format === 'webp';
+}
 
 export const FORMAT_MIME_TYPES: Readonly<Record<ExportFormat, string>> = {
 	png: 'image/png',
 	jpeg: 'image/jpeg',
 	webp: 'image/webp',
+	bmp: 'image/bmp',
+	tiff: 'image/tiff',
 };
 
 export const DEFAULT_EXPORT_QUALITY = 92;
@@ -175,7 +193,7 @@ function makeEncodeError(error: unknown): CodecError {
 
 async function convertCanvasToBlob(
 	targetCanvas: EncodeCanvas,
-	format: ExportFormat,
+	format: CanvasFormat,
 	expectedMime: string,
 	qualityInt: number,
 ): Promise<CodecResult<Blob>> {
@@ -207,7 +225,7 @@ type QualitySearchResult =
 
 async function searchLossyQuality(
 	targetCanvas: EncodeCanvas,
-	format: ExportFormat,
+	format: CanvasFormat,
 	expectedMime: string,
 	maxBytes: number,
 	highQuality: number,
@@ -276,6 +294,67 @@ async function searchLossyQuality(
 	return {ok: true, bestFit, lowestBlob: lowResult.value};
 }
 
+// The `utif2` encoder places the pixel data at this offset.
+const TIFF_HEADER_BYTES = 1000;
+
+/**
+ BMP and TIFF are uncompressed, so the output size follows from the dimensions:
+ a size limit scales the image once to the largest size that fits.
+ */
+async function encodeUncompressed(
+	image: RgbaImage,
+	format: 'bmp' | 'tiff',
+	maxBytes: number | undefined,
+): Promise<EncodedImage> {
+	const header = format === 'bmp' ? BMP_HEADER_BYTES : TIFF_HEADER_BYTES;
+	const bytesPerPixel = format === 'bmp' ? bmpBytesPerPixel(image) : 4;
+	let output = image;
+	if (
+		maxBytes !== undefined &&
+		header + image.width * image.height * bytesPerPixel > maxBytes
+	) {
+		const shortest = Math.min(image.width, image.height);
+		const floor = Math.min(1, MIN_SIZE_LIMITED_SIDE / shortest);
+		const size = renderSizeForPixelCap(
+			image.width,
+			image.height,
+			Math.max(
+				(maxBytes - header) / bytesPerPixel,
+				image.width * image.height * floor ** 2,
+				1,
+			),
+		);
+		let {width, height} = size;
+		// BMP rows are padded to four bytes, which can push a fit just over.
+		const rowBytes = () => Math.ceil((width * bytesPerPixel) / 4) * 4;
+		while (
+			header + rowBytes() * height > maxBytes &&
+			Math.min(width, height) > Math.min(shortest, MIN_SIZE_LIMITED_SIDE)
+		) {
+			if (width >= height) {
+				width--;
+			} else {
+				height--;
+			}
+		}
+
+		output = boxDownscale(image, width, height);
+	}
+
+	const mime = FORMAT_MIME_TYPES[format];
+	const blob = new Blob(
+		[format === 'bmp' ? writeBmp(output) : await encodeTiff(output)],
+		{type: mime},
+	);
+	return {
+		blob,
+		width: output.width,
+		height: output.height,
+		mime,
+		targetMet: maxBytes === undefined || blob.size <= maxBytes,
+	};
+}
+
 export async function encodeImage(
 	image: RgbaImage,
 	options: EncodeOptions,
@@ -297,7 +376,8 @@ export async function encodeImage(
 		};
 	}
 
-	const expectedMime = FORMAT_MIME_TYPES[options.format];
+	const {format} = options;
+	const expectedMime = FORMAT_MIME_TYPES[format];
 	const requestedQuality = normalizeQualityInt(options.quality);
 	const maxBytes =
 		typeof options.maxBytes === 'number' &&
@@ -305,6 +385,17 @@ export async function encodeImage(
 		options.maxBytes > 0
 			? options.maxBytes
 			: undefined;
+
+	if (format === 'bmp' || format === 'tiff') {
+		try {
+			return {
+				ok: true,
+				value: await encodeUncompressed(image, format, maxBytes),
+			};
+		} catch (error) {
+			return {ok: false, error: makeEncodeError(error)};
+		}
+	}
 
 	let canvas: EncodeCanvas | undefined;
 	let scratchCanvas: EncodeCanvas | undefined;
@@ -326,7 +417,7 @@ export async function encodeImage(
 		}
 
 		const pixels =
-			options.format === 'jpeg'
+			format === 'jpeg'
 				? flattenAlphaForJpeg(image, options.jpegBackground)
 				: toArrayBufferPixels(image.data);
 
@@ -335,7 +426,7 @@ export async function encodeImage(
 
 		const initial = await convertCanvasToBlob(
 			canvas,
-			options.format,
+			format,
 			expectedMime,
 			requestedQuality,
 		);
@@ -351,8 +442,7 @@ export async function encodeImage(
 					width,
 					height,
 					mime: initial.value.type,
-					effectiveQuality:
-						options.format === 'png' ? undefined : requestedQuality,
+					effectiveQuality: format === 'png' ? undefined : requestedQuality,
 					targetMet: true,
 				},
 			};
@@ -362,12 +452,12 @@ export async function encodeImage(
 		let bestWidth = width;
 		let bestHeight = height;
 		let bestQuality: number | undefined =
-			options.format === 'png' ? undefined : requestedQuality;
+			format === 'png' ? undefined : requestedQuality;
 
-		if (options.format !== 'png') {
+		if (format !== 'png') {
 			const qualitySearch = await searchLossyQuality(
 				canvas,
-				options.format,
+				format,
 				expectedMime,
 				maxBytes,
 				requestedQuality,
@@ -465,7 +555,7 @@ export async function encodeImage(
 			const progressBase = 0.45 + (step / MAX_SCALE_STEPS) * 0.5;
 			options.onProgress?.(progressBase);
 
-			if (options.format === 'png') {
+			if (format === 'png') {
 				const attempt = await convertCanvasToBlob(
 					scratchCanvas,
 					'png',
@@ -495,7 +585,7 @@ export async function encodeImage(
 			} else {
 				const scaledSearch = await searchLossyQuality(
 					scratchCanvas,
-					options.format,
+					format,
 					expectedMime,
 					maxBytes,
 					requestedQuality,
@@ -553,7 +643,7 @@ export async function encodeImage(
 }
 
 export async function probeEncodeFormat(
-	format: ExportFormat,
+	format: CanvasFormat,
 	runtime: EncodeRuntime = getDefaultRuntime(),
 ): Promise<boolean> {
 	const expectedMime = FORMAT_MIME_TYPES[format];

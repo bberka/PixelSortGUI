@@ -39,7 +39,7 @@ export function getSupportedEncodeFormats(): Promise<SupportedEncodeFormats> {
 
 export function extensionForFormat(
 	format: ExportFormat,
-): 'png' | 'jpg' | 'webp' {
+): 'png' | 'jpg' | 'webp' | 'bmp' | 'tif' {
 	switch (format) {
 		case 'png': {
 			return 'png';
@@ -51,6 +51,14 @@ export function extensionForFormat(
 
 		case 'webp': {
 			return 'webp';
+		}
+
+		case 'bmp': {
+			return 'bmp';
+		}
+
+		case 'tiff': {
+			return 'tif';
 		}
 	}
 }
@@ -106,7 +114,7 @@ export function buildDefaultFilename(
 	return `${sanitizeFilenameStem(projectName)}-${formatTimestamp(date)}.${extensionForFormat(format)}`;
 }
 
-const IMAGE_EXTENSION_RE = /\.(?:png|jpe?g|webp)$/i;
+const IMAGE_EXTENSION_RE = /\.(?:png|jpe?g|webp|bmp|tiff?)$/i;
 
 export function replaceFilenameExtension(
 	filename: string,
@@ -137,7 +145,11 @@ export function resolveDownloadFilename(
 	}
 
 	const ext = extensionForFormat(format);
-	if (format === 'jpeg' && /\.jpe?g$/i.test(cleaned)) {
+	// Keep the user's spelling of a two-spelling extension.
+	if (
+		(format === 'jpeg' && /\.jpe?g$/i.test(cleaned)) ||
+		(format === 'tiff' && /\.tiff?$/i.test(cleaned))
+	) {
 		return cleaned;
 	}
 

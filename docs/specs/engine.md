@@ -1011,6 +1011,17 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
   - **Rasterise:** the file is parsed with `DOMParser` (an inert document), the target size and a missing `viewBox` are written onto the root element, and the result is loaded into an `<img>` from a `data:` URL (Chromium taints the canvas for a `blob:` URL SVG holding a `foreignObject`). The browser's SVG-as-image mode runs no script and loads no external resource, so an SVG that references one renders without it. The file is never inserted into the page. A file that is not well-formed SVG gets the unreadable-format error.
 - `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.
 
+#### TIFF and BMP details
+
+- **TIFF code (`src/codec/tiff.ts`):** every TIFF path goes through this module, which is the only importer of `utif2`. The import probe on the main thread reads the first IFD only and never decompresses pixels. The preview and export workers decode. The "Import at 50 MP" downscale decodes on the main thread.
+- **Accepted:** the first IFD, chunky (not planar) integer samples. Compression none, LZW, PackBits, Deflate or JPEG (compression 7). Grayscale 1, 4, 8 or 16 bit; RGB and RGBA 8 or 16 bit; palette 1, 2, 4 or 8 bit. Anything else, and a file whose strips or tiles run past its end, is refused at import as unreadable.
+- **Orientation:** tag 274 is applied after decoding, and the probe reports the upright width and height. Associated (premultiplied) alpha is converted to straight alpha.
+- **Deflate:** `utif2` depends on `pako`, whose licence includes Zlib, which [licensing.md](../agents/licensing.md) does not allow. The build aliases `pako` to `src/codec/inflate.ts`, our own raw-inflate function, so `pako` is not bundled.
+- **BMP:** 24 bit when every pixel is opaque, otherwise 32 bit with the alpha byte in the fourth channel. Rows are bottom-up, with a 40-byte `BITMAPINFOHEADER`.
+- **TIFF export:** one uncompressed 8-bit RGBA strip, unassociated alpha.
+- **File-size limit:** BMP and TIFF sizes follow from the dimensions, so a limit scales the image once with `boxDownscale` to the largest size that fits, never below a shortest side of 64 px.
+- **Offline:** the `utif2` chunk is precached by the service worker with the rest of the build, so TIFF works offline. The app itself does not load it until a TIFF is imported or exported.
+
 ### 16.5 Multi-image blending (`imageBlend`, F26)
 
 #### Architectural choice: `imageBlend` effect vs full layer model

@@ -108,7 +108,7 @@ The app bar of the Library shows "Import images", "Guide" and "Settings" at ever
 - a tip line with the formats Drift opens and some keyboard shortcuts;
 - the effect introduction (F27) until it is dismissed.
 
-**Sample project.** The sample is an original picture drawn by code in the app (`src/features/library/sample-image.ts`), 1200 × 900 px. No photo file is bundled or downloaded. "Try a sample" encodes it as PNG, creates a project named "Sample" with an empty stack and opens it. It is an ordinary project in every way. Making it twice in one browser stores the source image once (F1).
+**Sample project.** The sample is an original picture drawn by code in the app (`src/features/library/sample-image.ts`), 1200 × 900 px. No photo file is bundled or downloaded. "Try a sample" encodes it as PNG, creates a project named "Sample" with an empty stack and opens it. It is an ordinary project in every way.
 
 - AC-F2.1: With no projects, the library shows the empty state described in DESIGN.md (the pitch heading, the "Drop photos here" zone, one "Open images" button, "Read the guide" and the note "Images stay on this device").
 - AC-F2.2: Cards show the thumbnail of the result after the last commit, not of the source image, within 5 s of that commit.
@@ -119,7 +119,7 @@ The app bar of the Library shows "Import images", "Guide" and "Settings" at ever
 - AC-F2.7: Every card action is reachable with the keyboard alone (Tab to the card, Enter opens, the menu button opens the menu).
 - AC-F2.8: At `390 × 844`, `820 × 1180` and `1440 × 900` the horizontal centre of the empty Library's content is within 8 px of the viewport centre, the page does not scroll sideways, and content taller than the screen scrolls from its top without being cut off.
 - AC-F2.9: At the same three widths "Import images", "Guide" and "Settings" are visible, inside the viewport and operable in the Library app bar, empty or not.
-- AC-F2.10: "Try a sample" creates exactly one project named "Sample", 1200 × 900 px, with an empty stack, and opens it. It works offline after one online visit, with no request to another origin. A second sample creates a second project and no second source image. A repeated activation while the first is still saving creates nothing extra.
+- AC-F2.10: "Try a sample" creates exactly one project named "Sample", 1200 × 900 px, with an empty stack, and opens it. It works offline after one online visit, with no request to another origin. A repeated activation while the first is still saving creates nothing extra.
 - AC-F2.11: Each of the four effect tiles (F27) shows the sample with the original on the left and the result on the right, rendered by the app's own effect engine. Activating a tile creates a "Sample" project, applies that tile's effects as one history entry "Apply preset <tile name>" and opens it; Undo returns the unchanged sample.
 - AC-F2.12: Every action of the empty Library is operable by keyboard alone, and axe reports no violations on it in both themes at the three test viewports.
 
@@ -513,7 +513,7 @@ A Guide screen inside the app at `#/guide`, so the user can learn Drift without 
 - **Text in one place:** all other guide text and the empty Library's text are in `src/features/guide/content.ts`.
 - **Table of contents:** at 1024 px width and wider a sticky list beside the text; narrower, a collapsible `"Contents"` button above it. Choosing an entry scrolls to the section, moves focus to its heading and (when collapsible) closes the list. The URL stays `#/guide`.
 - **Empty Library:** always offers `"Read the guide"` among its actions (F2).
-- **Effect introduction:** on a first launch the empty Library also shows the section `"See what Drift does"` with four effect tiles (AC-F2.11) and a `"Dismiss introduction"` button. The tiles are "Pixel sort" (the "ASDF classic" preset), "Channel shift" (red moved left and blue right), "Slice shift" (the "VHS split" preset) and "Posterize" (four levels per channel). The section is dismissed by that button or by the first import, including a sample, stored as `welcomeDismissed` in app settings ([persistence.md](persistence.md)), and never shown again. The hero, the drop zone and its actions stay. A profile that already holds projects never sees the section, because it only appears in an empty Library and any later import dismisses it. It replaces the separate welcome card of v0.2.0.
+- **Effect introduction:** on a first launch the empty Library also shows the section `"See what Drift does"` with four effect tiles (AC-F2.11) and a `"Dismiss introduction"` button. The tiles are "Pixel sort" (the "ASDF classic" preset), "Channel shift" (red moved left and blue right), "Slice shift" (bands of rows knocked sideways) and "Posterize" (four levels per channel). The section is dismissed by that button or by the first import, including a sample, stored as `welcomeDismissed` in app settings ([persistence.md](persistence.md)), and never shown again. The hero, the drop zone and its actions stay. A profile that already holds projects never sees the section, because it only appears in an empty Library and any later import dismisses it. It replaces the separate welcome card of v0.2.0.
 
 Acceptance criteria:
 

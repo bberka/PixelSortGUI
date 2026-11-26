@@ -27,7 +27,7 @@ const THEMES = [
 type ThemeCase = (typeof THEMES)[number];
 
 const EDITOR_CANVAS = {name: 'Canvas', exact: true} as const;
-const DROP_PROMPT = 'Drop images to open';
+const DROP_PROMPT = 'Drop images or project files to open';
 
 function collectConsoleErrors(page: Page): string[] {
 	const errors: string[] = [];
@@ -120,7 +120,7 @@ test('three JPEGs chosen through the picker become three projects and the first 
 		.locator('input[type="file"]')
 		.first()
 		.getAttribute('accept');
-	expect(accept).toBe('image/*,.avif,.bmp,.gif,.svg,.tif,.tiff');
+	expect(accept).toBe('image/*,.avif,.bmp,.gif,.svg,.tif,.tiff,.glproj,.zip');
 
 	const fixtures = [
 		await makeImage(page, {

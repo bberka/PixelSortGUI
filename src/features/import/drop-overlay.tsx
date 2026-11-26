@@ -12,7 +12,7 @@ export function DropOverlay() {
 			className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-background/90 p-6"
 		>
 			<div className="w-full max-w-[36ch] rounded-lg border-2 border-dashed border-ring bg-card px-6 py-8 text-center text-sm leading-5 font-medium text-foreground">
-				Drop images to open
+				Drop images or project files to open
 			</div>
 		</div>,
 		globalThis.document.body,

@@ -4,11 +4,13 @@ import {downscaleToPixelCap, type DownscaledSource} from './downscale.ts';
 import {
 	firstFrameNotice,
 	problemForCodecError,
+	problemForProjectFile,
 	problemForRefusedFormat,
 	problemForStorageError,
 	type ImportProblem,
 } from './import-problems.ts';
 import {isSvgFile, rasterizeSvg} from './rasterize-svg.ts';
+import {isProjectFileName} from './use-image-picker.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {
@@ -73,12 +75,15 @@ type AcceptedImage = {
 };
 
 /**
- The import flow: every chosen file is read and checked (size, decodability,
- pixel dimensions) before any of them is stored, then the accepted files are
- stored together so the first one becomes the open project (F1).
+ The import flow: every chosen image is read and checked (size, decodability,
+ pixel dimensions) before any of them is stored, then the accepted images are
+ stored together (F1). Project files (F25) are opened one by one as they come.
+ The first chosen file that opened becomes the open project.
  */
 export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const importImages = useAppStore((state) => state.importImages);
+	const importProjectFile = useAppStore((state) => state.importProjectFile);
+	const openProject = useAppStore((state) => state.openProject);
 	const probe = options.probe ?? probeImageDimensions;
 	const downscale = options.downscale ?? downscaleToPixelCap;
 	const [progress, setProgress] = useState<ImportProgress | null>(null);
@@ -87,11 +92,13 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const busyRef = useRef(false);
 	const aliveRef = useRef(true);
 	const decisionRef = useRef<((choice: LargeImageChoice) => void) | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
 
 	useEffect(() => {
 		aliveRef.current = true;
 		return () => {
 			aliveRef.current = false;
+			abortRef.current?.abort();
 			decisionRef.current?.('cancel');
 			decisionRef.current = null;
 		};
@@ -224,6 +231,34 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		};
 	};
 
+	// The id of the new project, or why there is none. A full quota has its own
+	// dialog.
+	const readProject = async (
+		file: File,
+		index: number,
+		total: number,
+	): Promise<ImportProblem | {projectId: string} | null> => {
+		const label = `Opening ${file.name} (${index + 1} of ${total})`;
+		update({label, fraction: index / total});
+		const controller = new AbortController();
+		abortRef.current = controller;
+		try {
+			const {project} = await importProjectFile(file, file.name, {
+				setActive: false,
+				signal: controller.signal,
+				onProgress({fraction}) {
+					update({label, fraction: (index + fraction) / total});
+				},
+			});
+			announce(`Opened ${project.name}`);
+			return {projectId: project.id};
+		} catch (error) {
+			return isQuotaExceededError(error) || controller.signal.aborted
+				? null
+				: problemForProjectFile(file.name, error);
+		}
+	};
+
 	const start = (files: readonly File[]) => {
 		if (busyRef.current || files.length === 0) {
 			return;
@@ -233,10 +268,23 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		void (async () => {
 			const accepted: AcceptedImage[] = [];
 			const found: ImportProblem[] = [];
+			// Set when a project file comes before every accepted image.
+			let firstProjectId: string | undefined;
 			try {
 				for (const [index, file] of files.entries()) {
 					if (!aliveRef.current) {
 						return;
+					}
+
+					if (isProjectFileName(file.name)) {
+						const opened = await readProject(file, index, files.length);
+						if (opened && 'kind' in opened) {
+							found.push(opened);
+						} else if (opened && accepted.length === 0) {
+							firstProjectId ??= opened.projectId;
+						}
+
+						continue;
 					}
 
 					const result = await readOne(file, index, files.length);
@@ -253,6 +301,10 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 				}
 
 				if (accepted.length === 0) {
+					if (firstProjectId !== undefined) {
+						await openProject(firstProjectId);
+					}
+
 					return;
 				}
 
@@ -266,6 +318,10 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 
 				try {
 					await importImages(accepted.map((image) => image.input));
+					if (firstProjectId !== undefined) {
+						await openProject(firstProjectId);
+					}
+
 					for (const {animatedFileName} of accepted) {
 						if (animatedFileName !== undefined) {
 							toast.message(firstFrameNotice(animatedFileName));

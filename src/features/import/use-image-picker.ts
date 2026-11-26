@@ -1,10 +1,17 @@
 import {useRef, type ChangeEvent, type RefObject} from 'react';
 
 /**
- The picker filter. AVIF, BMP, GIF, SVG, and TIFF are listed by extension because not
- every operating system maps them to an `image/*` type.
+ The picker filter: images and project files (F25). AVIF, BMP, GIF, SVG, and
+ TIFF are listed by extension because not every operating system maps them to
+ an `image/*` type.
  */
-export const IMPORT_ACCEPT = 'image/*,.avif,.bmp,.gif,.svg,.tif,.tiff';
+export const IMPORT_ACCEPT =
+	'image/*,.avif,.bmp,.gif,.svg,.tif,.tiff,.glproj,.zip';
+
+// A `.zip` is read as a project file too (F25).
+export function isProjectFileName(name: string): boolean {
+	return /\.(?:glproj|zip)$/i.test(name);
+}
 
 /**
  The hidden file input behind every import trigger (F1, AC-F19.1). Activating

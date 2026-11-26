@@ -7,7 +7,7 @@ import type {CodecError, RefusedFormat} from '@/codec/decode.ts';
  */
 export type ImportProblem = {
 	readonly fileName: string;
-	readonly kind: 'too-large' | 'unreadable';
+	readonly kind: 'too-large' | 'unreadable' | 'project';
 	readonly message: string;
 };
 
@@ -75,7 +75,30 @@ export function problemForStorageError(
 	};
 }
 
+// A project file that could not be opened; `ProjectFileError` words it.
+export function problemForProjectFile(
+	fileName: string,
+	error: unknown,
+): ImportProblem {
+	const message =
+		error instanceof Error && error.name === 'ProjectFileError'
+			? error.message
+			: problemForStorageError(fileName, error).message;
+	return {fileName, kind: 'project', message};
+}
+
 export function problemDialogTitle(problems: readonly ImportProblem[]): string {
+	const projects = problems.filter((problem) => problem.kind === 'project');
+	if (projects.length > 0) {
+		if (problems.length === 1) {
+			return "Can't open project";
+		}
+
+		return projects.length === problems.length
+			? `Can't open ${problems.length} projects`
+			: `Can't open ${problems.length} files`;
+	}
+
 	const allTooLarge = problems.every((problem) => problem.kind === 'too-large');
 	if (problems.length === 1) {
 		return allTooLarge ? 'Image too large' : "Can't open image";

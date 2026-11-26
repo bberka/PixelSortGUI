@@ -20,6 +20,7 @@ import {
 } from '@/features/library/library-format.ts';
 import {ProjectCard} from '@/features/library/project-card.tsx';
 import {useVisibleProjects} from '@/features/library/use-visible-projects.ts';
+import {SaveProjectDialog} from '@/features/project-file/save-project-dialog.tsx';
 import type {ProjectRecord} from '@/storage/types.ts';
 
 type RenameRequest = {
@@ -47,7 +48,12 @@ export function LibraryScreen() {
 	const [pendingDeletion, setPendingDeletion] = useState<ProjectRecord | null>(
 		null,
 	);
+	const [savingProject, setSavingProject] = useState<ProjectRecord | null>(
+		null,
+	);
 	const renameSeqRef = useRef(0);
+	// Kept after the dialog closes, to give focus back to that card.
+	const savedIdRef = useRef('');
 	const emptyHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
 	const handleOpen = useCallback(
@@ -70,6 +76,11 @@ export function LibraryScreen() {
 		},
 		[duplicateProject],
 	);
+
+	const handleSaveFile = useCallback((project: ProjectRecord) => {
+		savedIdRef.current = project.id;
+		setSavingProject(project);
+	}, []);
 
 	const handleDelete = useCallback((project: ProjectRecord) => {
 		setPendingDeletion(project);
@@ -126,6 +137,7 @@ export function LibraryScreen() {
 							onElement={register}
 							onOpen={handleOpen}
 							onRename={handleRename}
+							onSaveFile={handleSaveFile}
 						/>
 					))}
 				</ul>
@@ -137,6 +149,17 @@ export function LibraryScreen() {
 					setRenameRequest(null);
 				}}
 				onRename={confirmRename}
+			/>
+			<SaveProjectDialog
+				project={savingProject}
+				returnFocus={() => {
+					elementFor(savedIdRef.current)
+						?.querySelector<HTMLButtonElement>('[data-slot="project-actions"]')
+						?.focus();
+				}}
+				onClose={() => {
+					setSavingProject(null);
+				}}
 			/>
 			<DeleteProjectDialog
 				project={pendingDeletion}

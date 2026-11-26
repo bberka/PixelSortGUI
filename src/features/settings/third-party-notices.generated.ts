@@ -63,6 +63,12 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 		url: 'https://radix-ui.com/primitives',
 	},
 	{
+		name: '@radix-ui/react-checkbox',
+		version: '1.4.1',
+		license: 'MIT',
+		url: 'https://radix-ui.com/primitives',
+	},
+	{
 		name: '@radix-ui/react-collection',
 		version: '1.2.0',
 		license: 'MIT',

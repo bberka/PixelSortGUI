@@ -519,7 +519,7 @@ async function settleTimer(): Promise<void> {
 }
 
 describe('card menu', () => {
-	it('offers Open, Rename, Duplicate and Delete for each card', async () => {
+	it('offers Open, Rename, Duplicate, Save project file and Delete', async () => {
 		const harness = await renderLibrary(['Alpha']);
 
 		const items = await openCardMenu(harness.container, 'Alpha');
@@ -528,6 +528,7 @@ describe('card menu', () => {
 			'Open',
 			'Rename',
 			'Duplicate',
+			'Save project file',
 			'Delete',
 		]);
 	});

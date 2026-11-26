@@ -1,6 +1,6 @@
 import type {ComponentProps, ReactNode} from 'react';
-import {ImportFeedback} from './import-feedback.tsx';
-import {useImageImport, type ImageImportOptions} from './use-image-import.ts';
+import {useImportFlow} from './import-flow.tsx';
+import type {ImageImportOptions} from './use-image-import.ts';
 import {IMPORT_ACCEPT, useImagePicker} from './use-image-picker.ts';
 import {Button} from '@/components/ui/button';
 
@@ -29,7 +29,7 @@ export function ImportImagesButton({
 	probe,
 	downscale,
 }: ImportImagesButtonProps) {
-	const flow = useImageImport({probe, downscale});
+	const {flow, feedback} = useImportFlow({probe, downscale});
 	const picker = useImagePicker(flow.start);
 
 	return (
@@ -51,7 +51,7 @@ export function ImportImagesButton({
 			>
 				{children}
 			</Button>
-			<ImportFeedback flow={flow} />
+			{feedback}
 		</>
 	);
 }

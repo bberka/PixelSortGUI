@@ -559,12 +559,12 @@ describe('drag and drop onto the window', () => {
 		const harness = setup({drop: true});
 		harness.mount();
 
-		expect(bodyText()).not.toContain('Drop images to open');
+		expect(bodyText()).not.toContain('Drop images or project files to open');
 		dispatchFileDrag('dragenter', [imageFile('dropped.png')]);
-		expect(bodyText()).toContain('Drop images to open');
+		expect(bodyText()).toContain('Drop images or project files to open');
 
 		dispatchFileDrag('dragleave', [imageFile('dropped.png')]);
-		expect(bodyText()).not.toContain('Drop images to open');
+		expect(bodyText()).not.toContain('Drop images or project files to open');
 	});
 
 	it('imports the dropped files', async () => {
@@ -577,7 +577,7 @@ describe('drag and drop onto the window', () => {
 			'the dropped project',
 		);
 
-		expect(bodyText()).not.toContain('Drop images to open');
+		expect(bodyText()).not.toContain('Drop images or project files to open');
 		expect(harness.store.getState().projects[0]?.name).toBe('dropped');
 	});
 
@@ -627,7 +627,7 @@ describe('drag and drop onto the window', () => {
 		await settle(8);
 
 		dispatchFileDrag('dragenter', [imageFile('from-editor.png')]);
-		expect(bodyText()).toContain('Drop images to open');
+		expect(bodyText()).toContain('Drop images or project files to open');
 
 		dispatchFileDrag('drop', [imageFile('from-editor.png')]);
 		await waitFor(
@@ -668,7 +668,9 @@ describe('storage', () => {
 			(button) => button.textContent === 'Open images',
 		);
 		expect(trigger).toBeDefined();
-		expect(fileInput().accept).toBe('image/*,.avif,.bmp,.gif,.svg,.tif,.tiff');
+		expect(fileInput().accept).toBe(
+			'image/*,.avif,.bmp,.gif,.svg,.tif,.tiff,.glproj,.zip',
+		);
 		expect(fileInput().multiple).toBe(true);
 	});
 });

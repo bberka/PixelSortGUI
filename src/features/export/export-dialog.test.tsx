@@ -296,6 +296,53 @@ describe('ExportDialog', () => {
 		expect(document.querySelector('input[type="number"]')).toBeNull();
 	});
 
+	it('offers no Side choice while side A is empty', async () => {
+		const context = await setup({effects: ['pixelSort']});
+		mountDialog(context);
+
+		expect(document.body.textContent).not.toContain('A · Left');
+	});
+
+	it('exports side B by default and side A when chosen, starting at B on every open', async () => {
+		const context = await setup({effects: ['pixelSort']});
+		await context.store.getState().setCompareMode('split');
+		await context.store.getState().setEditSide('a');
+		await context.store.getState().addEffect('channelShift');
+		const jobs = attachExportController(context);
+		const {rerender} = mountDialog(context);
+		const project = context.store.getState().activeProject!;
+
+		expect(findButton('B · Right').dataset.state).toBe('on');
+		act(() => {
+			findButton('Download').click();
+		});
+		await flush();
+		expect(jobs[0].options.stack).toEqual(project.stack);
+		act(() => {
+			jobs[0].resolve({status: 'cancelled'});
+		});
+		await flush();
+
+		act(() => {
+			findButton('A · Left').click();
+		});
+		act(() => {
+			findButton('Download').click();
+		});
+		await flush();
+		expect(jobs[1].options.stack).toEqual(project.stackA);
+		act(() => {
+			jobs[1].resolve({status: 'cancelled'});
+		});
+		await flush();
+
+		rerender({open: false});
+		await flush();
+		rerender({open: true});
+		await flush();
+		expect(findButton('B · Right').dataset.state).toBe('on');
+	});
+
 	it('shows Quality (50..100, default 92) only for lossy formats and clamps input', async () => {
 		const context = await setup();
 		mountDialog(context);

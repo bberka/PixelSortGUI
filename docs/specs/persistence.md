@@ -611,7 +611,7 @@ export type BackupSettingsPayload = {
 
 1. User opens `"Export backup"` from Settings -> Storage or the Library overflow menu.
 2. Dialog displays all projects with checkboxes (all selected by default, `"Select all"` / `"Select none"`), plus `"Include undo history"` (checked), `"Include user presets (<N>)"` (checked), `"Include settings"` (checked), and the estimated size: the bytes of the deduplicated source images of the checked projects. JSON entries and thumbnails are small and left out of the estimate.
-3. Clicking `"Export backup"` runs `archive.worker.ts` with a progress bar and `"Cancel"` button, then triggers browser download (or `navigator.canShare({files})` where supported).
+3. Clicking `"Export backup"` runs `archive.worker.ts` with a progress bar and `"Cancel"` button, then triggers a browser download.
 
 `scope` is `'library'` when every stored project is exported, else `'selection'`. `manifest.sources` lists each source the exported projects use once, however many projects share it. The records are read in one `readonly` transaction, so they agree with each other.
 
@@ -677,6 +677,11 @@ Import writes in four strict phases so the library can **never** end up with a p
 5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library. Cancel has no effect once the commit has succeeded.
 
 The summary counts what was written: `"Imported <N> project(s) and <M> preset(s)."` with the right singular or plural, with the presets left out when none were written and the whole sentence left out when neither was. `"Applied settings."` follows when settings were applied. With neither sentence it reads `"Nothing new to import."`. `"Skipped <K> unchanged."` ends it when projects were skipped.
+
+**Dialogs** (`src/features/backup/`, look and states in [DESIGN.md section 7.2](../../DESIGN.md#72-post-v010-ui-specifications-f20-f23-f24)). Whatever opens them mounts them where a route change cannot unmount them, since a Replace leaves the editor; unmounting a dialog cancels its work.
+
+- `<ExportBackupDialog open onOpenChange returnFocusTo? />`
+- `<ImportBackupDialog file onClose returnFocusTo? />`: open while `file` is not `null`. The caller picks the file.
 
 **Repository and app store:**
 

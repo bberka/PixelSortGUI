@@ -9,6 +9,7 @@ import {
 	Trash2Icon,
 } from 'lucide-react';
 import {toast} from 'sonner';
+import {BackupDemo} from './backup-demo.tsx';
 import {ThemeSelector} from '@/components/theme-toggle';
 import {
 	AlertDialog,
@@ -188,6 +189,11 @@ export function ComponentGallery() {
 			</header>
 
 			<main className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 p-3 sm:p-4 lg:p-6">
+				<section aria-label="Backup dialogs" className="space-y-2">
+					<SectionHeading>Backup Dialogs</SectionHeading>
+					<BackupDemo />
+				</section>
+
 				<section aria-label="Theme and surface tokens" className="space-y-2">
 					<div className="flex flex-wrap items-center justify-between gap-2">
 						<SectionHeading>Surface &amp; Semantic Tokens</SectionHeading>

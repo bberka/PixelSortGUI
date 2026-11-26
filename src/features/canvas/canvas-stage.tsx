@@ -645,6 +645,23 @@ export function CanvasStage() {
 		toggleFitAndActual(pointerPosition(event));
 	};
 
+	const readViewport = useCallback((): Size => {
+		const stage = stageRef.current;
+		if (stage && stage.clientWidth > 0 && stage.clientHeight > 0) {
+			const live = {width: stage.clientWidth, height: stage.clientHeight};
+			if (
+				viewportRef.current.width !== live.width ||
+				viewportRef.current.height !== live.height
+			) {
+				viewportRef.current = live;
+			}
+
+			return live;
+		}
+
+		return viewportRef.current;
+	}, []);
+
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
 		const {current} = viewRef;
 		const source = sourceRef.current;
@@ -652,7 +669,7 @@ export function CanvasStage() {
 			return;
 		}
 
-		const next = arrowPan(event.key, current, source, viewportRef.current);
+		const next = arrowPan(event.key, current, source, readViewport());
 		if (!next) {
 			return;
 		}

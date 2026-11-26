@@ -31,8 +31,33 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
 	className,
 	sideOffset = 4,
+	onCloseAutoFocus,
 	...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+	const handleCloseAutoFocus: NonNullable<
+		React.ComponentProps<
+			typeof DropdownMenuPrimitive.Content
+		>['onCloseAutoFocus']
+	> = (event) => {
+		onCloseAutoFocus?.(event);
+		if (event.defaultPrevented) {
+			return;
+		}
+
+		// Radix FocusScope runs onCloseAutoFocus in a deferred setTimeout(..., 0)
+		// after unmount. If focus has already moved to another element in the
+		// document (such as the canvas or a dialog), do not steal it back to the
+		// menu trigger.
+		const active = globalThis.document?.activeElement;
+		if (
+			active?.isConnected &&
+			active !== globalThis.document.body &&
+			active !== globalThis.document.documentElement
+		) {
+			event.preventDefault();
+		}
+	};
+
 	return (
 		<DropdownMenuPrimitive.Portal>
 			<DropdownMenuPrimitive.Content
@@ -42,6 +67,7 @@ function DropdownMenuContent({
 					'surface-overlay z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[10rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md p-1 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
 					className,
 				)}
+				onCloseAutoFocus={handleCloseAutoFocus}
 				{...props}
 			/>
 		</DropdownMenuPrimitive.Portal>

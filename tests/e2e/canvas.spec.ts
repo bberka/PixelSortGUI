@@ -278,6 +278,7 @@ async function canvasViewport(
 async function chooseZoom(page: Page, label: string): Promise<void> {
 	await page.getByRole('button', {name: /^Zoom /}).click();
 	await page.getByRole('menuitem', {name: label, exact: true}).click();
+	await expect(page.getByRole('menu')).toBeHidden();
 }
 
 /**
@@ -622,7 +623,9 @@ test('arrow keys pan by 10% of the viewport when the canvas has focus', async ({
 
 	const viewport = await canvasViewport(page);
 	const before = await readView(page);
-	await page.locator('canvas').focus();
+	const canvas = page.locator('canvas');
+	await canvas.focus();
+	await expect(canvas).toBeFocused();
 	await page.keyboard.press('ArrowRight');
 	await page.keyboard.press('ArrowDown');
 

@@ -397,4 +397,106 @@ describe('canvas stage', () => {
 			scale: 3,
 		});
 	});
+
+	it('keeps focus on the canvas and pans with arrow keys when focused right after picking a zoom preset', async () => {
+		const view = await mount();
+		const stage = view.canvas().parentElement!;
+		Object.defineProperties(stage, {
+			clientWidth: {value: 800, configurable: true},
+			clientHeight: {value: 600, configurable: true},
+		});
+
+		const zoomTrigger = view.container.querySelector('button');
+		expect(zoomTrigger).not.toBeNull();
+
+		// Open the Radix dropdown menu via pointerdown (Radix Trigger opens on
+		// primary mouse pointerdown, not click).
+		act(() => {
+			zoomTrigger!.dispatchEvent(
+				new PointerEvent('pointerdown', {
+					button: 0,
+					ctrlKey: false,
+					pointerType: 'mouse',
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+
+		const item100 = [...document.querySelectorAll('[role="menuitem"]')].find(
+			(element) => element.textContent?.trim() === '100%',
+		);
+		expect(item100).toBeDefined();
+
+		// Choose 100%, which closes the menu and schedules Radix FocusScope's
+		// setTimeout(..., 0) onCloseAutoFocus restoration.
+		act(() => {
+			item100!.dispatchEvent(
+				new MouseEvent('click', {bubbles: true, cancelable: true}),
+			);
+		});
+
+		// Focus the canvas before that macrotask fires (the exact race window
+		// between chooseZoom and keyboard.press in E2E and fast user clicks).
+		act(() => {
+			view.canvas().focus();
+		});
+		expect(document.activeElement).toBe(view.canvas());
+
+		// Flush Radix FocusScope's deferred unmount auto-focus timer.
+		act(() => {
+			vi.advanceTimersByTime(0);
+		});
+
+		expect(document.activeElement).toBe(view.canvas());
+
+		const before = viewState(view.store);
+		act(() => {
+			document.activeElement!.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 'ArrowRight',
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+
+		const after = viewState(view.store);
+		expect(after.centerX - before.centerX).toBeCloseTo(80 / before.zoom, 6);
+	});
+
+	it('still returns focus to the zoom trigger when nothing else takes focus after closing the menu', async () => {
+		const view = await mount();
+		const zoomTrigger = view.container.querySelector('button');
+		expect(zoomTrigger).not.toBeNull();
+
+		act(() => {
+			zoomTrigger!.dispatchEvent(
+				new PointerEvent('pointerdown', {
+					button: 0,
+					ctrlKey: false,
+					pointerType: 'mouse',
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+
+		const item100 = [...document.querySelectorAll('[role="menuitem"]')].find(
+			(element) => element.textContent?.trim() === '100%',
+		);
+		expect(item100).toBeDefined();
+
+		act(() => {
+			item100!.dispatchEvent(
+				new MouseEvent('click', {bubbles: true, cancelable: true}),
+			);
+		});
+
+		act(() => {
+			vi.advanceTimersByTime(0);
+		});
+
+		expect(document.activeElement).toBe(zoomTrigger);
+	});
 });

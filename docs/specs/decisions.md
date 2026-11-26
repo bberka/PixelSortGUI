@@ -6,6 +6,7 @@ Updated with post-v0.1.0 decisions (D21 to D26) and open questions (Q11 to Q15) 
 Updated with project files (F25), full backup/restore (F17), and multi-image blending (F26) decisions (D27 to D30) and open questions (Q16 to Q19) by Gemini 4 Neon (Antigravity, thought level low), specification subagent.
 Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with cloud backup and sync decisions (D39 to D41, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with the backup size limit decision (D44) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 
 # Drift decisions and open questions
 
@@ -311,6 +312,14 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** A phone has no keys to press, and the loose key list on the start screen was noise everywhere. Browsers cannot report whether a keyboard is attached, so the primary pointer is the closest signal.
 - **Cost:** A tablet with a keyboard shows no hints, though the shortcuts work.
 - **Revisit if:** Browsers expose keyboard presence.
+
+### D44. Backups stay below 4 GiB instead of writing ZIP64 (2026-11-27)
+
+- **Options considered:** (a) Write ZIP64 records for large backups, which means replacing or patching `fflate`'s streaming ZIP writer with our own; (b) lower the F17 cap to 4,000,000,000 bytes and 65,534 entries, below what a ZIP without ZIP64 can address, and refuse a larger export with a clear message.
+- **Choice:** Option (b) (`persistence.md` section 8.4.2).
+- **Reason:** `fflate` 0.8.3 truncates a larger offset to 32 bits without an error, so (a) means a second ZIP writer that can only be proven with multi-gigabyte files, for a backup the browser also has to assemble as one blob. (b) loses about 295 MB of the old cap, keeps one writer, and a large library can be split with the project checkboxes. The shown limit stays "4 GB".
+- **Cost:** A library over 4 GB needs two or more backups.
+- **Revisit if:** Users hit the limit with a single selection often, or one project alone can exceed it (`F26`'s eight extra images stay under 2 GB).
 
 ---
 

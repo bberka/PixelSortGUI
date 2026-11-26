@@ -1,4 +1,5 @@
 import {expect, test, type Page} from '@playwright/test';
+import type {AppRuntime} from '../../src/state/index.ts';
 import {assertNoA11yViolations} from './axe.ts';
 import {importSyntheticProject} from './seed.ts';
 import {DESKTOP_VIEWPORT, PROOF_VIEWPORTS} from './viewports.ts';
@@ -17,6 +18,20 @@ async function gotoLibrary(page: Page) {
 	await expect(
 		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
 	).toBeVisible();
+}
+
+async function storedWelcomeDismissed(page: Page) {
+	return page.evaluate(async () => {
+		const runtime = (globalThis as unknown as {__psgRuntime?: AppRuntime})
+			.__psgRuntime;
+		const booted = await runtime?.ready;
+		if (booted?.status !== 'ready') {
+			return false;
+		}
+
+		const appState = await booted.bundle.repository.getAppState();
+		return appState.welcomeDismissed === true;
+	});
 }
 
 async function hasNoHorizontalScroll(page: Page) {
@@ -193,6 +208,9 @@ test('the welcome card appears once and stays dismissed after reload (AC-F27.7)'
 
 	await welcome(page).getByRole('button', {name: 'Dismiss welcome'}).click();
 	await expect(welcome(page)).toBeHidden();
+	// The card hides before the write finishes, and a reload cancels a write
+	// still in flight.
+	await expect.poll(async () => storedWelcomeDismissed(page)).toBe(true);
 
 	await page.reload();
 	const link = page.getByRole('link', {name: 'New here? Read the guide'});

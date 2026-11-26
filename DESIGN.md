@@ -4,6 +4,7 @@ Updated with project files (F25), full backup and restore (F17), and image blend
 Updated with split orientation and per-side stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with the phone editor redesign and the keyboard hint rule (F18) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with the cloud sync network exception (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with touch targets, dialog focus and long names by Claude Sonnet 5.5 (apx, medium thinking), bug-sweep subagent.
 
 # Drift design system
 
@@ -85,12 +86,13 @@ System stacks only (zero network requests):
 - **Base grid:** 4 px (`4, 8, 12, 16, 20, 24, 32`).
 - **Radii:** `--radius: 8px` for cards, dialogs, and sheets; `6px` for buttons, inputs, and stack rows; `4px` for badges, pills, and fader slider tracks/grips; `9999px` for the angle dial.
 - **Chrome dimensions:**
+  - Editor toolbar row on desktop and tablet: `40 px`, `44 px` under a coarse pointer so its buttons are not cut off.
   - Top bar height: `48 px` on desktop; `52 px` plus `env(safe-area-inset-top)` on tablet and phone.
   - Desktop right sidebar width: `340 px` (fixed).
   - Tablet docked bottom panel height: `360 px` default, resizable by pointer/keyboard handle between `240 px` and `50%` of viewport height, collapsible to a `48 px` header strip.
   - Phone bottom sheet detents: **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half** (`44%` viewport height), **Expanded** (`80%` viewport height).
 - **Interactive target minimums:**
-  - Coarse pointer (`@media (pointer: coarse)` or phone/tablet viewport class): `44 × 44 CSS px` minimum hit area for every button, slider thumb, toggle, chip, and menu trigger.
+  - Coarse pointer (`@media (pointer: coarse)` or phone/tablet viewport class): `44 × 44 CSS px` minimum hit area for every button, slider thumb, toggle, chip, menu trigger, menu and select item, text and numeric input, dialog close button, and Settings link.
   - Desktop (`@media (pointer: fine)` and desktop class): `24 × 24 CSS px` minimum (`32 px` standard toolbar buttons).
 - **Elevation:** Flat hierarchy using `1 px solid rgb(var(--border))` and `--background` → `--card` → `--popover` steps. Only overlays (`Dialog`, `Popover`, `DropdownMenu`, `Sheet`) carry a subtle shadow in Light mode (`0 8px 24px rgb(0 0 0 / 0.10)`); in True Black mode they rely on a crisp `1 px solid rgb(var(--input))` border instead of diffuse shadow.
 
@@ -152,6 +154,7 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 | Card actions / Instance actions / Zoom menu | F2, F4, F13 | `DropdownMenu` | Keyboard-navigable menus |
 | Add effect picker | F4 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lists all registered effects that are not `unlisted`, with label and 1-line description (AC-F4.1) |
 | Presets picker | F10 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lives in the editor toolbar (`src/features/toolbar/`), not in a sidebar tab |
+| Long names in dialogs | All | `Dialog`, `AlertDialog` | Text without spaces wraps, so the dialog and its buttons stay on screen |
 | Export / Save preset / Settings / About | F10, F12, F16 | `Dialog` (desktop/tablet) / full-height `Sheet` (phone) | Focus-trapped modals |
 | Delete project / Storage full / Large image (> 50 MP) choice | F1, F2, F16 | `AlertDialog` | Explicit confirmation or blocking choice |
 | Phone parameter panel | F18 | Docked panel with two snap points; `Tabs` picks the parameter | Part of the layout, never over the canvas. Drag handle + `"Show all controls"` / `"Show one control"` button (section 6.4) |
@@ -171,6 +174,7 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 
 One component, `ScrollArea` in `src/components/ui/scroll-area.tsx` (Radix `ScrollArea`, restyled), draws every scrollbar in the app. No scroll region uses a native `overflow-auto` or `overflow-y-auto` element, and `src/` has no other scrollbar CSS. Radix is chosen over native CSS because Firefox's `scrollbar-width` cannot change thickness on hover or drag and has no `::-webkit-scrollbar`; the Radix bar behaves the same in Chromium and Firefox.
 
+- **Truncation.** An area that scrolls only vertically keeps its content as wide as the area, so long names truncate.
 - **Overlay.** The bar sits over the content edge and takes no layout width, so content never shifts when it appears or disappears. It mounts only on an axis that overflows.
 - **Plain thumb.** No arrow buttons, no track background, no border: a rounded thumb only. The track is `transparent`.
 - **Thickness.** The thumb is `4 px` at rest. While the pointer is on the scrollbar strip, or the thumb is being dragged, it widens to `8 px` over `150 ms`, and returns to `4 px` when the pointer leaves and the drag ends. With `prefers-reduced-motion: reduce` there is no transition.
@@ -339,7 +343,7 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Edits during a save:** a save never overwrites what the user did to the box after asking for it. A box set while `"Apply crop"` saves stays on screen, unapplied, and crop mode stays on; so does crop mode cancelled and started again meanwhile. If the box ends equal to the applied one, crop mode ends. `"Reset crop"`, `"Apply resize"` and `"Reset resize"` save what was asked for and keep a box set meanwhile, unapplied; after such a box, or any other change to crop mode, `"Apply resize"` no longer ends crop mode. A rotate or flip turns the box as it stands when the save ends.
   - **Typed values:** a number counts as an edit only once `Enter` or blur sets it. A crop field drops typed text when the value it shows changes, including through a save, because the text was typed against the old value. The resize fields and filter likewise return to the saved resize whenever the saved geometry changes.
   - Resize section: unit `ToggleGroup` (`px` | `%`), `Width` and `Height` inputs with an aspect-lock `Button` (`"Lock aspect ratio"`, `aria-pressed`, default on), resampling `Select` (`Lanczos-3`, `Bilinear`, `Nearest`), `"Apply resize"` primary button and `"Reset resize"` ghost button. `Enter` in a field applies. The new size is shown under the fields. Errors appear inline as the user types and nothing is saved: `"Maximum output size is 50 MP (50,000,000 px) and 16,384 px per side."`, `"Enter whole numbers of at least 1."` or `"Enter a percentage from 1 to 1000."`. While the crop box has unapplied changes the section is disabled with the note `"Apply or cancel the crop first."` Applying a resize ends crop mode.
-  - **Crop mode canvas:** the whole rotated and flipped image without effects, fitted with a margin for the handles. Zoom and pan work, are not saved, and the saved view returns afterwards. The image is the preview proxy, so very large photos are softer when zoomed in. The mode ends with Apply, Cancel, a resize, closing the panel, or the desktop History tab.
+  - **Crop mode canvas:** the whole rotated and flipped image without effects, fitted with a margin for the handles. Zoom and pan work, are not saved, and the saved view returns afterwards. The image is the preview proxy, so very large photos are softer when zoomed in. Under a coarse pointer the top and bottom margin is large enough that the lower handles clear the zoom control. The mode ends with Apply, Cancel, a resize, closing the panel, or the desktop History tab.
   - **Split view and Compare in crop mode:** both are suspended. Their buttons and the orientation button are disabled, `\`, `S` and `Shift+S` do nothing, a latched Compare is released, and no split divider or side labels are drawn. The saved split preference does not change and applies again when crop mode ends.
   - On-canvas crop box (section 7.1 overlay layer): `1 px` `#ffffff` border with `1 px` `#000000` casing, dimmed mask over the image outside it (`rgba(0, 0, 0, 0.55)`), rule-of-thirds guides while dragging, and 8 focusable corner and edge handles (`44 × 44 px` hit area on coarse pointer, `24 × 24 px` on fine pointer) plus a focusable `"Move crop box"` control. Drag a handle to resize, drag inside the box to move it, drag outside to pan; a box that covers the whole image cannot move, so dragging it pans, as does holding `Space`.
 - **Project change history panel (F23):**
@@ -497,7 +501,7 @@ Target: **WCAG 2.2 Level AA** for all UI outside the user's photo (F19).
 
 - **Semantic structure:** Every screen uses landmark elements (`<header>`, `<main>`, `<aside>` or named `<section>`), a single `<h1>`, and logical DOM reading order matching visual layout.
 - **Keyboard completeness (AC-F19.1):** The entire core loop (importing via keyboard-activated file input, adding an effect, tuning every parameter including angle and range, reordering the stack, undoing/redoing, comparing, moving the split divider, zooming/panning, and exporting) works without a pointer. Every drag or hover interaction has a keyboard equivalent.
-- **Focus visibility and management:** `:focus-visible` renders `2 px solid rgb(var(--ring))` with `2 px` offset on every interactive control. Opening a dialog or menu traps or moves focus inside; closing returns focus to the triggering element. Deleting a project card or effect row moves focus cleanly to the next sibling (or the Add/Open button if empty).
+- **Focus visibility and management:** `:focus-visible` renders `2 px solid rgb(var(--ring))` with `2 px` offset on every interactive control. Opening a dialog or menu traps or moves focus inside; closing returns focus to the triggering element. A dialog opened from a menu or list returns focus to the button that opened that menu or list. When a control removes itself (the Transform panel's close button, the empty stack's "Add effect", a phone chip's menu after Duplicate), focus moves to the control that takes its place. Deleting a project card or effect row moves focus cleanly to the next sibling (or the Add/Open button if empty).
 - **Accessible names and tooltips:** Every icon-only button has an explicit `aria-label`. Undo and Redo buttons include the target commit label in both `aria-label` and tooltip, for example `"Undo Angle 90°"` and `"Redo Add Pixel sort"` (AC-F9.2).
 - **Status announcements (AC-F19.3):** One visually hidden live region (`role="status" aria-live="polite" aria-atomic="true"`) announces `"Rendering"`, `"Rendered"`, `"Export finished: <file name>"`, and undo/redo results. Throttled so rapid `drag` renders do not spam assistive tech (announce on `settle` and `full` transitions).
 - **Pointer and coarse-pointer sizing:** Minimum `24 × 24 CSS px` interactive targets on desktop (`@media (pointer: fine)`), and minimum `44 × 44 CSS px` targets plus `16 px` font size on text/numeric inputs under `@media (pointer: coarse)` so responsive layouts stay ready for touch devices.

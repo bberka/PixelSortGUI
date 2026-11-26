@@ -4,6 +4,7 @@ Updated for owner decisions by Gemini 4 Neon (Antigravity, thought level medium)
 Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with Milestone 7 (v0.2.0: F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with Milestone 8 (v0.3.0: F25, F17, F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with Milestone 9 (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift roadmap
 
@@ -205,7 +206,29 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 
 ---
 
-## Later work (beyond v0.3.0)
+## Milestone 9: Optional cloud backup and sync (v0.4.0 and v0.5.0)
+
+**Goal:** Opt-in backup to, and later sync between devices through, the user's own Dropbox or Google Drive (`F28`, [persistence.md section 11](persistence.md#11-cloud-backup-and-sync-f28)). Starts after Milestone 8 because it reuses the F17 codec, dialogs and atomic restore (Q27). Proposed until [D37](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26) is merged.
+
+**Owner prerequisite (`O9.1`):** HTTPS working on `drift.bbay.dev`, answers to Q20 to Q26, the Dropbox app and Google client registered as in [persistence.md section 11.11](persistence.md#1111-what-the-owner-registers), and the two **public client IDs** set as repository variables. Send no client secret. `T9.1` needs the IDs and a test account. If Q21 is "Dropbox only", `T9.4` and every Google part are dropped.
+
+| ID | Task | Spec sections | Depends on | Parallel with | Model tier | Verification |
+|---|---|---|---|---|---|---|
+| `T9.1` | Spike: sign-in, transfers and revocation with real accounts in Chrome and Firefox; settle every item of section 11.13; write `docs/research/spike-s4-cloud-auth.md` and correct the specs. | `persistence.md §11.3, §11.5, §11.9, §11.13` | `O9.1` | none | Gemini 4 Neon (Antigravity, medium) | **Pass:** both providers connect, upload and download over 150 MB total including a resumed upload, and disconnect from `localhost`, under the starting policy. **Fail:** change the spec and ask the owner before `T9.2`. |
+| `T9.2` | Build configuration: the two variables, secret-name build guard, `.env.local` ignored, `pages.yml` variables, content security policy plugin, `src/cloud/fetch.ts` gate, service worker test. | `persistence.md §11.1, §11.2, §11.9` | `T9.1` | none | Gemini 4 Neon (Antigravity, medium) | AC-F28.1; unit tests for each variable combination; full e2e suite on both browsers with no policy violation (AVIF export, workers, SVG import included). |
+| `T9.3` | Provider interface, cloud stores (database version bump), token renewal and lock, Dropbox sign-in, disconnect and storage adapter. | `persistence.md §11.3–§11.5, §11.10` | `T9.2` | none | Gemini 4 Neon (Antigravity, medium) | Unit tests with a mocked provider: PKCE vectors, wrong `state`, renewal, `invalid_grant`, offline disconnect, chunked and resumed upload, no token in logs or errors. |
+| `T9.4` | Google sign-in (script loaded on demand) and Drive storage adapter. | `persistence.md §11.3–§11.5` | `T9.3` | `T9.5` | Gemini 4 Neon (Antigravity, medium) | Mocked tests: no script before Connect, scope exactly `drive.appdata`, closed window, expiry, resumable upload, duplicate names. |
+| `T9.5` | Cloud backup and restore engine: layout, publish order, verify, retention, cleanup, F17 reader. | `persistence.md §11.6, §11.7`, `§8.4` | `T8.4`, `T9.3` | `T9.4` | Gemini 4 Neon (Antigravity, medium) | In-memory provider tests for AC-F28.7 to AC-F28.11, interrupted publish, cleanup races, newer `cloudVersion`. |
+| `T9.6` | Settings "Cloud backup" section: connect, privacy text, back up, restore, progress, status, disconnect, delete cloud data. Add its UI section to `DESIGN.md` first. | `product.md F28` | `T8.5`, `T9.3`, `T9.5` | `T9.4`, `T9.7` | Gemini 4 Neon (Antigravity, medium) | Playwright for AC-F28.1 to AC-F28.6, AC-F28.12, AC-F28.13; screenshots at 3 viewports in 2 themes. |
+| `T9.7` | Static `about.html` and `privacy.html`, guide text, `index.html` descriptions, README privacy and feature lists. | `persistence.md §11.10, §11.11`, `product.md F27, F28` | `T9.2` | `T9.4`–`T9.6` | GPT Luna | Pages served offline from the build; links resolve; text matches what the app sends. |
+| `T9.8` | `v0.4.0`: backup acceptance pass, owner checklist with real accounts, independent review, release. | `product.md F28` | `T9.4`, `T9.6`, `T9.7` | none | Gemini 4 Neon (Antigravity, medium) + GPT Luna (review) | AC-F28.1 to AC-F28.13 mapped to tests or checklist; CI green; `v0.4.0` published. |
+| `T9.9` | Sync engine: change hash, version vectors, merge table, conflict copies, deletion records. | `persistence.md §11.8` | `T9.5` | `T9.6`–`T9.8` | Claude Fable (low) *(justified: cross-cutting sync state model, where a mistake silently loses work)* | Property tests with 2 and 3 simulated devices: any order and interruption converges and loses no version; AC-F28.15, AC-F28.16, AC-F28.18. |
+| `T9.10` | Automatic sync: switch, triggers, retry, app-bar status, open-project notice, delete confirmation text, device list. | `product.md F28`, `persistence.md §11.8` | `T9.8`, `T9.9` | none | Gemini 4 Neon (Antigravity, medium) | Playwright with two browser contexts and a shared mock for AC-F28.14 to AC-F28.19; screenshots at 3 viewports. |
+| `T9.11` | `v0.5.0`: two-device acceptance with real accounts, independent review, release. | `product.md F28` | `T9.10` | none | Gemini 4 Neon (Antigravity, medium) + GPT Luna (review) | Full CI green; owner checklist on two devices; `v0.5.0` published. |
+
+---
+
+## Later work (beyond v0.5.0)
 
 Each item below requires its own spec in `docs/specs/` (or `docs/specs/effects/`) before implementation starts (moved items retain their existing spec sections under "Later"). Ordered roughly by user value and architectural sequence:
 

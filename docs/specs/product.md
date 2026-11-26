@@ -5,6 +5,7 @@ Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low)
 Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and per-side effect stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with optional cloud backup and sync (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift product spec
 
@@ -12,9 +13,9 @@ Status: settled for first release, 2026-11-24. Companion specs: [engine.md](engi
 
 ## 1. Purpose and users
 
-Drift is an editor for pixel sorting and glitch effects on still photos. It runs in a browser, works offline, has no accounts and no server, and keeps every image and setting in the browser's own storage on the device.
+Drift is an editor for pixel sorting and glitch effects on still photos. It runs in a browser, works offline, needs no account, has no server of its own, and keeps every image and setting in the browser's own storage on the device. The one optional exception is backup and sync to the user's own Dropbox or Google Drive, which stays off until the user connects it (F28).
 
-Primary user: the owner, a person making glitch art from his own photos. Secondary users: anyone who opens the hosted static site. Assume one person per browser profile. There is no sharing, sync or collaboration. First-release acceptance targets desktop browsers; layouts stay responsive at phone, tablet and desktop widths for a later mobile port.
+Primary user: the owner, a person making glitch art from his own photos. Secondary users: anyone who opens the hosted static site. Assume one person per browser profile. There is no sharing or collaboration. First-release acceptance targets desktop browsers; layouts stay responsive at phone, tablet and desktop widths for a later mobile port.
 
 What the user wants from it, in order:
 
@@ -291,7 +292,7 @@ Two themes, light and true black (pure `#000000` background), plus "System" whic
 The app is a progressive web app. After the first visit, it loads and works fully offline. Updates are downloaded in the background; when a new version is ready, a toast offers "Reload to update" and the app never reloads itself while the user is editing. On desktop Chromium, an "Install app" item appears in the menu when the browser offers installation.
 
 - AC-F15.1: Load the app once, go offline (DevTools offline), reload: the library loads, a project opens, renders and exports.
-- AC-F15.2: The built app makes no network request other than to its own origin (checked with the network panel over a full core loop).
+- AC-F15.2: Unless the user has connected a cloud provider or is connecting one (F28), the built app makes no network request other than to its own origin (checked with the network panel over a full core loop).
 - AC-F15.3: Deploying a new build while the app is open shows the update toast within 60 s of the next navigation or focus, and the app keeps running the old version until the user chooses Reload.
 
 ### F16. Storage status and warnings
@@ -506,6 +507,66 @@ Acceptance criteria:
 - AC-F27.7: On a fresh profile the welcome card is shown; after dismissing it and reloading, it does not return and the empty Library shows `"New here? Read the guide"`.
 - AC-F27.8: axe reports no violations on the Guide in both themes at the three test viewports, and no horizontal page scroll occurs.
 
+### F28. Optional cloud backup and sync (Dropbox, Google Drive)
+
+The user can keep a copy of the library in their own Dropbox or Google Drive and, later, keep several devices in step. Technical rules (sign-in, formats, conflicts, security, provider setup) are in [persistence.md section 11](persistence.md#11-cloud-backup-and-sync-f28); the reasons are in [decisions.md D37 to D39](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). F28 builds on F17 and comes after it ([roadmap.md Milestone 9](roadmap.md#milestone-9-optional-cloud-backup-and-sync-v040-and-v050)).
+
+**Opt-in.** Off by default. The app stays fully usable offline and without an account. A provider is offered only when its client ID was built into the app; with no client ID there is no cloud UI at all. No request goes to any provider before the user presses that provider's Connect button. One provider is connected at a time.
+
+**Where.** A "Cloud backup" section in Settings.
+
+**Connect.**
+
+- "Connect Dropbox" leaves the app for dropbox.com and returns to it after the user approves.
+- "Connect Google Drive" shows the privacy text and loads Google's sign-in script. "Continue with Google" then opens Google's window. Two presses are needed so that the window follows a click and the script is not loaded before the user chose Google.
+
+**Phase 1: backup and restore by hand (v0.4.0).**
+
+- "Back up now" opens the choices of the F17 "Export backup" dialog (projects, history, presets, settings) and uploads them. Files the cloud already holds are not uploaded again. A progress line ("Uploading 3 of 12") and "Cancel" are shown. A backup is listed only once it is complete.
+- "Restore from cloud" lists the backups (date, device name, project count, size). Choosing one opens the F17 "Import backup" preview with Merge (default) or Replace, and restores with the F17 rules.
+- Each device keeps its 5 newest backups.
+
+**Phase 2: automatic sync (v0.5.0).**
+
+- A switch "Sync automatically", off by default, also after connecting. When on, the app syncs on start, 30 s after the last change, on return to the tab (at most once in 5 minutes), when the connection returns, and on "Sync now". Nothing syncs while the app is closed.
+- Projects (with history) and user presets sync. Theme and compare mode stay per device and are only part of backups. Zoom, pan, split view and selection stay per device.
+- If a project changed on two devices, nothing is lost: the later change keeps the project, and the other version is saved beside it as "<name> (conflict from <device>)".
+- Deleting a project or preset deletes it on the other devices, unless it was changed there since. While sync is on, the delete confirmation says so: "Delete <name>? This removes it from this device and from your other synced devices."
+- The project open in the editor is never replaced under the user. A notice "Updated on another device" offers "Reload project".
+- Restoring with Replace turns the switch off first.
+- Google Drive access lasts about one hour and cannot be renewed without a click. Sync then pauses and shows "Reconnect to sync".
+
+**Disconnect** revokes the app's access at the provider and deletes every token and all cloud bookkeeping on this device. If the provider cannot be reached, or Google access has already expired, the local data is still deleted and the app says to remove Drift on the provider's connected apps page. Files already in the cloud stay. With Google Drive, disconnecting removes Drift's access on every device. **Delete cloud data** (confirmation required) removes everything Drift stored in the cloud and leaves local projects alone.
+
+**Status.** The section shows one of: "Not connected", "Connected to <provider> as <name>", "Uploading <n> of <m>", "Downloading <n> of <m>", "Up to date, <time>", "Last backup <time>", "Offline", "Reconnect needed", "Cloud storage is full", or an error with "Try again". While automatic sync is on, an app-bar button shows the same state with an icon and a text label and opens the section. Changes of state are announced through the live region (F19); progress counts are not announced one by one.
+
+**Privacy text,** shown above the Connect buttons with a "Privacy policy" link: "Cloud backup is optional and off until you connect. Drift then uploads copies of your photos, projects, history, presets and settings from this browser to your own Dropbox or Google Drive. Original photo files are uploaded unchanged, including any location data stored in them. The files are not end-to-end encrypted, so the provider can read them under its own terms. Drift has no server, and its developer receives nothing." For Google Drive it adds: "Connecting loads a script from Google into this page." and "The files go into a hidden app folder that you cannot browse. Removing Drift from your Google Drive deletes them."
+
+Acceptance criteria, phase 1:
+
+- AC-F28.1: In a build without client IDs there is no "Cloud backup" section, the content security policy names no provider origin, and the core loop plus F17 export and import make no request to another origin.
+- AC-F28.2: In a build with client IDs and no connection, the core loop, opening Settings and a reload make no request to another origin and add no Google script.
+- AC-F28.3: Connecting Dropbox sends an authorization code request with PKCE (`S256`) and a `state` value and no client secret; returning with the matching `state` connects and removes the query from the address bar. A wrong `state`, or a refused approval, stores nothing and shows "Dropbox was not connected."
+- AC-F28.4: Connecting Google Drive asks for the `drive.appdata` scope only; closing the window or refusing the scope stores nothing.
+- AC-F28.5: The connection survives a reload. An expired Dropbox access token is renewed without a click. If renewal is refused, or the Google token has expired, the section shows "Reconnect needed" and local projects are unchanged.
+- AC-F28.6: Disconnect calls the provider's revocation, and afterwards IndexedDB holds no token, upload session or sync record. Offline, the same local records are deleted and the message about the connected apps page is shown.
+- AC-F28.7: A second backup with nothing changed uploads no photo.
+- AC-F28.8: A backup interrupted by a network loss or reload is not listed. Starting it again within 6 days resumes a large photo upload where it stopped.
+- AC-F28.9: Restoring a backup on a fresh profile gives the same projects, history, presets and settings, with source bytes equal to the originals. A changed or missing cloud file writes nothing and shows an error naming it.
+- AC-F28.10: A backup larger than the free cloud space uploads nothing and shows "Not enough space in <provider>: <needed> needed, <free> free." A storage-full answer during upload leaves the backup unlisted and local data unchanged.
+- AC-F28.11: No token appears in a backup, a project file, an uploaded file, the console or an error message.
+- AC-F28.12: Offline with a provider connected, the whole app works, cloud actions say "You're offline", and the service worker cache holds no provider response.
+- AC-F28.13: The section and its dialogs work by keyboard, pass axe in both themes and show no horizontal scroll at the three test viewports.
+
+Acceptance criteria, phase 2:
+
+- AC-F28.14: After an edit and a sync on device A and a sync on device B, B shows the same stack, history and pixels.
+- AC-F28.15: After the same project is changed on A and B and both sync, both devices hold the same two projects (the later change under the original name, the other as the conflict copy). Further syncs create nothing.
+- AC-F28.16: A delete on A removes the project on B. A delete on A of a project edited on B since the last sync keeps B's version on both.
+- AC-F28.17: A newer version of the open project is applied only after "Reload project" or after returning to the Library.
+- AC-F28.18: Changing only zoom, pan or selection uploads nothing.
+- AC-F28.19: With "Sync automatically" off, a connected app sends no request on start or after edits.
+
 ## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).
@@ -524,8 +585,8 @@ Grouped by likely order. Each needs its own spec before work starts (moved first
 
 These are out of scope for the first release and are not planned unless the owner asks:
 
-- Accounts, cloud sync, sharing links, collaboration, analytics or any network calls after the app is loaded.
-- Server-side processing of any kind.
+- Accounts of its own, sharing links, collaboration, analytics, or any network call after the app is loaded other than the opt-in Dropbox and Google Drive backup and sync (F28).
+- Server-side processing of any kind, including a server that holds sign-in secrets or tokens for F28.
 - A general photo editor: no layers, text, drawing, retouching, RAW development, curves or colour grading beyond the listed effects.
 - Loading effect plug-ins at runtime from files or URLs. New effects are added in source code (engine.md section 4).
 - Preserving EXIF, GPS or ICC metadata in exports.

@@ -200,7 +200,7 @@ Every commit (parameter change, add, remove, reorder, enable or disable, preset 
 
 ### F10. Presets
 
-The preset list shows built-in presets first (the six listed in [engine.md section 7](engine.md#7-built-in-presets)), then user presets by name. Applying a preset replaces the stack (one commit). When the stack already has effects, a confirmation asks first: "Replace current effects?", with the number of effects that will be removed and a note that the change can be undone. Cancel changes nothing and adds no history entry. With an empty stack the preset applies immediately. "Add to stack" appends the preset's instances instead. "Save as preset" stores the current stack under a name. User presets can be renamed and deleted. Presets are global, not per project.
+The preset list shows built-in presets first (the eight listed in [engine.md section 7](engine.md#7-built-in-presets)), then user presets by name. Applying a preset replaces the stack (one commit). When the stack already has effects, a confirmation asks first: "Replace current effects?", with the number of effects that will be removed and a note that the change can be undone. Cancel changes nothing and adds no history entry. With an empty stack the preset applies immediately. "Add to stack" appends the preset's instances instead. "Save as preset" stores the current stack under a name. User presets can be renamed and deleted. Presets are global, not per project.
 
 - AC-F10.1: Applying "ASDF classic" to a project with an empty stack yields two pixel sort instances (angle 270, then angle 0) and a visible result.
 - AC-F10.2: Saving a stack as "Mine", then applying "Mine" to another project, reproduces the same parameters and seeds.

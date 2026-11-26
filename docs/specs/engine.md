@@ -391,7 +391,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`channelSwap` (version 1, `color`) is implemented as specified in section 16.1. Two already-specified glitch effects (`sliceShift`, `blockShuffle`) are deferred to section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `posterize`, `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`sliceShift`, `channelSwap` and `blockShuffle` (version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `posterize`, `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
 
 ## 7. Built-in presets
 
@@ -405,8 +405,10 @@ Defined in `src/presets/builtin.ts` with ids `builtin:<slug>`. Parameters not li
 | `builtin:grey-band` | Grey band | `pixelSort` angle 0, `selectKey` lightness, threshold [0.196, 0.627], `discretize` 3 |
 | `builtin:hue-bands` | Hue bands | `pixelSort` angle 0, `intervalMode` whole, `sortKey` hue, `maxLength` 240, `lengthJitter` 0.5, seed 1 |
 | `builtin:edge-melt` | Edge melt | `pixelSort` angle 270, `intervalMode` edges, `edgeThreshold` 0.20, `edgeBlur` 2 |
+| `builtin:vhs-split` | VHS split | `sliceShift` defaults with seed 7; then `channelShift` defaults |
+| `builtin:tile-scramble` | Tile scramble | `blockShuffle` `tileSize` 96, `amount` 0.25, seed 3; then `channelSwap` `gbr` |
 
-"ASDF classic" credits the column-then-row recipe of Kim Asendorf's ASDFPixelSort, the community's acknowledged origin of the technique; the About screen credits it. "Grey band" reproduces the look of a grey-band sort with a small tolerance, written in our own parameters. (`builtin:vhs-split` and `builtin:tile-scramble` move to section 16.1 with their effects.)
+"ASDF classic" credits the column-then-row recipe of Kim Asendorf's ASDFPixelSort, the community's acknowledged origin of the technique; the About screen credits it. "Grey band" reproduces the look of a grey-band sort with a small tolerance, written in our own parameters.
 
 ## 8. Preview strategy
 
@@ -658,6 +660,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/channel-shift.ts
   effects/channel-swap.ts
   effects/slice-shift.ts
+  effects/block-shuffle.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts
@@ -671,7 +674,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap` and `sliceShift` (section 16.1) and the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `sliceShift`, `channelSwap` and `blockShuffle` (section 16.1) and the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) have been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -737,6 +740,7 @@ Divides the image into a square grid of tiles in source space and swaps a random
 - **Behavior:** Source grid: `T = tileSize`, `cols = floor(Ws / T)`, `rows = floor(Hs / T)`, `N = cols * rows` full tiles; the right and bottom remainders never move. If `N < 2`, output equals input. Permutation `π` starts as identity; for `t` from 0 to `N - 1`, if `unit(seed, 1, t) < amount`, swap `π[t]` and `π[intIn(0, N - 1, seed, 2, t)]`. Render pixel `(x, y)`: `xs = (x + 0.5) / scale`, `ys = (y + 0.5) / scale`, `tx = floor(xs / T)`, `ty = floor(ys / T)`. If `tx < cols` and `ty < rows`: `t2 = π[ty * cols + tx]`, `xs2 = xs + (t2 % cols - tx) * T`, `ys2 = ys + (floor(t2 / cols) - ty) * T`, and `out(x, y) = in(clamp(floor(xs2 * scale), 0, W - 1), clamp(floor(ys2 * scale), 0, H - 1))`. Otherwise `out(x, y) = in(x, y)`. At scale 1 this is an exact tile swap.
 - **Determinism & locality:** Deterministic via `hash32` with `seed` and purpose codes `1, 2`. Needs whole image (random tile gather). Cost class: Low. Debug views: none.
 - **Provenance:** Classic tile-scramble glitch effect. Clean-room own specification; no external code copied.
+- **Tests:** a hand-computed tile swap; `amount` 0, fewer than two full tiles, and the right and bottom remainders stay put; the permutation and sample positions follow the source-space grid on a scaled render; 1 × 1, 1 × N and N × 1 images and both ends of every range; the generic checks of section 14.3; stack JSON round trip; golden cases for defaults, two non-default settings and scale 0.5.
 
 #### 4. `scanlineWave` (version 1, `glitch`, top 5): "Displace rows or columns along a wave with optional jitter."
 
@@ -889,13 +893,6 @@ Runs a deterministic integer 8×8 block transform and aggressive quantisation di
   5. Convert YCbCr back to RGB with integer arithmetic and copy alpha unchanged.
 - **Determinism & locality:** Deterministic via integer tables and `hash32` (purpose codes `1..4`). Whole image (block-aligned). Cost class: Medium. Debug views: none.
 - **Provenance:** Standard ITU-T T.81 JPEG baseline quantisation tables (public standard) and data-bending aesthetics. Clean-room own implementation. (Note: true raw-bitstream JPEG corruption remains deferred because browser JPEG decoders vary across engines; pixel-space `jpegCrush` gives identical output across Chromium, Firefox, and Node.)
-
-#### Deferred built-in presets (enabled with F22 top 5)
-
-| Id | Name | Instances |
-|---|---|---|
-| `builtin:vhs-split` | VHS split | `sliceShift` defaults with seed 7; then `channelShift` defaults |
-| `builtin:tile-scramble` | Tile scramble | `blockShuffle` `tileSize` 96, `amount` 0.25, seed 3; then `channelSwap` `gbr` |
 
 ### 16.2 iOS canvas-limit decode and export path
 

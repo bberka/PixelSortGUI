@@ -1,6 +1,8 @@
 // The archive codec in process and a stand-in image decoder: Node has neither
 // workers nor `createImageBitmap`.
 import {vi} from 'vite-plus/test';
+import {readBackup, writeBackup} from '../../src/storage/backup.ts';
+import type {BackupTransferDependencies} from '../../src/storage/backup-transfer.ts';
 import {
 	readProjectFile,
 	writeProjectFile,
@@ -22,6 +24,7 @@ export function transferDependencies() {
 	}));
 	return {
 		projectArchive: {save: writeProjectFile, open: readProjectFile},
+		backupArchive: {save: writeBackup, open: readBackup},
 		probeImage,
-	} satisfies ProjectTransferDependencies;
+	} satisfies ProjectTransferDependencies & BackupTransferDependencies;
 }

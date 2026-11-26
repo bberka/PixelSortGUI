@@ -1,7 +1,16 @@
 // The main thread's side of the archive worker. It imports types only from the
 // codec, so `fflate` stays in the worker chunk.
 import type {ArchiveRequest, ArchiveResponse} from '../worker/protocol.ts';
-import {ProjectFileError} from './project-file-error.ts';
+import {BackupError, type BackupErrorCode} from './backup-error.ts';
+import type {
+	BackupContents,
+	BackupInput,
+	BackupOutput,
+} from './backup-format.ts';
+import {
+	ProjectFileError,
+	type ProjectFileErrorCode,
+} from './project-file-error.ts';
 import type {
 	ArchiveOptions,
 	ProjectFileContents,
@@ -30,10 +39,21 @@ export type ArchiveJobOptions = ArchiveOptions & {
 	createWorker?: () => ArchiveWorker;
 };
 
-type Result = Extract<
-	ArchiveResponse,
-	{type: 'projectWritten' | 'projectRead'}
->;
+type Result = Exclude<ArchiveResponse, {type: 'progress' | 'error'}>;
+
+// The error class the codec of `request` threw, rebuilt on this side.
+function jobError(
+	request: ArchiveRequest,
+	{code, message}: Extract<ArchiveResponse, {type: 'error'}>,
+): Error {
+	if (!code) {
+		return new Error(message);
+	}
+
+	return request.type === 'writeBackup' || request.type === 'readBackup'
+		? new BackupError(code as BackupErrorCode, message)
+		: new ProjectFileError(code as ProjectFileErrorCode, message);
+}
 
 async function runJob(
 	request: ArchiveRequest,
@@ -54,11 +74,7 @@ async function runJob(
 				if (data.type === 'progress') {
 					onProgress?.({path: data.path, fraction: data.fraction});
 				} else if (data.type === 'error') {
-					reject(
-						data.code
-							? new ProjectFileError(data.code, data.message)
-							: new Error(data.message),
-					);
+					reject(jobError(request, data));
 				} else {
 					resolve(data);
 				}
@@ -102,6 +118,32 @@ export async function openProjectFile(
 ): Promise<ProjectFileContents> {
 	const result = await runJob({type: 'readProject', file, fileName}, options);
 	if (result.type !== 'projectRead') {
+		throw new Error('The archive worker answered another request');
+	}
+
+	return result.contents;
+}
+
+// `writeBackup` in a worker. Aborting terminates the worker.
+export async function saveBackup(
+	input: BackupInput,
+	options: ArchiveJobOptions = {},
+): Promise<BackupOutput> {
+	const result = await runJob({type: 'writeBackup', input}, options);
+	if (result.type !== 'backupWritten') {
+		throw new Error('The archive worker answered another request');
+	}
+
+	return {blob: result.blob, fileName: result.fileName};
+}
+
+// `readBackup` in a worker. Aborting terminates the worker.
+export async function openBackup(
+	file: Blob,
+	options: ArchiveJobOptions = {},
+): Promise<BackupContents> {
+	const result = await runJob({type: 'readBackup', file}, options);
+	if (result.type !== 'backupRead') {
 		throw new Error('The archive worker answered another request');
 	}
 

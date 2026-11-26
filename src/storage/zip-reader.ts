@@ -241,7 +241,9 @@ export async function readZipDirectory(blob: Blob): Promise<ZipDirectory> {
 	return {entries, dataEnd: offset};
 }
 
-async function compressedData(
+// The bytes an entry occupies in the file, without reading them. For a stored
+// entry that is its content.
+export async function zipEntryData(
 	blob: Blob,
 	entry: ZipEntry,
 	dataEnd: number,
@@ -282,7 +284,7 @@ export async function readZipEntry(
 		throw new ZipLimitError(`${entry.name} is larger than ${limit} bytes`);
 	}
 
-	const data = await compressedData(blob, entry, directory.dataEnd);
+	const data = await zipEntryData(blob, entry, directory.dataEnd);
 	const output = new Uint8Array(entry.size);
 	let length = 0;
 	const append = (chunk: Uint8Array) => {

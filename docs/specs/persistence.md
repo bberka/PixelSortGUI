@@ -181,6 +181,8 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState` centred on the effective size, same `stack`, `stackA`, `transform` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
 | Save project file (F25) | none (reads only) | On request | Reads the project, its source, thumbnail and history (when included) in one `readonly` transaction, then writes the file in the archive worker (section 8.3.5). |
 | Open project file (F25) | `sources`, `projects`, `history`, `thumbnails`, `meta` | Immediate per file | Validates the whole file first, then writes one atomic transaction (section 8.3.5). Ends the first launch and triggers the automatic persistence request, as an image import does (section 7.3). |
+| Export backup (F17) | none (reads only) | On request | Reads the chosen records in one `readonly` transaction, then writes the ZIP in the archive worker (section 8.4). |
+| Import backup (F17) | `sources`, `projects`, `history`, `thumbnails`, `presets`, `meta` | On confirmation | Validates the whole file first, then stores new sources and commits everything else in one transaction (section 8.4.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
@@ -595,7 +597,7 @@ export type BackupSettingsPayload = {
   - ZIP central directory max **16 MB**.
 - **Export refuses what it could not import.** The writer checks every limit before it packs the first image, and the finished file size afterwards. A refused export produces no file (messages in section 8.4.4). It also validates every project and preset it writes, and does not re-hash stored source bytes.
 - **Streaming:** Export streams each `SourceRecord.blob` through `blob.stream()` into `ZipPassThrough` (STORE, level 0) inside `archive.worker.ts`. Never decode pixels during export.
-- **Memory on import:** Sources are read and hashed one at a time. A stored (uncompressed) source entry is handed on as a slice of the chosen file, so the app never holds all image bytes in memory. A deflated one (a re-zipped backup) becomes a new blob. If the file changes or disappears before the import ends, the write fails and nothing is kept.
+- **Memory on import:** Sources are read and hashed one at a time. A stored (uncompressed) source entry is handed on as a slice of the chosen file, so the app never holds all image bytes in memory. A deflated one (a re-zipped backup) becomes a new blob. If the file changes or disappears before the import ends, the write fails and nothing is kept. The in-memory fallback copies each source it imports, so the session does not depend on the file afterwards.
 - **Progress and cancel:** Progress is `{stage, fraction, path?}`. Export reports `reading` (records from storage) then `packing`; import reports `validating` then `importing`. `Cancel` aborts an `AbortSignal`: it terminates the worker, aborts the running IndexedDB transaction and takes effect within 1 s (AC-F17.5).
 
 #### 8.4.3 Selective export and selective import flow
@@ -609,6 +611,8 @@ export type BackupSettingsPayload = {
 `scope` is `'library'` when every stored project is exported, else `'selection'`. `manifest.sources` lists each source the exported projects use once, however many projects share it. The records are read in one `readonly` transaction, so they agree with each other.
 
 **Selective import:**
+
+Phase 1 reads its JSON documents through `BackupReader.read(path)` (`src/storage/backup-documents.ts`, section 11.1). The paths it accepts are the ZIP layout of section 8.4.1, so `T9.5` has to let the revision folder of the cloud layout through.
 
 1. User picks a `.zip` file via `"Import backup"` (or drops a backup `.zip` on the Library or Editor).
 2. **Phase 1 (Inspect and validate, zero DB writes):** In the worker, validate `manifest.json` (`kind === 'backup'`, `backupVersion` and `projectFormatVersion`), every `project.json`, `history.json`, `presets.json` and `settings.json`, and verify that every `sources/*` entry exists and matches its SHA-256 and `byteLength`. Then check the images as a project file import does (section 8.3.5): a source already in `sources` must have the stored width and height; a new one must decode, have no side over 16,384 px, and decode to its declared size. A thumbnail that is missing, does not decode or has a side over 512 px is left out.
@@ -667,7 +671,7 @@ Import writes in four strict phases so the library can **never** end up with a p
 4. **Orphan cleanup:** After a Replace commit, run `cleanupOrphanedSources()` so sources that belonged only to replaced projects are freed. A failure here does not fail the import; the next startup cleans up.
 5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library. Cancel has no effect once the commit has succeeded.
 
-The summary counts what was written: `"Imported <N> project(s) and <M> preset(s)."` with the right singular or plural; presets are left out when none were written, `" Applied settings."` is added when settings were applied, and `" Skipped <K> unchanged."` when projects were skipped. With nothing written and no settings it is `"Nothing new to import."`.
+The summary counts what was written: `"Imported <N> project(s) and <M> preset(s)."` with the right singular or plural, with the presets left out when none were written and the whole sentence left out when neither was. `"Applied settings."` follows when settings were applied. With neither sentence it reads `"Nothing new to import."`. `"Skipped <K> unchanged."` ends it when projects were skipped.
 
 **Repository and app store:**
 
@@ -751,6 +755,7 @@ src/storage/
   archive-client.ts    Starts the archive worker, forwards progress, cancels by terminating it
   project-transfer.ts  Project file save and import shared by both adapters (section 8.3.5)
   backup.ts            Backup ZIP writer and reader (section 8.4)
+  backup-documents.ts  Validation of a backup's JSON documents through a `read(path)` reader (section 11.1)
   backup-format.ts     Backup types, limits and validation
   backup-error.ts      Backup error codes and exact messages, free of fflate
   backup-transfer.ts   Inspect, preview, merge plan and four-phase import shared by both adapters

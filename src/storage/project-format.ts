@@ -168,6 +168,14 @@ export function migrateProjectDocuments(
 	return current;
 }
 
+// The device's local time as `YYYYMMDD-HHmmss`, for file names.
+export function fileTimestamp(date: Date): string {
+	const pad = (value: number) => String(value).padStart(2, '0');
+	const day = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+	const time = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+	return `${day}-${time}`;
+}
+
 export function projectFileName(name: string, date: Date): string {
 	const words = name
 		.toLocaleLowerCase('en')
@@ -175,10 +183,7 @@ export function projectFileName(name: string, date: Date): string {
 		.filter(Boolean)
 		.join('-');
 	const slug = [...words].slice(0, MAX_SLUG_LENGTH).join('').replace(/-$/, '');
-	const pad = (value: number) => String(value).padStart(2, '0');
-	const day = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
-	const time = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-	return `${slug || 'project'}-${day}-${time}${PROJECT_FILE_EXTENSION}`;
+	return `${slug || 'project'}-${fileTimestamp(date)}${PROJECT_FILE_EXTENSION}`;
 }
 
 export function ensure(condition: boolean, what: string): asserts condition {
@@ -198,12 +203,12 @@ export function objectValue(
 	return value as Record<string, unknown>;
 }
 
-function stringValue(value: unknown, what: string): string {
+export function stringValue(value: unknown, what: string): string {
 	ensure(typeof value === 'string', what);
 	return value;
 }
 
-function booleanValue(value: unknown, what: string): boolean {
+export function booleanValue(value: unknown, what: string): boolean {
 	ensure(typeof value === 'boolean', what);
 	return value;
 }
@@ -213,7 +218,7 @@ function numberValue(value: unknown, what: string): number {
 	return value;
 }
 
-function integerValue(
+export function integerValue(
 	value: unknown,
 	min: number,
 	max: number,
@@ -229,7 +234,7 @@ function integerValue(
 	return value;
 }
 
-function oneOf<const Value extends string>(
+export function oneOf<const Value extends string>(
 	value: unknown,
 	allowed: readonly Value[],
 	what: string,
@@ -242,13 +247,13 @@ function optionalId(value: unknown, what: string): string | null {
 	return value === null ? null : stringValue(value, what);
 }
 
-function timestamp(value: unknown, what: string): number {
+export function timestamp(value: unknown, what: string): number {
 	const time = numberValue(value, what);
 	ensure(time >= 0, what);
 	return time;
 }
 
-function hashValue(value: unknown, what: string): string {
+export function hashValue(value: unknown, what: string): string {
 	const hash = stringValue(value, what);
 	ensure(/^[\da-f]{64}$/.test(hash), what);
 	return hash;
@@ -256,7 +261,7 @@ function hashValue(value: unknown, what: string): string {
 
 // Checks the envelope only and returns the stack itself, so effects this version
 // does not know pass through unchanged (AC-F4.6).
-function stackValue(value: unknown, what: string): EffectStack {
+export function stackValue(value: unknown, what: string): EffectStack {
 	const stack = objectValue(value, what);
 	integerValue(stack.schemaVersion, 1, Number.MAX_SAFE_INTEGER, what);
 	const {instances} = stack;
@@ -346,7 +351,7 @@ export function sourceExtension(mimeType: string): string {
 	return SOURCE_EXTENSIONS[mimeType] ?? 'bin';
 }
 
-function sourceEntryValue(value: unknown): ArchiveSourceEntry {
+export function sourceEntryValue(value: unknown): ArchiveSourceEntry {
 	const entry = objectValue(value, 'source entry');
 	const sha256 = hashValue(entry.sha256, 'source sha256');
 	const path = stringValue(entry.path, 'source path');

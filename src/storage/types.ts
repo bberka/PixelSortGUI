@@ -1,5 +1,15 @@
 import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import type {
+	BackupOptions,
+	BackupOutput,
+	ExportBackupOptions,
+} from './backup-format.ts';
+import type {
+	BackupImportResult,
+	BackupInspection,
+	BackupSelection,
+} from './backup-transfer.ts';
 import type {ArchiveOptions, ProjectFileOutput} from './project-format.ts';
 
 export const DB_NAME = 'drift';
@@ -235,6 +245,20 @@ export type StorageRepository = {
 		fileName: string,
 		options?: ImportProjectOptions,
 	): Promise<CreateProjectResult>;
+	// A backup ZIP of projects, presets and settings (persistence.md section 8.4).
+	exportBackup(options?: ExportBackupOptions): Promise<BackupOutput>;
+	// Bytes of every stored source, by hash, for the export size estimate.
+	getSourceSizes(): Promise<Record<string, number>>;
+	// Validates a backup and compares it with the library; writes nothing.
+	// Rejects with `BackupError`.
+	inspectBackup(file: Blob, options?: BackupOptions): Promise<BackupInspection>;
+	// Rejects with `StorageQuotaError`, `BackupError` or the signal's reason, and
+	// then the library is as before.
+	importBackup(
+		backup: BackupInspection,
+		selection: BackupSelection,
+		options?: BackupOptions,
+	): Promise<BackupImportResult>;
 	commitStack(input: CommitStackInput): Promise<CommitStackResult>;
 	saveProjectStack(
 		id: string,

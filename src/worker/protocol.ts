@@ -3,6 +3,12 @@ import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
 import type {SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import type {BackupErrorCode} from '../storage/backup-error.ts';
+import type {
+	BackupContents,
+	BackupInput,
+	BackupOutput,
+} from '../storage/backup-format.ts';
 import type {ProjectFileErrorCode} from '../storage/project-file-error.ts';
 import type {
 	ArchiveProgress,
@@ -152,15 +158,19 @@ export type ExportResponse =
 // job is cancelled (persistence.md section 8.3.4).
 export type ArchiveRequest =
 	| {type: 'writeProject'; input: ProjectFileInput}
-	| {type: 'readProject'; file: Blob; fileName: string};
+	| {type: 'readProject'; file: Blob; fileName: string}
+	| {type: 'writeBackup'; input: BackupInput}
+	| {type: 'readBackup'; file: Blob};
 
 export type ArchiveResponse =
 	| ({type: 'progress'} & ArchiveProgress)
 	| ({type: 'projectWritten'} & ProjectFileOutput)
 	| {type: 'projectRead'; contents: ProjectFileContents}
+	| ({type: 'backupWritten'} & BackupOutput)
+	| {type: 'backupRead'; contents: BackupContents}
 	| {
 			type: 'error';
 			// Missing when the failure is not about the file or project itself.
-			code?: ProjectFileErrorCode;
+			code?: ProjectFileErrorCode | BackupErrorCode;
 			message: string;
 	  };

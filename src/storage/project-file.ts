@@ -1,5 +1,6 @@
-// The `.glproj` codec (persistence.md section 8.3). It runs in the archive
-// worker: the main thread must import only its types.
+// The `.glproj` codec (persistence.md section 8.3) and the ZIP helpers the
+// backup codec shares. It runs in the archive worker: the main thread must
+// import only its types.
 import {Zip, ZipDeflate, ZipPassThrough} from 'fflate';
 import {repairProjectGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
@@ -10,7 +11,7 @@ import {
 	type ProjectFileErrorDetail,
 	type ProjectSaveErrorCode,
 } from './project-file-error.ts';
-import {type HistoryEntryRecord} from './types.ts';
+import type {HistoryEntryRecord, ProjectRecord, SourceRecord} from './types.ts';
 import {
 	inSteps,
 	readZipDirectory,
@@ -38,6 +39,7 @@ import {
 	payloadValue,
 	historyValue,
 	matchPrimarySource,
+	type ArchiveSourceEntry,
 	type ThumbnailPath,
 	type ProjectFileManifest,
 	type ProjectFilePayload,
@@ -54,7 +56,9 @@ export * from './project-format.ts';
 // them out of the JavaScript heap.
 const WRITE_PART_BYTES = 8 * 1024 * 1024;
 
-async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+export async function sha256Hex(
+	bytes: Uint8Array<ArrayBuffer>,
+): Promise<string> {
 	const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
 	return Array.from(new Uint8Array(digest), (byte) =>
 		byte.toString(16).padStart(2, '0'),
@@ -62,7 +66,7 @@ async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
 }
 
 // Reports at most once per entry and whole percent.
-function progressReporter(
+export function progressReporter(
 	total: number,
 	onProgress: ArchiveOptions['onProgress'],
 ) {
@@ -91,7 +95,7 @@ type ZipWriter = {
 	finish(): Blob;
 };
 
-function createZipWriter(mtime: Date, signal?: AbortSignal): ZipWriter {
+export function createZipWriter(mtime: Date, signal?: AbortSignal): ZipWriter {
 	const parts: Blob[] = [];
 	let pending: Array<Uint8Array<ArrayBuffer>> = [];
 	let pendingBytes = 0;
@@ -171,9 +175,12 @@ function saveError(
 	});
 }
 
-function savedPayload(input: ProjectFileInput): ProjectFilePayload {
-	const project = repairProjectGeometry(input.project);
-	const history = input.history !== undefined;
+// A stored project as `project.json` holds it.
+export function savedPayload(
+	record: ProjectRecord,
+	history: boolean,
+): ProjectFilePayload {
+	const project = repairProjectGeometry(record);
 	return payloadValue({
 		id: project.id,
 		name: project.name,
@@ -199,7 +206,7 @@ function savedPayload(input: ProjectFileInput): ProjectFilePayload {
 	});
 }
 
-function savedHistory(
+export function savedHistory(
 	entries: readonly HistoryEntryRecord[],
 	project: ProjectFilePayload,
 ): HistoryEntryRecord[] {
@@ -220,6 +227,31 @@ function savedHistory(
 	);
 }
 
+// The entry name for a thumbnail, or `null` when it is left out of archives.
+export function thumbnailPathFor(thumbnail: Blob): ThumbnailPath | null {
+	if (thumbnail.size > MAX_THUMBNAIL_BYTES) {
+		return null;
+	}
+
+	return (
+		(Object.keys(THUMBNAIL_TYPES) as ThumbnailPath[]).find(
+			(path) => THUMBNAIL_TYPES[path] === thumbnail.type,
+		) ?? null
+	);
+}
+
+// The manifest entry of a stored source.
+export function archiveSource(source: SourceRecord): ArchiveSourceEntry {
+	return {
+		sha256: source.sha256,
+		path: `sources/${source.sha256}.${sourceExtension(source.mimeType)}`,
+		mimeType: source.mimeType,
+		byteLength: source.blob.size,
+		width: source.width,
+		height: source.height,
+	};
+}
+
 /**
  Builds a `.glproj` archive without decoding any pixels. Rejects with
  `ProjectFileError`, or with the signal's reason when cancelled.
@@ -236,7 +268,7 @@ export async function writeProjectFile(
 	let manifest: ProjectFileManifest;
 	const media: Array<{path: string; blob: Blob}> = [];
 	try {
-		project = savedPayload(input);
+		project = savedPayload(input.project, input.history !== undefined);
 		history = input.history ? savedHistory(input.history, project) : null;
 
 		const bySha = new Map(
@@ -249,16 +281,10 @@ export async function writeProjectFile(
 
 		bySha.delete(project.sourceHash);
 
-		let thumbnailPath: ThumbnailPath | null = null;
 		const {thumbnail} = input;
-		if (thumbnail && thumbnail.size <= MAX_THUMBNAIL_BYTES) {
-			thumbnailPath =
-				(Object.keys(THUMBNAIL_TYPES) as ThumbnailPath[]).find(
-					(path) => THUMBNAIL_TYPES[path] === thumbnail.type,
-				) ?? null;
-			if (thumbnailPath) {
-				media.push({path: thumbnailPath, blob: thumbnail});
-			}
+		const thumbnailPath = thumbnail ? thumbnailPathFor(thumbnail) : null;
+		if (thumbnailPath) {
+			media.push({path: thumbnailPath, blob: thumbnail!});
 		}
 
 		const sources = [primary, ...bySha.values()].map((source) => {
@@ -266,16 +292,9 @@ export async function writeProjectFile(
 				throw saveError('too-large', name);
 			}
 
-			const path = `sources/${source.sha256}.${sourceExtension(source.mimeType)}`;
-			media.push({path, blob: source.blob});
-			return {
-				sha256: source.sha256,
-				path,
-				mimeType: source.mimeType,
-				byteLength: source.blob.size,
-				width: source.width,
-				height: source.height,
-			};
+			const entry = archiveSource(source);
+			media.push({path: entry.path, blob: source.blob});
+			return entry;
 		});
 		manifest = manifestValue({
 			kind: 'project',

@@ -1,5 +1,23 @@
 import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import {
+	backupSourceHashes,
+	type BackupOptions,
+	type BackupOutput,
+	type ExportBackupOptions,
+} from './backup-format.ts';
+import {
+	chooseBackupProjects,
+	inspectBackupArchive,
+	runBackupImport,
+	writeBackupArchive,
+	type BackupImportResult,
+	type BackupImportStore,
+	type BackupInspection,
+	type BackupPlan,
+	type BackupSelection,
+	type BackupTransferDependencies,
+} from './backup-transfer.ts';
 import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
 	cloneRecord,
@@ -53,9 +71,10 @@ import {
 	type ViewState,
 } from './types.ts';
 
-export type MemoryStorageAdapterOptions = ProjectTransferDependencies & {
-	now?: () => number;
-};
+export type MemoryStorageAdapterOptions = ProjectTransferDependencies &
+	BackupTransferDependencies & {
+		now?: () => number;
+	};
 
 export class MemoryStorageAdapter implements StorageRepository {
 	readonly #sources = new Map<string, SourceRecord>();
@@ -66,7 +85,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 	#appState: AppStateRecord = createDefaultAppState();
 	readonly #schemaInfo: SchemaInfoRecord;
 	readonly #now: () => number;
-	readonly #transfer: ProjectTransferDependencies;
+	readonly #transfer: ProjectTransferDependencies & BackupTransferDependencies;
 
 	constructor(options: MemoryStorageAdapterOptions = {}) {
 		this.#now = options.now ?? (() => Date.now());
@@ -123,6 +142,85 @@ export class MemoryStorageAdapter implements StorageRepository {
 		return {
 			project: cloneRecord(updated),
 			entry: cloneRecord(entry),
+		};
+	}
+
+	#backupStore(): BackupImportStore {
+		return {
+			async checkQuota() {},
+			hasSource: async (sha256) => this.hasSource(sha256),
+			stageSource: async (source, signal) => {
+				// A copy, so the session does not depend on the chosen file.
+				const blob = new Blob([await source.blob.arrayBuffer()], {
+					type: source.mimeType,
+				});
+				signal?.throwIfAborted();
+				if (this.#sources.has(source.sha256)) {
+					return false;
+				}
+
+				this.#sources.set(source.sha256, {...source, blob});
+				return true;
+			},
+			commit: async (planFrom, signal) => {
+				signal?.throwIfAborted();
+				// No `await` here, so the writes cannot interleave with another call.
+				const plan = planFrom({
+					projects: [...this.#projects.values()],
+					presets: [...this.#presets.values()],
+				});
+				this.#writeBackupPlan(plan);
+				return plan;
+			},
+			discardSources: async (hashes) => {
+				const used = new Set(
+					Array.from(this.#projects.values(), (item) => item.sourceHash),
+				);
+				for (const sha256 of hashes) {
+					if (!used.has(sha256)) {
+						this.#sources.delete(sha256);
+					}
+				}
+			},
+			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
+		};
+	}
+
+	#writeBackupPlan(plan: BackupPlan): void {
+		const now = this.#now();
+		for (const source of plan.sources) {
+			if (!this.#sources.has(source.sha256)) {
+				this.#sources.set(source.sha256, toSourceRecord(source, now));
+			}
+		}
+
+		const replace = plan.mode === 'replace';
+		if (replace) {
+			this.#projects.clear();
+			this.#history.clear();
+			this.#thumbnails.clear();
+			this.#presets.clear();
+		}
+
+		for (const {project, history, thumbnail} of plan.records) {
+			this.#projects.set(project.id, cloneRecord(project));
+			this.#history.set(
+				project.id,
+				new Map(history.map((entry) => [entry.seq, cloneRecord(entry)])),
+			);
+			if (thumbnail) {
+				this.#thumbnails.set(project.id, thumbnail);
+			}
+		}
+
+		for (const preset of plan.presets) {
+			this.#presets.set(preset.id, cloneRecord(preset));
+		}
+
+		this.#appState = {
+			...this.#appState,
+			...plan.settings,
+			...(replace && {activeProjectId: null}),
 		};
 	}
 
@@ -425,6 +523,81 @@ export class MemoryStorageAdapter implements StorageRepository {
 			source: {...this.#sources.get(primaryHash)!},
 			deduplicated,
 		};
+	}
+
+	async exportBackup(options: ExportBackupOptions = {}): Promise<BackupOutput> {
+		options.signal?.throwIfAborted();
+		options.onProgress?.({stage: 'reading', fraction: 0});
+		const {projects, scope} = chooseBackupProjects(
+			await this.listProjects(),
+			options.projectIds,
+		);
+		const includesHistory = options.includeHistory ?? true;
+		const items = [];
+		for (const project of projects) {
+			items.push({
+				project,
+				history: includesHistory
+					? await this.getHistory(project.id)
+					: undefined,
+				thumbnail: this.#thumbnails.get(project.id)?.blob,
+			});
+		}
+
+		const sources: SourceRecord[] = [];
+		for (const hash of new Set(
+			projects.flatMap((project) => backupSourceHashes(project)),
+		)) {
+			const source = this.#sources.get(hash);
+			if (source) {
+				sources.push(source);
+			}
+		}
+
+		const {theme, compareMode} = this.#appState;
+		const snapshot = {
+			scope,
+			includesHistory,
+			projects: items,
+			sources,
+			presets:
+				(options.includePresets ?? true) ? await this.listPresets() : undefined,
+			settings:
+				(options.includeSettings ?? true) ? {theme, compareMode} : undefined,
+		};
+		options.onProgress?.({stage: 'reading', fraction: 1});
+		return writeBackupArchive(snapshot, options, this.#transfer);
+	}
+
+	async getSourceSizes(): Promise<Record<string, number>> {
+		return Object.fromEntries(
+			Array.from(this.#sources.values(), (source) => [
+				source.sha256,
+				source.byteLength,
+			]),
+		);
+	}
+
+	async inspectBackup(
+		file: Blob,
+		options: BackupOptions = {},
+	): Promise<BackupInspection> {
+		return inspectBackupArchive(file, options, this.#transfer, {
+			findSource: async (sha256) => this.getSource(sha256),
+			read: async () => this.getStartupSnapshot(),
+		});
+	}
+
+	// No quota check: this adapter uses no browser storage.
+	async importBackup(
+		backup: BackupInspection,
+		selection: BackupSelection,
+		options: BackupOptions = {},
+	): Promise<BackupImportResult> {
+		return runBackupImport(this.#backupStore(), backup, selection, options, {
+			now: this.#now,
+			createId: generateId,
+		});
 	}
 
 	async commitStack(input: CommitStackInput): Promise<CommitStackResult> {

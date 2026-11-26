@@ -5,7 +5,12 @@ import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
 import {CHANGELOG_TEXT} from './changelog.generated.ts';
+import {
+	protectionMessage,
+	type ProtectionResult,
+} from './protection-feedback.ts';
 import {SettingsButton} from './settings-button.tsx';
+import {PROTECTION_WAIT_MS} from './settings-content.tsx';
 import {
 	THIRD_PARTY_NOTICES,
 	THIRD_PARTY_NOTICES_FILE,
@@ -74,6 +79,8 @@ function openSettingsDialog(): void {
 }
 
 afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
 	usePwaStore.getState().reset();
 	if (root) {
 		act(() => {
@@ -145,7 +152,7 @@ describe('Settings view', () => {
 			'Storage protection: Best-effort (browser may clear data when space is low)',
 		);
 		expect(dialog?.textContent).toContain(
-			'Private Browsing windows clear all stored data when closed.',
+			'If you use a private or incognito window, everything Drift saves in it is deleted when you close it.',
 		);
 	});
 
@@ -221,6 +228,121 @@ describe('Settings view', () => {
 		await flush();
 
 		expect(dialog.textContent).toContain('Storage protection: Persistent');
+	});
+
+	function findRequestButton() {
+		return [...document.querySelectorAll('button')].find((button) =>
+			button.textContent?.includes('Request protection'),
+		);
+	}
+
+	async function clickRequest(storageManager: StorageManagerLike) {
+		vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Unknown/1.0');
+		mountSettings(createTestStore(), storageManager);
+		openSettingsDialog();
+		await flush();
+		act(() => {
+			findRequestButton()!.click();
+		});
+		await flush();
+	}
+
+	function feedbackText(): string {
+		return document.querySelector('[data-testid="protection-feedback"]')!
+			.textContent;
+	}
+
+	it('says protection was granted and shows the persisted status', async () => {
+		let isPersisted = false;
+		await clickRequest({
+			persisted: async () => isPersisted,
+			async persist() {
+				isPersisted = true;
+				return true;
+			},
+		});
+
+		expect(feedbackText()).toBe(protectionMessage('granted', 'other'));
+		expect(document.body.textContent).toContain(
+			'Storage protection: Persistent',
+		);
+		expect(findRequestButton()).toBeUndefined();
+	});
+
+	it.each<[string, StorageManagerLike, ProtectionResult]>([
+		[
+			'denied',
+			{persist: async () => false, persisted: async () => false},
+			'denied',
+		],
+		['unsupported', {}, 'unsupported'],
+		[
+			'throwing',
+			{
+				async persist() {
+					throw new Error('no');
+				},
+				persisted: async () => false,
+			},
+			'failed',
+		],
+	])(
+		'explains a %s request and keeps the button usable',
+		async (_name, storageManager, result) => {
+			await clickRequest(storageManager);
+
+			expect(feedbackText()).toBe(protectionMessage(result, 'other'));
+			expect(document.body.textContent).toContain(
+				'Storage protection: Best-effort',
+			);
+			expect(findRequestButton()!.disabled).toBe(false);
+		},
+	);
+
+	it('releases the button after 5 s without an answer and applies a late one', async () => {
+		vi.useFakeTimers();
+		const deferred = Promise.withResolvers<boolean>();
+		let isPersisted = false;
+		await clickRequest({
+			persisted: async () => isPersisted,
+			persist: async () => deferred.promise,
+		});
+		expect(feedbackText()).toBe('');
+
+		act(() => {
+			vi.advanceTimersByTime(PROTECTION_WAIT_MS);
+		});
+		expect(feedbackText()).toBe(protectionMessage('pending', 'other'));
+		expect(findRequestButton()!.disabled).toBe(false);
+
+		isPersisted = true;
+		deferred.resolve(true);
+		await flush();
+		expect(feedbackText()).toBe(protectionMessage('granted', 'other'));
+	});
+
+	it('ignores a late refusal of an earlier click while a newer one waits', async () => {
+		vi.useFakeTimers();
+		const first = Promise.withResolvers<boolean>();
+		const second = Promise.withResolvers<boolean>();
+		const persist = vi
+			.fn<() => Promise<boolean>>()
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		await clickRequest({persist, persisted: async () => false});
+
+		act(() => {
+			vi.advanceTimersByTime(PROTECTION_WAIT_MS);
+		});
+		act(() => {
+			findRequestButton()!.click();
+		});
+		first.resolve(false);
+		await flush();
+
+		expect(persist).toHaveBeenCalledTimes(2);
+		expect(feedbackText()).toBe('');
+		expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
 	});
 
 	it('displays About info, the ASDFPixelSort credit, and generated third-party notices', async () => {

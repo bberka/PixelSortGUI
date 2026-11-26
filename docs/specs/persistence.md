@@ -198,9 +198,9 @@ Per the verified research ([engine-architecture.md section 4](../research/engine
 
 Behaviour:
 
-- Do not rely on fragile browser-sniffing tricks to guess private mode.
+- Do not rely on fragile browser-sniffing tricks to guess private mode. The app does not detect it and never states or implies that the current window is private.
 - Let normal IndexedDB operations run; if quota runs out earlier than on a normal window, the standard quota-full flow (section 7) handles it without losing existing projects.
-- In Settings under Storage, always note that Private Browsing windows clear all data when closed.
+- In Settings under Storage, always show this general note, worded as a condition: `"If you use a private or incognito window, everything Drift saves in it is deleted when you close it."`
 
 ### 5.3 Orphaned source cleanup
 
@@ -249,6 +249,24 @@ Settings queries `navigator.storage.estimate()` and `navigator.storage.persisted
 - Call `navigator.storage.persist()` automatically once after the user's first successful image import (and when the user clicks `"Request protection"` in Settings).
 - Firefox displays a native permission prompt and does not settle the returned promise until the user responds (in headless Firefox it stays pending; [spike S3](../research/spike-s3-persistence.md)). Chrome/Edge decides silently via browser heuristics (engagement, bookmarks, PWA install).
 - Never `await navigator.storage.persist()` on an import or startup path: call it without awaiting after the import transaction commits, and update the Settings persistence indicator when the promise settles. Never assume `persist()` succeeded; always read `navigator.storage.persisted()`.
+
+#### Feedback for "Request protection"
+
+Every click ends in a visible message in a polite live region under the persistence line. The message is chosen from `persisted()` read after the request, and it clears when Settings closes. The automatic request after the first import shows no message.
+
+| Result | Message |
+| --- | --- |
+| Granted | `"Storage protection granted. The browser will not clear Drift's data to free disk space."` |
+| Not granted, Chrome or Edge | `"Not granted. This browser decides without asking. Bookmark Drift or install it as an app, keep using it, then try again."` |
+| Not granted, Firefox | `"Not granted. Request again and choose Allow in the prompt. If no prompt appears, clear the blocked permission from the icon beside the address."` |
+| Not granted, Safari and every iOS browser | `"Not granted. This browser decides without asking. Add Drift to your Home Screen or Dock, open it from there, then try again."` |
+| Not granted, other browsers | `"Not granted. Bookmark or install Drift if your browser allows it, keep using it, then try again."` |
+| `persist()` missing (old browser or insecure context) | `"Storage protection is not available here. Open Drift over HTTPS in a current browser."` |
+| `persist()` rejects and `persisted()` is `false` | `"The protection request failed. Reload Drift and try again."` |
+| No answer after 5 s, Firefox | `"Waiting for your answer. Choose Allow in the browser prompt. If you closed it, reopen it from the icon beside the address."` |
+| No answer after 5 s, other browsers | `"The browser has not answered yet. You can keep working; this updates when it answers."` |
+
+While a request is unanswered the button reads `"Requesting protection..."` and is disabled for at most 5 s; then it is enabled again under the waiting message. A late answer still updates the persistence line and the message. The browser family is read from the user agent only to choose this advice.
 
 ### 7.4 Storage full and quota errors (AC-F16.2)
 

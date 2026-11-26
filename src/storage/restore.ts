@@ -171,7 +171,7 @@ export async function restoreStartup(
 	let notice: string | null = null;
 	let shouldClearActiveProjectId = false;
 
-	if (parsedHash.screen === 'gallery') {
+	if (parsedHash.screen === 'gallery' || parsedHash.screen === 'guide') {
 		targetRoute = parsedHash;
 	} else if (parsedHash.screen === 'editor') {
 		const found = projectById.get(parsedHash.projectId);
@@ -221,6 +221,7 @@ export async function restoreStartup(
 		presets,
 		theme: appState.theme,
 		compareMode: appState.compareMode,
+		welcomeDismissed: appState.welcomeDismissed === true,
 		storageUnavailable,
 		route: targetRoute,
 		notice,

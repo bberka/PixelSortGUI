@@ -258,6 +258,7 @@ describe('screen error boundary', () => {
 	const throwingScreens: ScreenRegistry = {
 		library: {chrome: 'shell', component: ThrowingScreen},
 		editor: {chrome: 'shell', component: ThrowingScreen},
+		guide: {chrome: 'shell', component: ThrowingScreen},
 		gallery: {chrome: 'bare', component: ThrowingScreen},
 	};
 

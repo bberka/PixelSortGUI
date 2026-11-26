@@ -15,6 +15,11 @@ const GalleryScreen = lazy(async () => {
 	return {default: module.ComponentGallery};
 });
 
+const GuideScreen = lazy(async () => {
+	const module = await import('@/features/guide/guide-screen.tsx');
+	return {default: module.GuideScreen};
+});
+
 export type ScreenComponent =
 	ComponentType | LazyExoticComponent<ComponentType>;
 
@@ -36,6 +41,7 @@ export type ScreenRegistry = Record<AppRoute['screen'], ScreenDefinition>;
 export const SCREENS: ScreenRegistry = {
 	library: {chrome: 'shell', component: LibraryScreen},
 	editor: {chrome: 'shell', component: EditorScreen},
+	guide: {chrome: 'shell', component: GuideScreen},
 	gallery: {chrome: 'bare', component: GalleryScreen},
 };
 

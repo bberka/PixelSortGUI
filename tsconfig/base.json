@@ -15,6 +15,9 @@
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"forceConsistentCasingInFileNames": true,
-		"paths": {"@/*": ["../src/*"]}
+		"paths": {
+			"@/*": ["../src/*"],
+			"utif2": ["../src/codec/utif2.d.ts"]
+		}
 	}
 }

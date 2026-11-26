@@ -1,6 +1,10 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
 import {
+	blockShuffleSpec,
+	type BlockShuffleParams,
+} from './block-shuffle-spec.ts';
+import {
 	channelShiftSpec,
 	type ChannelShiftParams,
 } from './channel-shift-spec.ts';
@@ -8,6 +12,10 @@ import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
+import {
+	scanlineWaveSpec,
+	type ScanlineWaveParams,
+} from './scanline-wave-spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
 	...pixelSortSpec,
@@ -41,11 +49,27 @@ const lazySliceShiftEffect: EffectDefinition<SliceShiftParams> = {
 	},
 };
 
+const lazyBlockShuffleEffect: EffectDefinition<BlockShuffleParams> = {
+	...blockShuffleSpec,
+	async render(input, output, params, ctx) {
+		const {blockShuffleEffect} = await import('./block-shuffle.ts');
+		return blockShuffleEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyPosterizeEffect: EffectDefinition<PosterizeParams> = {
 	...posterizeSpec,
 	async render(input, output, params, ctx) {
 		const {posterizeEffect} = await import('./posterize.ts');
 		return posterizeEffect.render(input, output, params, ctx);
+	},
+};
+
+const lazyScanlineWaveEffect: EffectDefinition<ScanlineWaveParams> = {
+	...scanlineWaveSpec,
+	async render(input, output, params, ctx) {
+		const {scanlineWaveEffect} = await import('./scanline-wave.ts');
+		return scanlineWaveEffect.render(input, output, params, ctx);
 	},
 };
 
@@ -60,7 +84,9 @@ export const effects: readonly EffectDefinition[] = [
 	lazyChannelShiftEffect,
 	lazyChannelSwapEffect,
 	lazySliceShiftEffect,
+	lazyBlockShuffleEffect,
 	lazyPosterizeEffect,
+	lazyScanlineWaveEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

@@ -1,0 +1,22 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "bs000001",
+				"type": "blockShuffle",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"tileSize": 64,
+					"amount": 0.15,
+					"seed": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

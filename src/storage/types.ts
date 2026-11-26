@@ -46,7 +46,7 @@ export type ViewState = {
 	splitPosition: number;
 };
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp';
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'tiff';
 export type ExportSizeMode = 'full' | 'half' | 'quarter' | 'custom';
 
 export type ExportSettings = {

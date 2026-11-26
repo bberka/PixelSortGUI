@@ -4,6 +4,7 @@ import {
 	channelShiftSpec,
 	type ChannelShiftParams,
 } from './channel-shift-spec.ts';
+import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
@@ -22,6 +23,14 @@ const lazyChannelShiftEffect: EffectDefinition<ChannelShiftParams> = {
 	},
 };
 
+const lazyChannelSwapEffect: EffectDefinition<ChannelSwapParams> = {
+	...channelSwapSpec,
+	async render(input, output, params, ctx) {
+		const {channelSwapEffect} = await import('./channel-swap.ts');
+		return channelSwapEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -31,6 +40,7 @@ const lazyChannelShiftEffect: EffectDefinition<ChannelShiftParams> = {
 export const effects: readonly EffectDefinition[] = [
 	lazyPixelSortEffect,
 	lazyChannelShiftEffect,
+	lazyChannelSwapEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

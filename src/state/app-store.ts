@@ -623,8 +623,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	let unsubscribeSideA: (() => void) | null = null;
 	let lastSideInputs: readonly unknown[] = [];
 
+	const loadExtraSource = async (sha256: string) =>
+		repository.getSource(sha256);
+	coordinator.setExtraSourceLoader(loadExtraSource);
+
 	const sideRenderer = createSideRenderer({
 		createCoordinator: deps.createSideCoordinator,
+		loadExtraSource,
 		onEvent(event) {
 			store.setState((state) => ({
 				renderA: applyRenderEvent(state.renderA, event),
@@ -770,7 +775,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	};
 
 	const maybeCaptureThumbnail = (frame: Frame) => {
-		if (frame.level !== 'settle' || disposed) {
+		// A frame still waiting for an extra source is not what the stack looks like.
+		if (frame.level !== 'settle' || frame.sourcesPending || disposed) {
 			return;
 		}
 

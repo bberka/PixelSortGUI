@@ -1,6 +1,7 @@
 import type {
 	ExportOptions,
 	ExportTask,
+	ExtraSourceLoader,
 	Frame,
 	RenderCoordinator,
 	RenderEvent,
@@ -33,6 +34,7 @@ export type FakeCoordinatorCall =
 export type FakeCoordinator = RenderCoordinator & {
 	calls: FakeCoordinatorCall[];
 	emit(event: RenderEvent): void;
+	readonly extraSourceLoader: ExtraSourceLoader | undefined;
 };
 
 export function createFakeCoordinator(): FakeCoordinator {
@@ -40,6 +42,7 @@ export function createFakeCoordinator(): FakeCoordinator {
 	const calls: FakeCoordinatorCall[] = [];
 	let generation = 0;
 	let frame: Frame | undefined;
+	let extraSourceLoader: ExtraSourceLoader | undefined;
 
 	return {
 		calls,
@@ -51,6 +54,12 @@ export function createFakeCoordinator(): FakeCoordinator {
 			for (const listener of listeners) {
 				listener(event);
 			}
+		},
+		setExtraSourceLoader(loader) {
+			extraSourceLoader = loader;
+		},
+		get extraSourceLoader() {
+			return extraSourceLoader;
 		},
 		setSource(source) {
 			calls.push({type: 'setSource', source});

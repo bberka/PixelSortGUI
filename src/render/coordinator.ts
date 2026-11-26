@@ -6,6 +6,7 @@ import {
 	type SourceTransform,
 } from '../engine/transform.ts';
 import type {EffectStack, RenderLevel} from '../engine/types.ts';
+import {addSourceReferences} from '../storage/extra-sources.ts';
 import {
 	DRAG_PIXEL_CAP_MAX,
 	DRAG_PIXEL_CAP_MIN,
@@ -14,6 +15,7 @@ import {
 	type ExportRequest,
 	type ExportResponse,
 	type ExportStage,
+	type ExtraSourceFile,
 	type FullTile,
 	type PreviewLevel,
 	type PreviewRequest,
@@ -67,6 +69,14 @@ export type RenderSource = {
 	transform?: SourceTransform;
 };
 
+// An extra source (engine.md section 16.5) as storage holds it.
+export type ExtraSourceRecord = {blob: Blob; width: number; height: number};
+
+// Resolves `undefined` when storage does not hold the hash.
+export type ExtraSourceLoader = (
+	sha256: string,
+) => Promise<ExtraSourceRecord | undefined>;
+
 export type SourceInfo = {
 	key: string;
 	// The effective size: the image after its transform.
@@ -88,6 +98,8 @@ export type Frame = {
 	totalMs: number;
 	perInstanceMs: number[];
 	warnings: PipelineWarning[];
+	// Rendered while an extra source was still on its way, so it may lack it.
+	sourcesPending?: boolean;
 };
 
 export type FullFrame = {
@@ -154,6 +166,8 @@ export type ExportTask = {
 };
 
 export type RenderCoordinator = {
+	// How the images that `image` parameters name are read. Without it they stay missing.
+	setExtraSourceLoader(loader: ExtraSourceLoader): void;
 	/**
 	 Loads the image into the preview worker, replacing the previous one. With the
 	 current key, a changed `transform` re-renders the new geometry and anything
@@ -161,7 +175,8 @@ export type RenderCoordinator = {
 	 */
 	setSource(source: RenderSource | undefined): void;
 	/**
-	 Renders a new effective stack. With `dragging`, the value is an intermediate
+	 Renders a new effective stack, and loads and unloads the extra sources it
+	 references (engine.md section 8.3). With `dragging`, the value is an intermediate
 	 one from a control being moved: `drag` renders are coalesced to the newest
 	 and a `settle` render follows 150 ms after the last change. Without it, the
 	 `settle` render starts at once.
@@ -252,11 +267,40 @@ type Job = {
 	timeout: unknown;
 	// Set by `cancel()`: the result is dropped even if the worker finished first.
 	discard: boolean;
+	sourcesPending: boolean;
+};
+
+// One extra source the current stack references.
+type Extra = {
+	status: 'reading' | 'decoding' | 'loaded' | 'missing' | 'broken';
+	// A storage read is in flight. `missing` ones are read again.
+	reading: boolean;
+	// What storage returned, kept to load a restarted worker.
+	file?: ExtraSourceFile;
+	// Of the `loadExtraSource` sent to the current worker.
+	requestId?: number;
 };
 
 type FullJob = {jobId: number; worker: WorkerPort<ExportRequest>};
 
 const PREVIEW_LEVELS: readonly PreviewLevel[] = ['drag', 'settle'];
+
+function extraFile(
+	sha256: string,
+	{blob, width, height}: ExtraSourceRecord,
+): ExtraSourceFile {
+	return {sha256, blob, sourceWidth: width, sourceHeight: height};
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+// The extra sources an export or a `full` render needs.
+function enabledReferences(stack: EffectStack): string[] {
+	const instances = stack.instances.filter((instance) => instance.enabled);
+	return [...addSourceReferences({stack: {...stack, instances}})];
+}
 
 export function createRenderCoordinator(
 	env: CoordinatorEnv = createBrowserEnv(),
@@ -292,6 +336,11 @@ export function createRenderCoordinator(
 	let fullJob: FullJob | undefined;
 	let full: FullFrame | undefined;
 	let fullFailedGeneration = -1;
+
+	let loadExtra: ExtraSourceLoader | undefined;
+	const extras = new Map<string, Extra>();
+	// Set by `cancel()`: nothing renders again until the next `setStack`.
+	let halted = false;
 
 	const emit = (event: RenderEvent) => {
 		for (const listener of listeners) {
@@ -351,6 +400,11 @@ export function createRenderCoordinator(
 		closeTiles(discarded.tiles);
 	};
 
+	const extrasPending = () =>
+		[...extras.values()].some(
+			({status}) => status === 'reading' || status === 'decoding',
+		);
+
 	const send = (level: PreviewLevel) => {
 		if (!preview || !source || !request) {
 			return;
@@ -362,6 +416,7 @@ export function createRenderCoordinator(
 			jobId,
 			generation,
 			discard: false,
+			sourcesPending: extrasPending(),
 			timeout: env.setTimeout(() => {
 				crash('The preview worker did not answer within 30 seconds.');
 			}, RENDER_TIMEOUT_MS),
@@ -428,12 +483,110 @@ export function createRenderCoordinator(
 		pump();
 	};
 
+	const sendExtra = (extra: Extra) => {
+		if (!preview || !extra.file) {
+			return;
+		}
+
+		nextId++;
+		extra.status = 'decoding';
+		extra.requestId = nextId;
+		preview.post({type: 'loadExtraSource', requestId: nextId, ...extra.file});
+	};
+
+	// Renders the unchanged stack again, because an extra source has settled.
+	const renderAgain = () => {
+		if (!request || halted) {
+			return;
+		}
+
+		generation++;
+		discardFull();
+		// A pending settle timer means a control is being moved.
+		if (settleTimer === undefined) {
+			settleWanted = true;
+		} else {
+			dragWanted = true;
+		}
+
+		pump();
+	};
+
+	const readExtra = async (sha256: string, extra: Extra) => {
+		if (!loadExtra || extra.reading) {
+			return;
+		}
+
+		extra.reading = true;
+		let record: ExtraSourceRecord | undefined;
+		let failure: RenderError | undefined;
+		try {
+			record = await loadExtra(sha256);
+		} catch (error) {
+			failure = {code: 'internal', message: errorMessage(error)};
+		}
+
+		extra.reading = false;
+		// Unloaded, or the coordinator is gone, while storage was answering.
+		if (disposed || extras.get(sha256) !== extra) {
+			return;
+		}
+
+		if (record) {
+			extra.file = extraFile(sha256, record);
+			// Without a worker it is sent when the next one starts.
+			extra.status = 'decoding';
+			sendExtra(extra);
+			return;
+		}
+
+		const wasPending = extra.status === 'reading';
+		extra.status = 'missing';
+		if (failure) {
+			emit({type: 'error', error: failure, failed: false});
+		}
+
+		if (wasPending) {
+			renderAgain();
+		}
+	};
+
+	// Matches the loaded extra sources to the references of the current stack.
+	const syncExtras = (retryMissing: boolean) => {
+		const wanted = request
+			? addSourceReferences({stack: request.stack})
+			: new Set<string>();
+		for (const [sha256, extra] of extras) {
+			if (wanted.has(sha256)) {
+				continue;
+			}
+
+			extras.delete(sha256);
+			if (extra.requestId !== undefined) {
+				preview?.post({type: 'unloadExtraSource', sha256});
+			}
+		}
+
+		for (const sha256 of wanted) {
+			let extra = extras.get(sha256);
+			if (!extra) {
+				extra = {status: loadExtra ? 'reading' : 'missing', reading: false};
+				extras.set(sha256, extra);
+			} else if (!(retryMissing && extra.status === 'missing')) {
+				continue;
+			}
+
+			void readExtra(sha256, extra);
+		}
+	};
+
 	const loadSource = () => {
 		if (!source || disposed) {
 			return;
 		}
 
 		ready = false;
+		const restarted = preview === undefined;
 		preview ??= createPreview();
 		nextId++;
 		loadRequestId = nextId;
@@ -447,6 +600,12 @@ export function createRenderCoordinator(
 			caps: {drag: dragCap, settle: SETTLE_PIXEL_CAP},
 			transform: source.transform,
 		});
+		// A new worker holds nothing yet.
+		if (restarted) {
+			for (const extra of extras.values()) {
+				sendExtra(extra);
+			}
+		}
 	};
 
 	// A terminated worker can still deliver a queued message or error. Handlers
@@ -529,6 +688,7 @@ export function createRenderCoordinator(
 		frame?.level === 'settle' &&
 		frame.generation === generation &&
 		fullFailedGeneration !== generation &&
+		!extrasPending() &&
 		sourceInfo.settle.width < sourceInfo.width &&
 		(viewScale * sourceInfo.width) / sourceInfo.settle.width >
 			FULL_ZOOM_THRESHOLD;
@@ -610,6 +770,11 @@ export function createRenderCoordinator(
 			sourceHeight: source.height,
 			transform: source.transform,
 			...request,
+			// A source the preview could not decode has already raised its error.
+			extraSources: enabledReferences(request.stack).flatMap((sha256) => {
+				const extra = extras.get(sha256);
+				return extra?.file && extra.status !== 'broken' ? [extra.file] : [];
+			}),
 		});
 	};
 
@@ -697,6 +862,7 @@ export function createRenderCoordinator(
 						totalMs: response.totalMs,
 						perInstanceMs: response.perInstanceMs,
 						warnings: response.warnings,
+						...(job?.sourcesPending && {sourcesPending: true}),
 					});
 				} else {
 					bitmap.close();
@@ -717,9 +883,28 @@ export function createRenderCoordinator(
 				break;
 			}
 
+			case 'extraSourceLoaded': {
+				const extra = extras.get(response.sha256);
+				if (extra?.requestId === response.requestId) {
+					extra.status = 'loaded';
+					renderAgain();
+				}
+
+				break;
+			}
+
 			case 'error': {
 				const {code, message, jobId, requestId} = response;
 				if (requestId !== undefined && requestId !== loadRequestId) {
+					const extra = [...extras.values()].find(
+						(item) => item.requestId === requestId,
+					);
+					if (extra) {
+						extra.status = 'broken';
+						emit({type: 'error', error: {code, message}, failed: false});
+						renderAgain();
+					}
+
 					return;
 				}
 
@@ -758,6 +943,7 @@ export function createRenderCoordinator(
 	const startExport = (
 		from: RenderSource,
 		options: ExportOptions,
+		extraSources: ExtraSourceFile[],
 		resolve: (outcome: ExportOutcome) => void,
 	): (() => void) => {
 		nextId++;
@@ -841,7 +1027,69 @@ export function createRenderCoordinator(
 			maxFileSizeKb: options.maxFileSizeKb ?? null,
 			transform: from.transform,
 			stack: options.stack,
+			extraSources,
 		});
+		return cancel;
+	};
+
+	const exportFiles = async (hashes: string[]): Promise<ExtraSourceFile[]> => {
+		const files = await Promise.all(
+			hashes.map(async (sha256) => {
+				const held = extras.get(sha256)?.file;
+				if (held) {
+					return held;
+				}
+
+				const record = await loadExtra?.(sha256);
+				return record && extraFile(sha256, record);
+			}),
+		);
+		return files.filter((file) => file !== undefined);
+	};
+
+	// An export that first reads its extra sources. The stack need not be the
+	// previewed one: side A is exported through the main coordinator.
+	const startExportWithExtras = (
+		from: RenderSource,
+		options: ExportOptions,
+		hashes: string[],
+		resolve: (outcome: ExportOutcome) => void,
+	): (() => void) => {
+		let done = false;
+		let cancelStarted: (() => void) | undefined;
+		const settle = (outcome: ExportOutcome) => {
+			done = true;
+			cancelExports.delete(cancel);
+			resolve(outcome);
+		};
+
+		const cancel = () => {
+			if (cancelStarted) {
+				cancelStarted();
+			} else if (!done) {
+				settle({status: 'cancelled'});
+			}
+		};
+
+		cancelExports.add(cancel);
+		const read = async () => {
+			try {
+				const files = await exportFiles(hashes);
+				if (!done) {
+					cancelExports.delete(cancel);
+					cancelStarted = startExport(from, options, files, resolve);
+				}
+			} catch (error) {
+				if (!done) {
+					settle({
+						status: 'error',
+						error: {code: 'internal', message: errorMessage(error)},
+					});
+				}
+			}
+		};
+
+		void read();
 		return cancel;
 	};
 
@@ -856,6 +1104,7 @@ export function createRenderCoordinator(
 	// Everything rendered from the loaded image is out of date.
 	const discardSource = () => {
 		invalidate();
+		halted = false;
 		for (const level of PREVIEW_LEVELS) {
 			const job = inFlight[level];
 			if (job) {
@@ -888,6 +1137,10 @@ export function createRenderCoordinator(
 	};
 
 	return {
+		setExtraSourceLoader(loader) {
+			loadExtra = loader;
+		},
+
 		setSource(next) {
 			if (disposed) {
 				return;
@@ -911,9 +1164,16 @@ export function createRenderCoordinator(
 			failed = false;
 			if (next) {
 				loadSource();
-			} else if (previousKey !== undefined) {
+				return;
+			}
+
+			if (previousKey !== undefined) {
 				preview?.post({type: 'unloadSource', sourceKey: previousKey});
 			}
+
+			// The stack belonged to the closed image, and its extra sources with it.
+			request = undefined;
+			syncExtras(false);
 		},
 
 		setStack(next, options = {}) {
@@ -923,6 +1183,8 @@ export function createRenderCoordinator(
 
 			invalidate();
 			request = next;
+			halted = false;
+			syncExtras(!options.dragging);
 			if (options.dragging) {
 				dragWanted = true;
 				settleTimer = env.setTimeout(requestSettle, SETTLE_DELAY_MS);
@@ -967,7 +1229,11 @@ export function createRenderCoordinator(
 
 			let cancel = () => {};
 			const result = new Promise<ExportOutcome>((resolve) => {
-				cancel = startExport(current, options, resolve);
+				const hashes = enabledReferences(options.stack);
+				cancel =
+					hashes.length === 0
+						? startExport(current, options, [], resolve)
+						: startExportWithExtras(current, options, hashes, resolve);
 			});
 			return {
 				result,
@@ -983,6 +1249,7 @@ export function createRenderCoordinator(
 			}
 
 			invalidate();
+			halted = true;
 			sentGeneration.settle = generation;
 			for (const level of PREVIEW_LEVELS) {
 				const job = inFlight[level];
@@ -1033,6 +1300,7 @@ export function createRenderCoordinator(
 			previewEpoch++;
 			disposed = true;
 			source = undefined;
+			extras.clear();
 			listeners.clear();
 			sourceInfo?.original.close();
 			frame?.bitmap.close();

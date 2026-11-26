@@ -1,6 +1,7 @@
 import {transformKey} from '../engine/transform.ts';
 import {canonicalStackJson} from '../engine/types.ts';
 import type {
+	ExtraSourceLoader,
 	RenderCoordinator,
 	RenderEvent,
 	RenderSource,
@@ -25,6 +26,8 @@ export type SideRenderer = {
 export type SideRendererOptions = {
 	// Absent in tests that do not render side A.
 	createCoordinator?: () => RenderCoordinator;
+	// Given to each coordinator, so side A reads its own extra sources.
+	loadExtraSource: ExtraSourceLoader;
 	onEvent(event: RenderEvent): void;
 	// Called before the coordinator closes its bitmaps.
 	onClose(): void;
@@ -37,6 +40,7 @@ export type SideRendererOptions = {
  */
 export function createSideRenderer({
 	createCoordinator,
+	loadExtraSource,
 	onEvent,
 	onClose,
 }: SideRendererOptions): SideRenderer {
@@ -70,6 +74,7 @@ export function createSideRenderer({
 
 			if (!coordinator) {
 				coordinator = createCoordinator();
+				coordinator.setExtraSourceLoader(loadExtraSource);
 				unsubscribe = coordinator.subscribe(onEvent);
 				coordinator.setViewScale(viewScale);
 			}

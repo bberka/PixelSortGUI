@@ -1,6 +1,7 @@
 // The main thread's side of the archive worker. It imports types only from the
 // codec, so `fflate` stays in the worker chunk.
 import type {ArchiveRequest, ArchiveResponse} from '../worker/protocol.ts';
+import type {ArchiveKind} from './archive-kind.ts';
 import {BackupError, type BackupErrorCode} from './backup-error.ts';
 import type {
 	BackupContents,
@@ -148,4 +149,17 @@ export async function openBackup(
 	}
 
 	return result.contents;
+}
+
+// `readArchiveKind` in a worker. Aborting terminates the worker.
+export async function openArchiveKind(
+	file: Blob,
+	options: ArchiveJobOptions = {},
+): Promise<ArchiveKind> {
+	const result = await runJob({type: 'readKind', file}, options);
+	if (result.type !== 'kindRead') {
+		throw new Error('The archive worker answered another request');
+	}
+
+	return result.kind;
 }

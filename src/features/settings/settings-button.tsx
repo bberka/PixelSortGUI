@@ -1,6 +1,10 @@
 import {useRef, useState, type RefObject} from 'react';
 import {SettingsIcon} from 'lucide-react';
 import {SettingsContent} from './settings-content.tsx';
+import {
+	BACKUP_FOCUS_FALLBACK,
+	useBackupActions,
+} from '@/features/backup/backup-context.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {Button} from '@/components/ui/button';
 import {
@@ -35,10 +39,36 @@ export function SettingsDialog({
 	returnFocusTo,
 }: SettingsDialogProps) {
 	const isPhone = usePhoneLayout();
-	const handleCloseAutoFocus = returnFocusTo
-		? (event: Event) => {
-				event.preventDefault();
-				returnFocusTo.current?.focus();
+	const backup = useBackupActions();
+	// Export opens once Settings has closed and given the focus back, so the two
+	// dialogs never fight over it.
+	const exportNextRef = useRef(false);
+	const handleCloseAutoFocus = (event: Event) => {
+		if (returnFocusTo) {
+			event.preventDefault();
+			returnFocusTo.current?.focus();
+		}
+
+		if (!exportNextRef.current) {
+			return;
+		}
+
+		exportNextRef.current = false;
+		backup?.openExport(returnFocusTo?.current ?? null);
+	};
+
+	const backupHandlers = backup
+		? {
+				onExportBackup() {
+					exportNextRef.current = true;
+					onOpenChange(false);
+				},
+				onImportBackup() {
+					// The picker opens only from the click itself.
+					backup.chooseImport(returnFocusTo?.current ?? null);
+					onOpenChange(false);
+				},
+				importBackupDisabled: backup.importDisabled,
 			}
 		: undefined;
 
@@ -60,6 +90,7 @@ export function SettingsDialog({
 						<div className="p-4">
 							<SettingsContent
 								open={open}
+								backup={backupHandlers}
 								storageManager={storageManager}
 								onOpenGuide={() => {
 									onOpenChange(false);
@@ -88,6 +119,7 @@ export function SettingsDialog({
 					<div className="p-6">
 						<SettingsContent
 							open={open}
+							backup={backupHandlers}
 							storageManager={storageManager}
 							onOpenGuide={() => {
 								onOpenChange(false);
@@ -118,6 +150,7 @@ export function SettingsButton({storageManager}: SettingsButtonProps = {}) {
 						variant="ghost"
 						size="icon-sm"
 						aria-label="Settings"
+						{...BACKUP_FOCUS_FALLBACK}
 						onClick={() => {
 							setOpen(true);
 						}}

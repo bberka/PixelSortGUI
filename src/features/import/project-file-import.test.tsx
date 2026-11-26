@@ -9,10 +9,11 @@ import {
 } from '../../../tests/storage/project-transfer-fixtures.ts';
 import {ImportFlowProvider} from './import-flow.tsx';
 import {ImportImagesAction} from './import-images-action.tsx';
-import {isProjectFileName} from './use-image-picker.ts';
+import {isProjectFileName, isZipFileName} from './use-image-picker.ts';
 import {WindowFileDrop} from './window-file-drop.tsx';
 import {AppRuntimeProvider, useAppStore} from '@/app/runtime-context.tsx';
 import {unsupportedEffectsNotice} from '@/state/app-store.ts';
+import {readArchiveKind} from '@/storage/archive-kind.ts';
 import type {AppRuntime} from '@/state/index.ts';
 import {MemoryStorageAdapter} from '@/storage/memory-adapter.ts';
 
@@ -106,14 +107,15 @@ const dialogTitle = () =>
 	document.querySelector('[role="alertdialog"] h2')?.textContent;
 
 describe('opening project files (F25)', () => {
-	it('knows project files by extension, in any letter case', () => {
+	it('knows project files and ZIPs by extension, in any letter case', () => {
 		expect(
-			['a.glproj', 'a.GLPROJ', 'a.zip', 'a.Zip'].every((name) =>
-				isProjectFileName(name),
-			),
+			['a.glproj', 'a.GLPROJ'].every((name) => isProjectFileName(name)),
 		).toBe(true);
+		expect(['a.zip', 'a.Zip'].every((name) => isZipFileName(name))).toBe(true);
 		expect(
-			['a.png', 'glproj', 'a.zip.png'].some((name) => isProjectFileName(name)),
+			['a.png', 'glproj', 'a.zip.png'].some(
+				(name) => isProjectFileName(name) || isZipFileName(name),
+			),
 		).toBe(false);
 	});
 
@@ -122,7 +124,7 @@ describe('opening project files (F25)', () => {
 		async (name) => {
 			const file = await projectFile(name);
 			const test = setup();
-			mount(test, <WindowFileDrop />);
+			mount(test, <WindowFileDrop readKind={readArchiveKind} />);
 
 			drop([file]);
 			await until(() => test.store.getState().activeProject?.name === 'drive');

@@ -1,3 +1,4 @@
+import type {ArchiveKind} from '../storage/archive-kind.ts';
 import type {CodecErrorCode} from '../codec/decode.ts';
 import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
@@ -160,7 +161,8 @@ export type ArchiveRequest =
 	| {type: 'writeProject'; input: ProjectFileInput}
 	| {type: 'readProject'; file: Blob; fileName: string}
 	| {type: 'writeBackup'; input: BackupInput}
-	| {type: 'readBackup'; file: Blob};
+	| {type: 'readBackup'; file: Blob}
+	| {type: 'readKind'; file: Blob};
 
 export type ArchiveResponse =
 	| ({type: 'progress'} & ArchiveProgress)
@@ -168,6 +170,7 @@ export type ArchiveResponse =
 	| {type: 'projectRead'; contents: ProjectFileContents}
 	| ({type: 'backupWritten'} & BackupOutput)
 	| {type: 'backupRead'; contents: BackupContents}
+	| {type: 'kindRead'; kind: ArchiveKind}
 	| {
 			type: 'error';
 			// Missing when the failure is not about the file or project itself.

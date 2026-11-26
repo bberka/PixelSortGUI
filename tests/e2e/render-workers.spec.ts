@@ -186,7 +186,10 @@ test.describe('render workers in the production build', () => {
 						if (response.type === 'sourceLoaded') {
 							sourceLoaded = true;
 							response.original.close();
-						} else if (response.type !== 'progress') {
+						} else if (
+							response.type !== 'progress' &&
+							response.type !== 'extraSourceLoaded'
+						) {
 							answers.push({type: response.type, jobId: response.jobId});
 						}
 

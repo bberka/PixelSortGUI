@@ -1,11 +1,13 @@
 import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
+import {runtimeEffectRegistry} from '../../src/engine/effects/runtime.ts';
+import {renderStack} from '../../src/engine/pipeline.ts';
 import {boxDownscale} from '../../src/engine/resample.ts';
 import {
 	applyTransform,
 	IDENTITY_TRANSFORM,
 	type SourceTransform,
 } from '../../src/engine/transform.ts';
-import type {RgbaImage} from '../../src/engine/types.ts';
+import type {EffectStack, RgbaImage} from '../../src/engine/types.ts';
 import type {ExportRequest, ExportResponse} from '../../src/worker/protocol.ts';
 import {
 	patternImage,
@@ -173,5 +175,171 @@ describe('export worker geometry (engine.md section 16.3)', () => {
 
 		expect(done).toMatchObject({type: 'error', code: 'internal'});
 		expect(worker.decodes).toEqual([]);
+	});
+});
+
+describe('export worker extra sources (engine.md section 16.5)', () => {
+	const SHA = 'a'.repeat(64);
+	const base = patternImage(40, 30);
+	const overlay = patternImage(64, 18);
+
+	// `none` and `tile` depend on the stored size, `cover` on the decoded one.
+	const stackOf = (fit: string): EffectStack => ({
+		schemaVersion: 1,
+		instances: [
+			{
+				id: 'blend000',
+				type: 'imageBlend',
+				version: 1,
+				enabled: true,
+				params: {image: SHA, blendMode: 'difference', fit, offsetX: 0.1},
+				mix: 1,
+				blend: 'normal',
+			},
+		],
+	});
+
+	async function expected(
+		image: RgbaImage,
+		effective: {width: number; height: number},
+		stack: EffectStack,
+		decoded: RgbaImage,
+	) {
+		const result = await renderStack(image, stack, runtimeEffectRegistry, {
+			level: 'full',
+			sourceWidth: effective.width,
+			sourceHeight: effective.height,
+			extraSources: new Map([
+				[
+					SHA,
+					{
+						...decoded,
+						sourceWidth: overlay.width,
+						sourceHeight: overlay.height,
+					},
+				],
+			]),
+			checkpoint: () => undefined,
+		});
+		return result.image;
+	}
+
+	async function blendSetup(file: RgbaImage | 'broken' = overlay) {
+		const worker = await setup(base);
+		const extraSources = [
+			{
+				sha256: SHA,
+				blob: worker.addFile(file),
+				sourceWidth: overlay.width,
+				sourceHeight: overlay.height,
+			},
+		];
+		return {
+			...worker,
+			async run(stack: EffectStack, scale: number, value?: SourceTransform) {
+				const from = worker.posted.length;
+				worker.send({
+					...worker.job,
+					stack,
+					extraSources,
+					type: 'export',
+					scale,
+					format: 'png',
+					quality: 92,
+					transform: value,
+				});
+				return worker.next(isDone, from);
+			},
+			extraSources,
+		};
+	}
+
+	it('decodes it at full size for a full-size export', async () => {
+		const worker = await blendSetup();
+		const stack = stackOf('none');
+		await expect(worker.run(stack, 1)).resolves.toMatchObject({
+			type: 'exported',
+		});
+
+		expect(worker.decodes).toEqual([undefined, undefined]);
+		const wanted = await expected(base, base, stack, overlay);
+		expect(sameImage(worker.encoded[0], wanted)).toBe(true);
+		expect(sameImage(wanted, base)).toBe(false);
+	});
+
+	it.each(['none', 'tile', 'cover'])(
+		'decodes it at the export scale (%s)',
+		async (fit) => {
+			const worker = await blendSetup();
+			const stack = stackOf(fit);
+			await worker.run(stack, 0.5);
+
+			expect(worker.decodes).toEqual([
+				{width: 20, height: 15},
+				{width: 32, height: 9},
+			]);
+			const wanted = await expected(
+				boxDownscale(base, 20, 15),
+				base,
+				stack,
+				boxDownscale(overlay, 32, 9),
+			);
+			expect(sameImage(worker.encoded[0], wanted)).toBe(true);
+		},
+	);
+
+	it('applies the geometry to the source only', async () => {
+		const worker = await blendSetup();
+		const stack = stackOf('none');
+		const value = transform({
+			rotation: 90,
+			crop: {x: 2, y: 4, width: 24, height: 32},
+		});
+		await worker.run(stack, 0.5, value);
+
+		expect(worker.decodes).toEqual([undefined, {width: 32, height: 9}]);
+		const image = applyTransform(
+			base,
+			transform({
+				...value,
+				resize: {width: 12, height: 16, filter: 'lanczos3'},
+			}),
+		);
+		const wanted = await expected(
+			image,
+			{width: 24, height: 32},
+			stack,
+			boxDownscale(overlay, 32, 9),
+		);
+		expect(sameImage(worker.encoded[0], wanted)).toBe(true);
+	});
+
+	it('blends it in a full render', async () => {
+		const worker = await blendSetup();
+		const stack = stackOf('stretch');
+		worker.send({
+			...worker.job,
+			stack,
+			extraSources: worker.extraSources,
+			type: 'renderFull',
+			generation: 4,
+		});
+		const done = await worker.next(isDone);
+		if (done.type !== 'fullRendered') {
+			throw new Error(JSON.stringify(done));
+		}
+
+		const tile = done.tiles[0].bitmap as unknown as FakeBitmap;
+		const wanted = await expected(base, base, stack, overlay);
+		expect(sameImage(tile, wanted)).toBe(true);
+	});
+
+	it('fails the job when it cannot be decoded', async () => {
+		const worker = await blendSetup('broken');
+		await expect(worker.run(stackOf('cover'), 1)).resolves.toMatchObject({
+			type: 'error',
+			code: 'decode-failed',
+		});
+		expect(worker.encoded).toEqual([]);
 	});
 });

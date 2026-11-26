@@ -37,6 +37,15 @@ export type EngineErrorCode = CodecErrorCode | 'internal';
 
 export type ProxySize = {width: number; height: number};
 
+// An image an `image` parameter names (engine.md section 16.5).
+export type ExtraSourceFile = {
+	sha256: string;
+	blob: Blob;
+	// Size of the stored image.
+	sourceWidth: number;
+	sourceHeight: number;
+};
+
 export type PreviewRequest =
 	| {
 			type: 'loadSource';
@@ -65,7 +74,10 @@ export type PreviewRequest =
 	  } & StackRequest)
 	| {type: 'cancel'; belowGeneration: number}
 	| {type: 'setDragCap'; pixels: number}
-	| {type: 'unloadSource'; sourceKey: string};
+	| {type: 'unloadSource'; sourceKey: string}
+	// Answered by `extraSourceLoaded`, or `error` with the `requestId`.
+	| ({type: 'loadExtraSource'; requestId: number} & ExtraSourceFile)
+	| {type: 'unloadExtraSource'; sha256: string};
 
 export type PreviewResponse =
 	| {
@@ -92,6 +104,7 @@ export type PreviewResponse =
 			warnings: PipelineWarning[];
 	  }
 	| {type: 'cancelled'; jobId: number}
+	| {type: 'extraSourceLoaded'; requestId: number; sha256: string}
 	| {
 			type: 'error';
 			jobId?: number;
@@ -120,6 +133,7 @@ export type ExportRequest =
 			quality: number;
 			// Optional maximum output file size in KB (10..102400).
 			maxFileSizeKb?: number | null;
+			extraSources?: readonly ExtraSourceFile[];
 	  } & StackRequest)
 	| ({
 			type: 'renderFull';
@@ -129,6 +143,7 @@ export type ExportRequest =
 			sourceWidth: number;
 			sourceHeight: number;
 			transform?: SourceTransform;
+			extraSources?: readonly ExtraSourceFile[];
 	  } & StackRequest);
 
 export type ExportResponse =

@@ -2,6 +2,7 @@ import {useMemo} from 'react';
 import {AppBar} from '@/app/app-bar.tsx';
 import {LiveRegion} from '@/app/live-region.tsx';
 import {NoticeToasts} from '@/app/notices.tsx';
+import {PwaUpdateToast} from '@/app/pwa-update-toast.tsx';
 import {
 	AppRuntimeProvider,
 	useAppStore,
@@ -47,6 +48,7 @@ export function App({runtime, screens}: AppProps) {
 			) : (
 				<BootScreen boot={boot} />
 			)}
+			<PwaUpdateToast />
 			<Toaster />
 		</TooltipProvider>
 	);

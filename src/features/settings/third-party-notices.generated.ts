@@ -375,6 +375,12 @@ export const THIRD_PARTY_NOTICES: readonly ThirdPartyNotice[] = [
 		url: 'https://github.com/theKashey/use-sidecar',
 	},
 	{
+		name: 'workbox-window',
+		version: '7.4.1',
+		license: 'MIT',
+		url: 'https://github.com/GoogleChrome/workbox',
+	},
+	{
 		name: 'zustand',
 		version: '5.1.0',
 		license: 'MIT',

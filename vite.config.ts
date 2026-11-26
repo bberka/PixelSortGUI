@@ -2,6 +2,7 @@ import path from 'node:path';
 import process from 'node:process';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import {VitePWA as vitePwa} from 'vite-plugin-pwa';
 import {defineConfig} from 'vite-plus';
 import {thirdPartyNotices} from './scripts/notices-plugin.ts';
 import {resolveBuildVersion} from './scripts/release-version.ts';
@@ -18,7 +19,61 @@ export default defineConfig({
 		'globalThis.VITE_APP_VERSION': JSON.stringify(appVersion),
 		'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
 	},
-	plugins: [react(), tailwindcss(), notices.plugin],
+	plugins: [
+		react(),
+		tailwindcss(),
+		notices.plugin,
+		vitePwa({
+			registerType: 'prompt',
+			injectRegister: false,
+			/* eslint-disable @typescript-eslint/naming-convention -- Web App Manifest specification requires snake_case keys */
+			manifest: {
+				name: 'PixelSortGUI',
+				short_name: 'PixelSortGUI',
+				description:
+					'Offline web editor for glitch art and pixel sorting of still photos.',
+				start_url: '/',
+				scope: '/',
+				display: 'standalone',
+				background_color: '#000000',
+				theme_color: '#000000',
+				icons: [
+					{
+						src: '/icons/icon-192.png',
+						sizes: '192x192',
+						type: 'image/png',
+						purpose: 'any',
+					},
+					{
+						src: '/icons/icon-512.png',
+						sizes: '512x512',
+						type: 'image/png',
+						purpose: 'any',
+					},
+					{
+						src: '/icons/icon-maskable-512.png',
+						sizes: '512x512',
+						type: 'image/png',
+						purpose: 'maskable',
+					},
+					{
+						src: '/icons/icon.svg',
+						sizes: 'any',
+						type: 'image/svg+xml',
+						purpose: 'any',
+					},
+				],
+			},
+			/* eslint-enable @typescript-eslint/naming-convention */
+			workbox: {
+				globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,txt}'],
+				navigateFallback: '/index.html',
+				cleanupOutdatedCaches: true,
+				clientsClaim: false,
+				skipWaiting: false,
+			},
+		}),
+	],
 	worker: {
 		format: 'es',
 		plugins: () => [notices.workerPlugin],

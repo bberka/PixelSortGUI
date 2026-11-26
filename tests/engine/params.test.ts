@@ -247,6 +247,29 @@ describe('validateParams: seed', () => {
 	});
 });
 
+describe('validateParams: image', () => {
+	const picture: ParamSpec = {...meta, kind: 'image', default: ''};
+	const sha256 = '0123456789abcdef'.repeat(4);
+
+	it('keeps an empty string or 64 lowercase hex digits', () => {
+		expect(one(picture, '')).toBe('');
+		expect(one(picture, sha256)).toBe(sha256);
+	});
+
+	it.each([
+		sha256.toUpperCase(),
+		sha256.slice(1),
+		`${sha256}0`,
+		`${sha256}\n`,
+		'g'.repeat(64),
+		`blob:${sha256}`,
+		7,
+		null,
+	])('drops %j', (value) => {
+		expect(one(picture, value)).toBe('');
+	});
+});
+
 type EveryKind = {
 	amount: number;
 	span: number;

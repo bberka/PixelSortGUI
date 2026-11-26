@@ -12,6 +12,7 @@ import {
 import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
 import {pixelSmearSpec, type PixelSmearParams} from './pixel-smear-spec.ts';
 import {jpegCrushSpec, type JpegCrushParams} from './jpeg-crush-spec.ts';
+import {imageBlendSpec, type ImageBlendParams} from './image-blend-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {mirrorFoldSpec, type MirrorFoldParams} from './mirror-fold-spec.ts';
@@ -130,6 +131,14 @@ const lazyJpegCrushEffect: EffectDefinition<JpegCrushParams> = {
 	},
 };
 
+const lazyImageBlendEffect: EffectDefinition<ImageBlendParams> = {
+	...imageBlendSpec,
+	async render(input, output, params, ctx) {
+		const {imageBlendEffect} = await import('./image-blend.ts');
+		return imageBlendEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -150,6 +159,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyThresholdInvertEffect,
 	lazyPixelSmearEffect,
 	lazyJpegCrushEffect,
+	lazyImageBlendEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

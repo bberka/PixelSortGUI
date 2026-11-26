@@ -106,6 +106,12 @@ export function ParamControl({
 			);
 		}
 
+		// No control yet: every effect with an image parameter is unlisted
+		// (engine.md section 16.5).
+		case 'image': {
+			return null;
+		}
+
 		default: {
 			return assertNever(spec);
 		}

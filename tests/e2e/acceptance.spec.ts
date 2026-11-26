@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {expect, test, type Download, type Page} from '@playwright/test';
 import {decode as decodePng} from 'fast-png';
 import {effectRegistry} from '../../src/engine/effects/index.ts';
+import {listedEffects} from '../../src/engine/registry.ts';
 import {defaultParams} from '../../src/engine/params.ts';
 import type {ParamSpec} from '../../src/engine/types.ts';
 import {isParamVisible} from '../../src/features/params/visibility.ts';
@@ -561,7 +562,7 @@ test.describe('v0.2.0 E2E acceptance suite (T7.17)', () => {
 
 		const panel = page.locator('[data-slot="parameter-panel"]');
 		const chooser = page.getByRole('dialog', {name: 'Add effect'});
-		for (const definition of effectRegistry.list()) {
+		for (const definition of listedEffects(effectRegistry)) {
 			await page.getByRole('button', {name: 'Add effect'}).click();
 			const option = chooser.getByRole('button', {
 				name: `${definition.label} ${definition.description}`,
@@ -591,6 +592,19 @@ test.describe('v0.2.0 E2E acceptance suite (T7.17)', () => {
 				),
 			).toHaveText([...labels, 'Mix', 'Blend']);
 		}
+
+		// Unlisted effects are registered but not offered.
+		await page.getByRole('button', {name: 'Add effect'}).click();
+		await expect(chooser.getByRole('button')).not.toHaveCount(0);
+		for (const definition of effectRegistry.list()) {
+			if (definition.unlisted) {
+				await expect(
+					chooser.getByRole('button', {name: definition.label}),
+				).toHaveCount(0);
+			}
+		}
+
+		await page.keyboard.press('Escape');
 
 		await waitForSettleRender(page);
 		expect(consoleErrors).toEqual([]);

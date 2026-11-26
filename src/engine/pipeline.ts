@@ -9,6 +9,8 @@ import {
 	type EffectInstance,
 	type EffectRegistry,
 	type EffectStack,
+	type ExtraSource,
+	type ParamSpec,
 	type ParamValue,
 	type RenderContext,
 	type RenderLevel,
@@ -27,11 +29,13 @@ export type PipelineOptions = {
 	// Called between instances and by effects. Whatever it throws ends the render and is rethrown.
 	checkpoint: () => void | Promise<void>;
 	onProgress?: (fraction: number) => void;
+	// Images that `image` parameters name, keyed by SHA-256. Only read.
+	extraSources?: ReadonlyMap<string, ExtraSource>;
 };
 
 export type PipelineWarning = {
 	instanceId: string;
-	code: 'unknown-type' | 'newer-version' | 'params-fixed';
+	code: 'unknown-type' | 'newer-version' | 'params-fixed' | 'missing-source';
 };
 
 export type PipelineResult = {
@@ -157,6 +161,7 @@ export type RenderContextInit = {
 	debugView?: DebugView;
 	checkpoint?: () => void | Promise<void>;
 	progress?: (fraction: number) => void;
+	extraSources?: ReadonlyMap<string, ExtraSource>;
 };
 
 function buildContext(
@@ -177,6 +182,7 @@ function buildContext(
 		checkpoint: init.checkpoint ?? (() => undefined),
 		progress: init.progress ?? (() => undefined),
 		scratch,
+		getSource: (sha256) => init.extraSources?.get(sha256),
 		debugView: init.debugView ?? 'none',
 	};
 }
@@ -224,6 +230,23 @@ type Step = {
 
 const CHECKPOINT_PIXELS = 16_384;
 
+// Whether an `image` parameter names a source that was not supplied.
+function namesMissingSource(
+	definition: EffectDefinition,
+	params: Readonly<Record<string, ParamValue>>,
+	extraSources: ReadonlyMap<string, ExtraSource> | undefined,
+): boolean {
+	return Object.entries<ParamSpec>(definition.params).some(([key, spec]) => {
+		const value = params[key];
+		return (
+			spec.kind === 'image' &&
+			typeof value === 'string' &&
+			value !== '' &&
+			!extraSources?.has(value)
+		);
+	});
+}
+
 /**
  Runs the enabled instances of `stack` over `source` in order.
  Copies: `source` and `stack` are only read. Each instance renders from the
@@ -248,12 +271,15 @@ export async function renderStack(
 		);
 	}
 
-	const {cache, debug, checkpoint, onProgress} = options;
+	const {cache, debug, checkpoint, onProgress, extraSources} = options;
 	const warnings: PipelineWarning[] = [];
 	const perInstanceMs = stack.instances.map(() => 0);
 
 	const steps: Step[] = [];
 	const enabled: EffectInstance[] = [];
+	// Cache keys do not say which extra sources were supplied, so no stage from
+	// the first missing one onwards may be stored or reused.
+	let sourcesComplete = true;
 	for (const [index, instance] of stack.instances.entries()) {
 		if (!instance.enabled) {
 			continue;
@@ -271,6 +297,13 @@ export async function renderStack(
 			warnings.push({instanceId: instance.id, code: 'params-fixed'});
 		}
 
+		if (
+			namesMissingSource(resolved.definition, resolved.params, extraSources)
+		) {
+			warnings.push({instanceId: instance.id, code: 'missing-source'});
+			sourcesComplete = false;
+		}
+
 		const isDebug = debug?.instanceId === instance.id;
 		steps.push({
 			index,
@@ -280,7 +313,7 @@ export async function renderStack(
 			isDebug,
 			enabledBefore,
 			cacheKey:
-				cache && !isDebug
+				cache && !isDebug && sourcesComplete
 					? stageCacheKey(
 							options.level,
 							width,
@@ -355,6 +388,7 @@ export async function renderStack(
 					renderWidth: width,
 					seed: typeof params.seed === 'number' ? params.seed : 0,
 					debugView,
+					extraSources,
 					checkpoint,
 					progress(fraction) {
 						report(

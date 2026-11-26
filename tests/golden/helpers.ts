@@ -8,7 +8,11 @@ import {
 	applyTransform,
 	type SourceTransform,
 } from '../../src/engine/transform.ts';
-import type {EffectStack, RgbaImage} from '../../src/engine/types.ts';
+import type {
+	EffectStack,
+	ExtraSource,
+	RgbaImage,
+} from '../../src/engine/types.ts';
 import {
 	getSyntheticFixture,
 	type SyntheticFixtureName,
@@ -21,6 +25,11 @@ export type GoldenCaseSpec = {
 	stack: EffectStack;
 	scale: number;
 	debug?: {instanceId: string; view: 'selection'};
+	// Images the stack's `image` parameters name, by SHA-256 key.
+	extraSources?: Record<
+		string,
+		{fixture: SyntheticFixtureName; scale?: number}
+	>;
 };
 
 export type GoldenCaseEntry = {
@@ -65,6 +74,14 @@ export function listGoldenCases(root = GOLDEN_ROOT): GoldenCaseEntry[] {
 	return entries;
 }
 
+function scaled(source: RgbaImage, scale: number): RgbaImage {
+	const width = Math.max(1, Math.floor(source.width * scale));
+	const height = Math.max(1, Math.floor(source.height * scale));
+	return width === source.width && height === source.height
+		? source
+		: boxDownscale(source, width, height);
+}
+
 export async function renderGoldenCase(
 	spec: GoldenCaseSpec,
 ): Promise<RgbaImage> {
@@ -74,18 +91,27 @@ export async function renderGoldenCase(
 		: fixture;
 	const sourceWidth = source.width;
 	const sourceHeight = source.height;
-	const targetWidth = Math.max(1, Math.floor(sourceWidth * spec.scale));
-	const targetHeight = Math.max(1, Math.floor(sourceHeight * spec.scale));
-	const input =
-		targetWidth === sourceWidth && targetHeight === sourceHeight
-			? source
-			: boxDownscale(source, targetWidth, targetHeight);
+	const input = scaled(source, spec.scale);
+	const extraSources = new Map<string, ExtraSource>(
+		Object.entries(spec.extraSources ?? {}).map(([sha256, entry]) => {
+			const stored = getSyntheticFixture(entry.fixture);
+			return [
+				sha256,
+				{
+					...scaled(stored, entry.scale ?? spec.scale),
+					sourceWidth: stored.width,
+					sourceHeight: stored.height,
+				},
+			];
+		}),
+	);
 
 	const result = await renderStack(input, spec.stack, effectRegistry, {
 		level: spec.scale < 1 ? 'settle' : 'full',
 		sourceWidth,
 		sourceHeight,
 		debug: spec.debug,
+		extraSources,
 		checkpoint: () => undefined,
 	});
 	return result.image;

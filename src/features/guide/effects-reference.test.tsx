@@ -4,15 +4,15 @@ import {buildEffectsReference} from './effects-reference.ts';
 import {Block} from './guide-blocks.tsx';
 import {GUIDE_SECTIONS} from './content.ts';
 import {effectRegistry} from '@/engine/effects/index.ts';
-import {createRegistry} from '@/engine/registry.ts';
+import {createRegistry, listedEffects} from '@/engine/registry.ts';
 import type {EffectDefinition} from '@/engine/types.ts';
 
 describe('guide effects reference (AC-F27.4)', () => {
 	it('lists every registered effect with every parameter label', () => {
 		const html = renderToStaticMarkup(<Block block={{kind: 'effects'}} />);
 
-		expect(effectRegistry.list().length).toBeGreaterThan(0);
-		for (const definition of effectRegistry.list()) {
+		expect(listedEffects(effectRegistry).length).toBeGreaterThan(0);
+		for (const definition of listedEffects(effectRegistry)) {
 			expect(html).toContain(`data-guide-effect="${definition.type}"`);
 			expect(html).toContain(definition.label);
 			const entry = buildEffectsReference(effectRegistry).find(
@@ -22,6 +22,18 @@ describe('guide effects reference (AC-F27.4)', () => {
 				Object.values(definition.params).map((spec) => spec.label),
 			);
 		}
+	});
+
+	it('leaves out unlisted effects, which nothing in the app can add yet', () => {
+		const html = renderToStaticMarkup(<Block block={{kind: 'effects'}} />);
+		const unlisted = effectRegistry
+			.list()
+			.filter((definition) => definition.unlisted);
+
+		expect(unlisted.map((definition) => definition.type)).toEqual([
+			'imageBlend',
+		]);
+		expect(html).not.toContain('data-guide-effect="imageBlend"');
 	});
 
 	it('is part of the guide', () => {
@@ -70,6 +82,7 @@ describe('guide effects reference (AC-F27.4)', () => {
 					default: 3,
 					unit: 'px',
 				},
+				picture: {kind: 'image', label: 'Picture', group: 'A', default: ''},
 			},
 			render() {},
 		};
@@ -84,6 +97,7 @@ describe('guide effects reference (AC-F27.4)', () => {
 				shownWhen: 'Mode is Alpha',
 			},
 			{range: '1 to 9 px', defaultValue: '3 px'},
+			{range: 'An image', defaultValue: 'None'},
 		]);
 	});
 });

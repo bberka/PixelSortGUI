@@ -37,6 +37,15 @@ export type RenderLevel = 'drag' | 'settle' | 'full';
 
 export type DebugView = 'none' | 'selection';
 
+// An image other than the project's source that an `image` parameter names
+// (engine.md section 16.5). `width` and `height` describe the pixels handed to
+// the engine, which may be a proxy.
+export type ExtraSource = RgbaImage & {
+	// Size of the stored image in px.
+	readonly sourceWidth: number;
+	readonly sourceHeight: number;
+};
+
 export type RenderContext = {
 	readonly level: RenderLevel;
 	readonly sourceWidth: number;
@@ -57,6 +66,8 @@ export type RenderContext = {
 	progress(fraction: number): void;
 	// A buffer reused between calls with the same slot. Its contents are undefined.
 	scratch(slot: number, byteLength: number): Uint8Array;
+	// The extra source with this SHA-256, or undefined when it was not supplied. Read only.
+	getSource(sha256: string): ExtraSource | undefined;
 	readonly debugView: DebugView;
 };
 
@@ -99,6 +110,8 @@ export type ParamSpec = ParamSpecBase &
 		  }
 		| {kind: 'angle'; default: number; snaps: readonly number[]}
 		| {kind: 'seed'}
+		// SHA-256 of an extra source as 64 lowercase hex digits, or '' for none.
+		| {kind: 'image'; default: ''}
 	);
 
 export type ParamSpecs<
@@ -126,6 +139,8 @@ export type EffectDefinition<
 		>
 	>;
 	readonly debugViews?: ReadonlyArray<'selection'>;
+	// Left out of the add-effect list and the guide. Stored instances still render.
+	readonly unlisted?: boolean;
 	// Reads `input`, writes every byte of `output`, and never writes `input`.
 	render(
 		input: RgbaImage,

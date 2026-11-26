@@ -9,6 +9,8 @@ import {
 	type ParamValue,
 } from './types.ts';
 
+const SHA256_HEX = /^[\da-f]{64}$/;
+
 function isNumber(value: unknown): value is number {
 	return typeof value === 'number' && !Number.isNaN(value);
 }
@@ -97,6 +99,12 @@ function validateOne(spec: ParamSpec, value: unknown): ParamValue {
 		case 'seed': {
 			// eslint-disable-next-line no-bitwise -- seeds are uint32 (engine.md section 3)
 			return isNumber(value) ? value >>> 0 : 0;
+		}
+
+		case 'image': {
+			return typeof value === 'string' && SHA256_HEX.test(value)
+				? value
+				: spec.default;
 		}
 	}
 }

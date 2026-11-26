@@ -1,0 +1,27 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "ib000001",
+				"type": "imageBlend",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"image": "",
+					"blendMode": "normal",
+					"opacity": 1,
+					"fit": "cover",
+					"scale": 1,
+					"offsetX": 0,
+					"offsetY": 0,
+					"rotation": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

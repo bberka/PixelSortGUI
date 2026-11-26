@@ -1,5 +1,12 @@
 import type {EffectDefinition, EffectRegistry} from './types.ts';
 
+// The effects a user is offered: those not marked `unlisted`, in registration order.
+export function listedEffects(
+	registry: EffectRegistry,
+): readonly EffectDefinition[] {
+	return registry.list().filter((definition) => !definition.unlisted);
+}
+
 export function createRegistry(
 	definitions: readonly EffectDefinition[],
 ): EffectRegistry {

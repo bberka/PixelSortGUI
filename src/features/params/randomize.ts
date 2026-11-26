@@ -72,6 +72,11 @@ function drawOne(spec: ParamSpec, random: RandomSource): ParamValue {
 		case 'seed': {
 			return Math.floor(random() * SEED_VALUES);
 		}
+
+		// Only the user can choose an image.
+		case 'image': {
+			return spec.default;
+		}
 	}
 }
 

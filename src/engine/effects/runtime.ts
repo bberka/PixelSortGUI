@@ -4,6 +4,7 @@ import {bayerDitherEffect} from './bayer-dither.ts';
 import {blockShuffleEffect} from './block-shuffle.ts';
 import {channelShiftEffect} from './channel-shift.ts';
 import {channelSwapEffect} from './channel-swap.ts';
+import {imageBlendEffect} from './image-blend.ts';
 import {jpegCrushEffect} from './jpeg-crush.ts';
 import {mirrorFoldEffect} from './mirror-fold.ts';
 import {pixelSmearEffect} from './pixel-smear.ts';
@@ -32,6 +33,7 @@ export const runtimeEffects: readonly EffectDefinition[] = [
 	thresholdInvertEffect,
 	pixelSmearEffect,
 	jpegCrushEffect,
+	imageBlendEffect,
 ];
 
 export const runtimeEffectRegistry = createRegistry(runtimeEffects);

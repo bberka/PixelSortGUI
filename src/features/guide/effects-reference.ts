@@ -1,3 +1,4 @@
+import {listedEffects} from '@/engine/registry.ts';
 import type {EffectRegistry, ParamSpec, ParamSpecs} from '@/engine/types.ts';
 import {formatAngle, formatNumberParam} from '@/features/params/format.ts';
 
@@ -76,6 +77,10 @@ function describeSpec(spec: ParamSpec): Described {
 				defaultValue: 'Random for each new effect',
 			};
 		}
+
+		case 'image': {
+			return {range: 'An image', defaultValue: 'None'};
+		}
 	}
 }
 
@@ -125,7 +130,7 @@ function describeVisibility(
 export function buildEffectsReference(
 	registry: EffectRegistry,
 ): EffectReference[] {
-	return registry.list().map((definition) => ({
+	return listedEffects(registry).map((definition) => ({
 		type: definition.type,
 		label: definition.label,
 		description: definition.description,

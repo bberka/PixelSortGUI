@@ -1,0 +1,24 @@
+{
+	"input": "gradient-64x48",
+	"transform": {
+		"rotation": 0,
+		"flipX": false,
+		"flipY": false,
+		"crop": {
+			"x": 11,
+			"y": 7,
+			"width": 21,
+			"height": 14
+		},
+		"resize": {
+			"width": 55,
+			"height": 41,
+			"filter": "lanczos3"
+		}
+	},
+	"stack": {
+		"schemaVersion": 1,
+		"instances": []
+	},
+	"scale": 1
+}

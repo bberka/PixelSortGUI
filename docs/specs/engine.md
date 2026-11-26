@@ -6,6 +6,7 @@ Updated after the engine foundation review by Gemini 4 Neon (Antigravity, though
 Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low), documentation subagent.
 Updated with post-v0.1.0 specs (F20 geometry, F21 formats, F22 effect catalogue) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with multi-image blending (`imageBlend`, F26) spec by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
+Updated with exact geometry rounding and resampling rules (section 16.3) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 
 # Drift engine spec
 
@@ -620,7 +621,7 @@ Run with `vp test run` in Node. Required per module:
 ### 14.2 Golden images
 
 - Inputs are synthetic images generated in code by `tests/fixtures/synthetic.ts` from `hash32`, so no photos are needed in the repository: `gradient-64x48` (diagonal colour gradient), `noise-97x61` (hashed RGB noise, odd size), `bands-80x80` (horizontal bands of 8 grey levels with 1 px black separators), `alpha-32x32` (gradient with a transparent quarter).
-- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (a dev dependency that task `T2.7` adds) in Node tests.
+- Each case is `tests/golden/<type>/<case>.json` holding `{input, stack, scale}` (plus an optional `transform`, section 16.3, applied to the input first; geometry cases live in `tests/golden/transform/`) and `tests/golden/<type>/<case>.png` holding the expected output, encoded and decoded with `fast-png` (a dev dependency that task `T2.7` adds) in Node tests.
 - The test renders the case at `scale` and compares bytes exactly. On mismatch it writes `<case>.actual.png` and a diff image to `tests/golden/.out/` (git-ignored) and reports the count of differing pixels.
 - `vp run golden:update` rewrites expected images and is never run by CI.
 - Minimum cases for `pixelSort`: every interval mode; every sort key at angle 0; every order; every fill; angles 0, 30, 45, 90, 180, 270, 333.3; `invert`; `maxLength` with and without jitter; `skipChance` 0.5; `discretize` 4; selection debug view; the `alpha-32x32` input; scale 0.5. For `channelShift`: defaults, two non-default settings, scale 0.5.
@@ -655,6 +656,8 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   lines.ts             line partition
   direction-table.ts   generated, checked in
   resample.ts          box downscale for the drag proxy and masks
+  transform.ts         geometry transforms: crop rounding, orientation, resampling (section 16.3)
+  lanczos-table.ts     generated, checked in
   effects/index.ts     the registered list
   effects/pixel-sort/  index.ts, select.ts, edges.ts, fill.ts
   effects/channel-shift.ts
@@ -671,12 +674,12 @@ src/presets/           builtin.ts
 tests/engine/          unit and property tests
 tests/golden/          golden cases
 tests/fixtures/        synthetic.ts
-scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
+scripts/               gen-direction-table.ts, gen-lanczos-table.ts, golden-update.ts, bench.ts
 ```
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, the five top-ranked effects of section 16.1 (`sliceShift`, `channelSwap`, `blockShuffle`, `scanlineWave` and `posterize`) and the import format detection (animation notice, HEIC/HEIF and RAW refusal) and SVG rasterised import of section 16.4 have been implemented, as has the geometry engine of section 16.3 (`src/engine/transform.ts`), which no storage, worker or UI code uses yet.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -959,15 +962,41 @@ Given decoded EXIF-normalized source dimensions `(Ws, Hs)`:
 2. **Crop:** Extract rectangle `[crop.x, crop.x + crop.width) × [crop.y, crop.y + crop.height)` from oriented pixels. Cropped dimensions: `(Wc, Hc) = crop ? (crop.width, crop.height) : (Wo, Ho)`.
    - **Fixed aspect ratio `a:b` rounding rules:**
      - Initial centred box in `(Wo, Ho)`: if `Wo * b <= Ho * a`, `w = Wo` and `h = clamp(roundHalfAway(Wo * b / a), 1, Ho)`; else `h = Ho` and `w = clamp(roundHalfAway(Ho * a / b), 1, Wo)`. `x = Math.floor((Wo - w) / 2)`, `y = Math.floor((Ho - h) / 2)`.
-     - Interactive handle drag with locked `a:b`: anchor the opposite corner/edge, clamp the dragged axis length `d` to available space, compute the paired axis with `roundHalfAway(d * b / a)` (or `a / b`), clamp both to stay inside `[0, Wo] × [0, Ho]` and at least `1 × 1`.
+     - Interactive handle drag with locked `a:b`: the inputs are the box at drag start, the handle, the dragged axis (`n` and `s` drag the height, `e` and `w` the width, the caller names it for a corner handle) and the requested length of that axis. `a` and `b` are positive integers (`Original` is `Wo:Ho`).
+       1. Anchor: each side opposite a side the handle moves stays where it was. An edge handle also keeps the paired axis centred on the start box.
+       2. Available space: from the anchored side to the image edge on an anchored axis, and the whole image side for the paired axis of an edge handle.
+       3. `d = clamp(roundHalfAway(requested), 1, availableDragged)`, then `p = max(1, roundHalfAway(d * b / a))` when the width is dragged, or `max(1, roundHalfAway(d * a / b))` when the height is.
+       4. If `p > availablePaired`, set `p = availablePaired` and recompute `d` from `p` with the inverse ratio, `clamp(roundHalfAway(...), 1, availableDragged)`.
+       5. Centred paired axis: `position = clamp(floorDiv(2 * startPosition + startLength - p, 2), 0, imageSide - p)`.
      - Numeric entry: round with `roundHalfAway`, clamp `width` to `[1, Wo]`, `height` to `[1, Ho]`, then clamp `x` to `[0, Wo - width]` and `y` to `[0, Ho - height]`.
+     - Positive ratios are rounded in integers, `floorDiv(2 * n + m, 2 * m)` for `roundHalfAway(n / m)`. A requested length or numeric field that is not finite throws `RangeError`.
 3. **Resize:** Resample `(Wc, Hc)` to `(We, He) = resize ? (resize.width, resize.height) : (Wc, Hc)`.
    - **Percent mode:** `w = Math.max(1, roundHalfAway(Wc * percent / 100))`, `h = Math.max(1, roundHalfAway(Hc * percent / 100))`.
    - **Limits:** `1 <= We <= 16384`, `1 <= He <= 16384`, and `We * He <= Math.max(50_000_000, Wc * Hc)`.
-   - **Resampling filters (all deterministic, straight-alpha in/out, premultiplied-alpha internally):**
-     - `lanczos3` (default): separable horizontal-then-vertical 3-lobe Lanczos filter (`a = 3`), reading kernel weights from a checked-in 1,024-entry lookup table on `[0, 3]` (generated by a script so no `Math.sin` runs at render time, rule 3 of section 1). When downscaling by factor `r = dst / src < 1`, widen support to `3 / r` to prevent aliasing. Premultiply RGB by alpha before filtering, clamp sums to `[0, 255]`, and unpremultiply afterwards.
-     - `bilinear`: uses exact `boxDownscale` (`src/engine/resample.ts`) when downscaling on both axes (`We <= Wc && He <= Hc`), and premultiplied-alpha bilinear interpolation with exact pixel-centre mapping `sx = (dx + 0.5) * Wc / We - 0.5` otherwise.
+   - **Resampling filters (all deterministic, straight-alpha in/out, premultiplied-alpha internally):** when `(We, He)` equals `(Wc, Hc)` no resampling runs and every filter copies all four channels unchanged, including the colour of transparent pixels.
+     - `lanczos3` (default): separable horizontal-then-vertical 3-lobe Lanczos filter (`a = 3`), reading kernel weights from a checked-in 1,024-entry lookup table on `[0, 3]` (generated by a script so no `Math.sin` runs at render time, rule 3 of section 1). When downscaling by factor `r = dst / src < 1`, widen support to `3 / r` to prevent aliasing. Premultiply RGB by alpha before filtering, clamp sums to `[0, 255]`, and unpremultiply afterwards. Exact rules below.
+     - `bilinear`: uses exact `boxDownscale` (`src/engine/resample.ts`) when downscaling on both axes (`We <= Wc && He <= Hc`), and premultiplied-alpha bilinear interpolation with exact pixel-centre mapping `sx = (dx + 0.5) * Wc / We - 0.5` otherwise. Exact rules below.
      - `nearest`: `sx = Math.min(Wc - 1, Math.floor((dx + 0.5) * Wc / We))`, `sy = Math.min(Hc - 1, Math.floor((dy + 0.5) * Hc / He))`, copying all four channels unchanged.
+
+#### Exact resampling arithmetic
+
+All sums below are integers under `2^53`.
+
+**Lanczos table** (`src/engine/lanczos-table.ts`, written by `scripts/gen-lanczos-table.ts`): entry `i` in `0..1023` is the kernel at `t = i / 341`, `T[i] = roundHalfAway(2^22 * 3 * sin(pi * t) * sin(pi * t / 3) / (pi * t)^2)`, with `T[0] = 2^22`. Entries 341, 682 and 1023 (`t` = 1, 2, 3) are exactly 0.
+
+**Lanczos weights**, once per axis, for source size `S`, target size `D` and destination index `d`, with `M = max(S, D)`:
+
+- Source index `i` in `[0, S)` is a tap when `n = |2 * D * i - ((2 * d + 1) * S - D)|` is below `6 * M` (`t = n / (2 * M)`). Taps outside the image are dropped, not clamped or mirrored.
+- Table position: `q = floorDiv(1023 * n, 6 * M)`, `f = 1023 * n - q * 6 * M`, and the raw weight is `floorDiv(T[q] * (6 * M - f) + T[q + 1] * f + 3 * M, 6 * M)`.
+- Weight: `roundHalfAway(raw * 2^22 / sum(raw))`. Then add `2^22 - sum(weights)` to the tap with the largest raw weight (lowest index on a tie), so every destination's weights sum to `2^22`.
+
+**Lanczos filtering:** each source pixel contributes `P = (R * A, G * A, B * A, A)`. The horizontal pass stores `h = floorDiv(sum(wx * P) + 2^13, 2^14)` per channel, unclamped. The vertical pass forms `v = sum(wy * h)`. Output alpha is `clamp(floorDiv(vA + 2^29, 2^30), 0, 255)`. If it is 0 the pixel is `(0, 0, 0, 0)`; otherwise each colour channel is `clamp(floorDiv(2 * vC + vA, 2 * vA), 0, 255)`.
+
+**Bilinear**, per axis: `n = clamp((2 * d + 1) * S - D, 0, (S - 1) * 2 * D)`, `i0 = floorDiv(n, 2 * D)`, `i1 = min(i0 + 1, S - 1)`, `f = n - i0 * 2 * D`, with weights `2 * D - f` for `i0` and `f` for `i1`. The four taps have weight `w = wx * wy` and `total = 4 * We * He`; alpha and colour then follow the `boxDownscale` formulas of section 8.2.
+
+#### Functions
+
+`transform.ts` exports `orientedDimensions`, `effectiveDimensions`, `applyTransform`, `initialCrop`, `dragCrop`, `normalizeCrop`, `percentSize` and `isResizeWithinLimits`. `effectiveDimensions` and `applyTransform` throw `RangeError` for a rotation, crop, resize or filter outside the rules above. `applyTransform` never writes its input and always returns a new buffer.
 
 #### Pipeline, proxy, stage cache, and effect-parameter interaction
 

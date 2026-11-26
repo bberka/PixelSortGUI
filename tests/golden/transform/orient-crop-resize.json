@@ -1,0 +1,24 @@
+{
+	"input": "noise-97x61",
+	"transform": {
+		"rotation": 90,
+		"flipX": true,
+		"flipY": false,
+		"crop": {
+			"x": 5,
+			"y": 9,
+			"width": 40,
+			"height": 60
+		},
+		"resize": {
+			"width": 30,
+			"height": 45,
+			"filter": "lanczos3"
+		}
+	},
+	"stack": {
+		"schemaVersion": 1,
+		"instances": []
+	},
+	"scale": 1
+}

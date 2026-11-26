@@ -1,0 +1,23 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "po000001",
+				"type": "posterize",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"mode": "levels",
+					"levels": 64,
+					"bitsDropped": 4,
+					"preserveLuma": false
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

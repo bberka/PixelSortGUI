@@ -1,4 +1,4 @@
-import {useMemo, useRef, useState, type PointerEvent} from 'react';
+import {useEffect, useMemo, useRef, useState, type PointerEvent} from 'react';
 import {AddEffectPicker} from './add-effect-picker.tsx';
 import {StackRow} from './stack-row.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
@@ -57,8 +57,9 @@ export function EffectStackPanel({
 	const selectEffect = useAppStore((state) => state.selectEffect);
 
 	const compact = usePhoneLayout();
-	const containerRef = useRef<HTMLDivElement>(null);
+	const pickerTriggerRef = useRef<HTMLButtonElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
+	const pendingFocusIndexRef = useRef<number | null>(null);
 	const [drag, setDrag] = useState<DragState | null>(null);
 
 	const unsupportedById = useMemo(() => {
@@ -70,15 +71,44 @@ export function EffectStackPanel({
 		return map;
 	}, [unsupportedInstances]);
 
+	const instances = stack?.instances ?? [];
+	const instanceIdsKey = instances.map((instance) => instance.id).join('\0');
+
+	useEffect(() => {
+		const pendingIndex = pendingFocusIndexRef.current;
+		if (pendingIndex === null) {
+			return;
+		}
+
+		pendingFocusIndexRef.current = null;
+		if (instances.length === 0) {
+			pickerTriggerRef.current?.focus();
+			return;
+		}
+
+		const targetIndex = Math.min(pendingIndex, instances.length - 1);
+		const targetRow = listRef.current?.children.item(targetIndex);
+		targetRow?.querySelector<HTMLButtonElement>('button')?.focus();
+	}, [instanceIdsKey, instances.length]);
+
 	if (!stack) {
 		return null;
 	}
 
-	const {instances} = stack;
 	const atLimit = instances.length >= MAX_STACK_INSTANCES;
 	const limitNoteId = 'stack-limit-note';
 
-	const move = (instance: EffectInstance, from: number, to: number) => {
+	const add = async (type: string) => {
+		const label = registry.get(type)?.label ?? type;
+		try {
+			await addEffect(type);
+			announce(`Added ${label}`);
+		} catch {
+			// Store surfaces persistence and runtime errors separately.
+		}
+	};
+
+	const move = async (instance: EffectInstance, from: number, to: number) => {
 		if (to < 0 || to >= instances.length || to === from) {
 			return;
 		}
@@ -88,36 +118,27 @@ export function EffectStackPanel({
 			registry,
 			unsupportedById.get(instance.id),
 		);
-		void reorderEffect(from, to).then(() => {
+		try {
+			await reorderEffect(from, to);
 			announce(`Moved ${label} to position ${to + 1} of ${instances.length}`);
-		});
+		} catch {
+			// Store surfaces persistence and runtime errors separately.
+		}
 	};
 
-	const remove = (instance: EffectInstance, index: number) => {
+	const remove = async (instance: EffectInstance, index: number) => {
 		const label = labelFor(
 			instance,
 			registry,
 			unsupportedById.get(instance.id),
 		);
-		const remainingCount = instances.length - 1;
-		const targetIndex = Math.min(index, remainingCount - 1);
-		void removeEffect(instance.id).then(() => {
+		pendingFocusIndexRef.current = index;
+		try {
+			await removeEffect(instance.id);
 			announce(`Removed ${label}`);
-			// The row menu moves focus when it unmounts, so follow it in a later task.
-			globalThis.setTimeout(() => {
-				if (remainingCount === 0) {
-					containerRef.current
-						?.querySelector<HTMLButtonElement>(
-							'button[aria-label="Add effect"]',
-						)
-						?.focus();
-					return;
-				}
-
-				const targetRow = listRef.current?.children.item(targetIndex);
-				targetRow?.querySelector<HTMLButtonElement>('button')?.focus();
-			}, 0);
-		});
+		} catch {
+			pendingFocusIndexRef.current = null;
+		}
 	};
 
 	const handlePointerDown = (event: PointerEvent<HTMLUListElement>) => {
@@ -166,7 +187,7 @@ export function EffectStackPanel({
 		const instance = instances.find((item) => item.id === drag.instanceId);
 		setDrag(null);
 		if (instance) {
-			move(instance, drag.from, drag.target);
+			void move(instance, drag.from, drag.target);
 		}
 	};
 
@@ -176,11 +197,9 @@ export function EffectStackPanel({
 			compact={compact}
 			disabled={atLimit}
 			describedBy={atLimit ? limitNoteId : undefined}
+			triggerRef={pickerTriggerRef}
 			onAdd={(type) => {
-				const label = registry.get(type)?.label ?? type;
-				void addEffect(type).then(() => {
-					announce(`Added ${label}`);
-				});
+				void add(type);
 			}}
 		/>
 	);
@@ -188,7 +207,6 @@ export function EffectStackPanel({
 	if (instances.length === 0) {
 		return (
 			<div
-				ref={containerRef}
 				className={cn(
 					'flex h-full w-full items-center justify-center gap-2 px-2',
 					!compact && 'flex-col',
@@ -208,7 +226,6 @@ export function EffectStackPanel({
 
 	return (
 		<div
-			ref={containerRef}
 			className={cn(
 				'flex h-full min-h-0 w-full',
 				compact
@@ -266,13 +283,13 @@ export function EffectStackPanel({
 								void setEffectEnabled(instance.id, enabled);
 							}}
 							onMove={(to) => {
-								move(instance, index, to);
+								void move(instance, index, to);
 							}}
 							onDuplicate={() => {
 								void duplicateEffect(instance.id);
 							}}
 							onRemove={() => {
-								remove(instance, index);
+								void remove(instance, index);
 							}}
 						/>
 					))}

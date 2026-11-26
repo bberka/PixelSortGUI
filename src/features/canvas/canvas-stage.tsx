@@ -122,31 +122,40 @@ export function CanvasStage() {
 	const progressVisible = useDelayedFlag(previewBusy, PROGRESS_DELAY_MS);
 	const progressFraction = busy.settle ? progress.settle : progress.drag;
 	const announcedRenderRef = useRef(false);
-	const renderActive = (progressVisible && busy.settle) || busy.full;
+	const renderBusy = busy.settle || busy.full;
+	const announceRender = useDelayedFlag(renderBusy, PROGRESS_DELAY_MS);
 
-	// Announce long settle and full-resolution renders without flooding live
-	// announcements during rapid drag frames or sub-300 ms updates (AC-F19.3).
+	// Announce long settle and full-resolution renders (>= 300 ms) without
+	// flooding live announcements during rapid drag frames or fast updates
+	// (AC-F19.3).
 	useEffect(() => {
 		if (projectId === null) {
 			announcedRenderRef.current = false;
 			return;
 		}
 
-		if (renderActive && !announcedRenderRef.current) {
+		if (failed) {
+			if (announcedRenderRef.current) {
+				announcedRenderRef.current = false;
+				announce('Render failed.');
+			}
+
+			return;
+		}
+
+		if (announceRender && !announcedRenderRef.current) {
 			announcedRenderRef.current = true;
 			announce('Rendering');
 			return;
 		}
 
-		if (busy.settle || busy.full || !announcedRenderRef.current) {
+		if (renderBusy || !announcedRenderRef.current) {
 			return;
 		}
 
 		announcedRenderRef.current = false;
-		if (!failed) {
-			announce('Rendered');
-		}
-	}, [busy.full, busy.settle, failed, projectId, renderActive]);
+		announce('Rendered');
+	}, [announceRender, failed, projectId, renderBusy]);
 
 	const draw = useCallback(() => {
 		const canvas = canvasRef.current;

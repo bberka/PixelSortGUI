@@ -586,7 +586,7 @@ describe('canvas stage', () => {
 		expect(document.activeElement).toBe(zoomTrigger);
 	});
 
-	it('announces Rendering and Rendered on long settle and full transitions, ignoring fast drag renders', async () => {
+	it('announces Rendering, Rendered, and Render failed on long settle/full renders, ignoring fast renders', async () => {
 		const view = await mount();
 		const status = view.container.querySelector('[role="status"]');
 		expect(status?.getAttribute('aria-live')).toBe('polite');
@@ -600,6 +600,17 @@ describe('canvas stage', () => {
 		setRender(view.store, {busy: {drag: false}});
 		expect(status?.textContent).toBe(beforeDrag);
 
+		// Fast full-resolution renders (< 300 ms) do not chatter Rendering/Rendered.
+		setRender(view.store, {busy: {full: true}});
+		act(() => {
+			vi.advanceTimersByTime(100);
+		});
+		setRender(view.store, {busy: {full: false}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS);
+		});
+		expect(status?.textContent).toBe(beforeDrag);
+
 		// A settle render lasting >= 300 ms announces Rendering then Rendered.
 		setRender(view.store, {busy: {settle: true}});
 		act(() => {
@@ -610,11 +621,33 @@ describe('canvas stage', () => {
 		setRender(view.store, {busy: {settle: false}});
 		expect(status?.textContent).toBe('Rendered');
 
-		// A full-resolution render announces Rendering then Rendered immediately.
+		// A full-resolution render lasting >= 300 ms announces Rendering then Rendered.
 		setRender(view.store, {busy: {full: true}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS - 1);
+		});
+		expect(status?.textContent).toBe('Rendered');
+
+		act(() => {
+			vi.advanceTimersByTime(1);
+		});
 		expect(status?.textContent).toBe('Rendering');
 
 		setRender(view.store, {busy: {full: false}});
 		expect(status?.textContent).toBe('Rendered');
+
+		// If a render fails after Rendering was announced, announce Render failed.
+		setRender(view.store, {busy: {settle: true}});
+		act(() => {
+			vi.advanceTimersByTime(PROGRESS_DELAY_MS);
+		});
+		expect(status?.textContent).toBe('Rendering');
+
+		setRender(view.store, {busy: {settle: false}, failed: true});
+		expect(status?.textContent).toBe('Render failed.');
+
+		// Clearing failed does not emit a stale Rendered announcement.
+		setRender(view.store, {failed: false});
+		expect(status?.textContent).toBe('Render failed.');
 	});
 });

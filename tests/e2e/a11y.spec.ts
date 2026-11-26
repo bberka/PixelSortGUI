@@ -123,6 +123,74 @@ async function assertVisibleFocusIndicator(page: Page): Promise<void> {
 	expect(hasOutline || hasShadow).toBe(true);
 }
 
+function parseDurationListSeconds(raw: string): number[] {
+	return raw
+		.split(',')
+		.map((part) => part.trim())
+		.filter((part) => part.length > 0)
+		.map((part) => {
+			const numeric = Number.parseFloat(part);
+			if (Number.isNaN(numeric)) {
+				return 0;
+			}
+
+			return part.endsWith('ms') ? numeric / 1000 : numeric;
+		});
+}
+
+async function assertNoRunningAnimationsAfterFrame(page: Page): Promise<void> {
+	// Wait two frames (~32 ms) so 0.01 ms reduced-motion transitions settle,
+	// while any real (>= 150 ms) transition or animation would still be running.
+	const count = await page.evaluate(
+		async () =>
+			new Promise<number>((resolve) => {
+				globalThis.requestAnimationFrame(() => {
+					globalThis.requestAnimationFrame(() => {
+						resolve(globalThis.document.getAnimations().length);
+					});
+				});
+			}),
+	);
+	expect(count).toBe(0);
+}
+
+async function assertDialogFocusContainment(page: Page): Promise<void> {
+	const describeActiveInDialog = async () =>
+		page.evaluate(() => {
+			const dialog = globalThis.document.querySelector('[role="dialog"]');
+			const active = globalThis.document.activeElement;
+			return {
+				inside: Boolean(dialog && active && dialog.contains(active)),
+				signature: active
+					? `${active.tagName.toLowerCase()}:${active.getAttribute('aria-label') ?? ''}:${active.textContent?.trim().slice(0, 30) ?? ''}`
+					: 'null',
+			};
+		});
+
+	const initial = await describeActiveInDialog();
+	expect(initial.inside).toBe(true);
+
+	const visitedForward = new Set<string>([initial.signature]);
+	for (let step = 0; step < 12; step++) {
+		await page.keyboard.press('Tab');
+		const current = await describeActiveInDialog();
+		expect(current.inside).toBe(true);
+		visitedForward.add(current.signature);
+	}
+
+	expect(visitedForward.size).toBeGreaterThanOrEqual(2);
+
+	const visitedBackward = new Set<string>();
+	for (let step = 0; step < 12; step++) {
+		await page.keyboard.press('Shift+Tab');
+		const current = await describeActiveInDialog();
+		expect(current.inside).toBe(true);
+		visitedBackward.add(current.signature);
+	}
+
+	expect(visitedBackward.size).toBeGreaterThanOrEqual(2);
+}
+
 test.describe('Accessibility suite (T6.2) @a11y', () => {
 	for (const theme of THEMES) {
 		for (const viewport of PROOF_VIEWPORTS) {
@@ -132,7 +200,7 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 				const errors = collectConsoleErrors(page);
 				await page.emulateMedia({colorScheme: theme.media});
 				await page.addInitScript((stored) => {
-					globalThis.localStorage.setItem('psg:theme', stored);
+					globalThis.localStorage.setItem('drift:theme', stored);
 				}, theme.stored);
 				await page.setViewportSize({
 					width: viewport.width,
@@ -318,7 +386,7 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 		await page.keyboard.press('s');
 		await expect(splitDivider).toBeHidden();
 
-		// 7. Open Export dialog via keyboard, verify focus enters dialog, close with Escape, verify focus returns
+		// 7. Open Export dialog via keyboard, cycle Tab and Shift+Tab inside modal, close with Escape, verify focus returns
 		const exportButton = page.getByRole('button', {name: 'Export'});
 		await tabTo(page, exportButton, {direction: 'backward'});
 		await assertVisibleFocusIndicator(page);
@@ -326,11 +394,7 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 
 		const exportDialog = page.getByRole('dialog', {name: 'Export'});
 		await expect(exportDialog).toBeVisible();
-		const focusInsideExport = await page.evaluate(() => {
-			const dialog = globalThis.document.querySelector('[role="dialog"]');
-			return Boolean(dialog?.contains(globalThis.document.activeElement));
-		});
-		expect(focusInsideExport).toBe(true);
+		await assertDialogFocusContainment(page);
 
 		await page.keyboard.press('Escape');
 		await expect(exportDialog).toBeHidden();
@@ -368,10 +432,13 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 		await page.keyboard.press('Alt+ArrowUp');
 		await expect(status).toHaveText('Moved Channel shift to position 1 of 2');
 
-		// Remove via row menu (and verify focus moves to remaining row)
+		// Remove via row menu (and verify focus moves to remaining sibling row)
 		await page.getByRole('button', {name: 'Channel shift actions'}).click();
 		await page.getByRole('menuitem', {name: 'Remove'}).click();
 		await expect(status).toHaveText('Removed Channel shift');
+		await expect(
+			page.locator('li[data-index="0"] button').first(),
+		).toBeFocused();
 
 		// Undo & Redo
 		await page.keyboard.press('Control+z');
@@ -383,9 +450,8 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 		await page.getByRole('button', {name: 'Presets'}).click();
 		await page.getByRole('button', {name: /^asdf classic/i}).click();
 		const replaceDialog = page.getByRole('alertdialog');
-		if (await replaceDialog.isVisible()) {
-			await replaceDialog.getByRole('button', {name: 'Replace'}).click();
-		}
+		await expect(replaceDialog).toBeVisible();
+		await replaceDialog.getByRole('button', {name: 'Replace'}).click();
 
 		await expect(status).toHaveText('Applied preset ASDF classic');
 
@@ -439,9 +505,17 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 		});
 		expect(sheetStyles).not.toBeNull();
 		expect(sheetStyles?.transitionProperty).toBe('none');
-		expect(
-			Number.parseFloat(sheetStyles?.transitionDuration ?? '1'),
-		).toBeLessThanOrEqual(0.001);
+		for (const seconds of parseDurationListSeconds(
+			sheetStyles?.transitionDuration ?? '1s',
+		)) {
+			expect(seconds).toBeLessThanOrEqual(0.001);
+		}
+
+		for (const seconds of parseDurationListSeconds(
+			sheetStyles?.animationDuration ?? '1s',
+		)) {
+			expect(seconds).toBeLessThanOrEqual(0.001);
+		}
 
 		// Verify animated controls across the UI have near-instant / zero duration
 		const controlDurations = await page.evaluate(() => {
@@ -453,18 +527,23 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 			return elements.map((el) => {
 				const style = globalThis.getComputedStyle(el);
 				return {
-					transitionSeconds: Number.parseFloat(style.transitionDuration) || 0,
-					animationSeconds: Number.parseFloat(style.animationDuration) || 0,
+					transitionDuration: style.transitionDuration,
+					animationDuration: style.animationDuration,
 				};
 			});
 		});
 		expect(controlDurations.length).toBeGreaterThan(0);
 		for (const item of controlDurations) {
-			expect(item.transitionSeconds).toBeLessThanOrEqual(0.001);
-			expect(item.animationSeconds).toBeLessThanOrEqual(0.001);
+			for (const seconds of parseDurationListSeconds(item.transitionDuration)) {
+				expect(seconds).toBeLessThanOrEqual(0.001);
+			}
+
+			for (const seconds of parseDurationListSeconds(item.animationDuration)) {
+				expect(seconds).toBeLessThanOrEqual(0.001);
+			}
 		}
 
-		// Verify phone sheet detent still toggles cleanly under reduced motion
+		// Verify phone sheet detent still toggles cleanly under reduced motion with no running animations
 		const detentButton = page.getByRole('button', {
 			name: /(Expand|Collapse|Show) parameters/,
 		});
@@ -475,6 +554,15 @@ test.describe('Accessibility suite (T6.2) @a11y', () => {
 			'data-sheet-detent',
 			initialDetent ?? '',
 		);
+		await assertNoRunningAnimationsAfterFrame(page);
+
+		// Verify opening a dialog produces no running CSS animations under reduced motion
+		await page.getByRole('button', {name: 'Export'}).click();
+		const exportDialog = page.getByRole('dialog', {name: 'Export'});
+		await expect(exportDialog).toBeVisible();
+		await assertNoRunningAnimationsAfterFrame(page);
+		await page.keyboard.press('Escape');
+		await expect(exportDialog).toBeHidden();
 
 		expect(errors).toEqual([]);
 	});

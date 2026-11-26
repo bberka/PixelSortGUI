@@ -1,4 +1,4 @@
-import {useId, useState} from 'react';
+import {useId, useState, type Ref} from 'react';
 import {PlusIcon} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {
@@ -54,6 +54,7 @@ export type AddEffectPickerProps = {
 	readonly compact: boolean;
 	readonly disabled: boolean;
 	readonly describedBy?: string;
+	readonly triggerRef?: Ref<HTMLButtonElement>;
 	readonly onAdd: (type: string) => void;
 };
 
@@ -62,6 +63,7 @@ export function AddEffectPicker({
 	compact,
 	disabled,
 	describedBy,
+	triggerRef,
 	onAdd,
 }: AddEffectPickerProps) {
 	const [open, setOpen] = useState(false);
@@ -69,6 +71,7 @@ export function AddEffectPicker({
 
 	const trigger = (
 		<Button
+			ref={triggerRef}
 			type="button"
 			variant="outline"
 			size="sm"

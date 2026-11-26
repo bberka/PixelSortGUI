@@ -1,4 +1,4 @@
-import type {CodecError} from '@/codec/decode.ts';
+import type {CodecError, RefusedFormat} from '@/codec/decode.ts';
 
 /**
  A file the import flow refused, with the sentence the user sees. The wording
@@ -38,6 +38,26 @@ export function problemForCodecError(
 		kind: 'unreadable',
 		message: `Can't open ${fileName}: ${lowerFirst(error.message)}`,
 	};
+}
+
+const REFUSAL_REASONS: Record<RefusedFormat, string> = {
+	heic: 'HEIC/HEIF is not supported in this browser. Convert it to JPEG, PNG, or WebP first.',
+	raw: 'RAW camera files are not supported. Export a TIFF, PNG, or JPEG from your RAW converter first.',
+};
+
+export function problemForRefusedFormat(
+	fileName: string,
+	format: RefusedFormat,
+): ImportProblem {
+	return {
+		fileName,
+		kind: 'unreadable',
+		message: `Can't open ${fileName}: ${REFUSAL_REASONS[format]}`,
+	};
+}
+
+export function firstFrameNotice(fileName: string): string {
+	return `Imported the first frame of ${fileName}. Animation is not supported yet.`;
 }
 
 export function problemForStorageError(

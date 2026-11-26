@@ -2,6 +2,14 @@
 import {act, type ReactElement} from 'react';
 import {createRoot} from 'react-dom/client';
 import {afterEach, describe, expect, it, vi} from 'vite-plus/test';
+import {toast} from 'sonner';
+import {
+	BLUE,
+	bmpBytes,
+	gifBytes,
+	RED,
+	stillAvifBytes,
+} from '../../../tests/fixtures/formats.ts';
 import {createTestStore} from '../../../tests/state/fixtures.ts';
 import {ImportImagesAction} from './import-images-action.tsx';
 import {ImportImagesButton} from './import-images-button.tsx';
@@ -363,6 +371,80 @@ describe('images over 50 MP', () => {
 	});
 });
 
+describe('format detection', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it.each([
+		[
+			'IMG_1.heic',
+			"Can't open IMG_1.heic: HEIC/HEIF is not supported in this browser. Convert it to JPEG, PNG, or WebP first.",
+		],
+		[
+			'IMG_2.dng',
+			"Can't open IMG_2.dng: RAW camera files are not supported. Export a TIFF, PNG, or JPEG from your RAW converter first.",
+		],
+		[
+			'IMG_3.cr2',
+			"Can't open IMG_3.cr2: RAW camera files are not supported. Export a TIFF, PNG, or JPEG from your RAW converter first.",
+		],
+	])(
+		'refuses %s with its own message before decoding',
+		async (name, message) => {
+			const probe = vi.fn(okProbe(100, 50));
+			const harness = setup({probe, drop: true});
+			harness.mount();
+
+			dispatchFileDrag('drop', [imageFile(name, '')]);
+			await waitFor(() => bodyText().includes(message), 'the refusal dialog');
+
+			expect(probe).not.toHaveBeenCalled();
+			expect(harness.store.getState().projects).toHaveLength(0);
+		},
+	);
+
+	it('shows the first-frame notice once, only for the animated file', async () => {
+		const info = vi.fn();
+		vi.spyOn(toast, 'message').mockImplementation(info);
+		const harness = setup();
+		harness.mount();
+
+		chooseFiles([
+			new File([gifBytes([RED, BLUE])], 'loop.gif', {type: 'image/gif'}),
+			new File([gifBytes([RED])], 'still.gif', {type: 'image/gif'}),
+			new File([bmpBytes(RED)], 'scan.bmp', {type: 'image/bmp'}),
+			new File([stillAvifBytes()], 'shot.avif', {type: 'image/avif'}),
+		]);
+		await waitFor(
+			() => harness.store.getState().projects.length === 4,
+			'four stored projects',
+		);
+
+		expect(info).toHaveBeenCalledTimes(1);
+		expect(info).toHaveBeenCalledWith(
+			'Imported the first frame of loop.gif. Animation is not supported yet.',
+		);
+	});
+
+	it('shows no notice when the animated file could not be saved', async () => {
+		const info = vi.fn();
+		vi.spyOn(toast, 'message').mockImplementation(info);
+		const harness = setup({repository: new FullStorageRepository()});
+		harness.mount();
+
+		chooseFiles([
+			new File([gifBytes([RED, BLUE])], 'loop.gif', {type: 'image/gif'}),
+		]);
+		await waitFor(
+			() => harness.store.getState().storage.quotaFull,
+			'the full-storage state',
+		);
+
+		expect(info).not.toHaveBeenCalled();
+	});
+});
+
 describe('several files', () => {
 	it('stores every accepted file and opens the first one', async () => {
 		const harness = setup();
@@ -586,7 +668,7 @@ describe('storage', () => {
 			(button) => button.textContent === 'Open images',
 		);
 		expect(trigger).toBeDefined();
-		expect(fileInput().accept).toBe('image/*');
+		expect(fileInput().accept).toBe('image/*,.avif,.bmp,.gif');
 		expect(fileInput().multiple).toBe(true);
 	});
 });

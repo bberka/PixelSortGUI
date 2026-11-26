@@ -670,7 +670,7 @@ scripts/               gen-direction-table.ts, golden-update.ts, bench.ts
 
 ## 16. Next release (v0.2.0) and later
 
-Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`; `channelSwap` (section 16.1) has landed since.
+Specifications for post-v0.1.0 features (`F20`, `F21`, `F22`) and deferred mobile/Safari work. None of section 16 is implemented in `v0.1.0`. Since then, `channelSwap` (section 16.1) and the import format detection of section 16.4 (animation notice, HEIC/HEIF and RAW refusal) have been implemented.
 
 ### 16.1 Deferred glitch effects and v0.2.0 catalogue
 
@@ -1000,6 +1000,8 @@ Target browsers: Chrome/Edge 120+, Firefox 128+ (desktop). Sources: MDN Image fi
 #### Codec architecture changes for `v0.2.0`
 
 - `src/codec/decode.ts`: detect TIFF magic bytes (`0x49 0x49 0x2A 0x00` or `0x4D 0x4D 0x00 0x2A`) and dynamically `import('utif2')` in the worker; convert 16-bit samples to 8-bit via `v >>> 8`. Detect HEIC (`ftypheic`/`ftypheix`/`ftypmif1`) and common RAW extensions/headers before `createImageBitmap` so the user gets the specific refusal message instead of a generic decode error. Detect animated GIF/WebP/APNG/AVIF headers on import to trigger the first-frame toast.
+  - **Refusals** are decided before `createImageBitmap`, after the file size limit. RAW: the extension is `.dng`, `.cr2`, `.cr3`, `.nef`, `.arw`, `.raf`, `.orf`, or `.rw2` (case-insensitive), or the header is CR2 (`II*\0` then `CR` at offset 8), CR3 (`ftyp` brand `crx `), RAF (`FUJIFILMCCD-RAW`), ORF (`IIRO`, `IIRS`, `MMOR`), or RW2 (`IIU\0`). TIFF-based DNG, NEF, and ARW are recognised by extension only. HEIC/HEIF: the extension is `.heic` or `.heif`, or the `ftyp` major brand is `heic`, `heix`, `heim`, `heis`, `hevc`, `hevx`, `hevm`, or `hevs`, or the major brand is `mif1` or `msf1` and no brand is `avif` or `avis` (AVIF files may use `mif1` as major brand and must import).
+  - **Animation** is read from the file's content, never its name: GIF with at least two image blocks, PNG with an `acTL` chunk before `IDAT` declaring more than one frame, WebP with the `VP8X` animation flag, AVIF with the `avis` brand. A truncated or malformed header counts as not animated and the file goes on to the browser decoder. The notice is shown once per stored file, after it is saved.
 - `src/features/import/`: detect `image/svg+xml` (or `.svg`), rasterise on the main thread via `HTMLImageElement` + `<canvas>` (default longest side 2,048 px when no intrinsic pixel size exists, clamped to 16,384 px and 50 MP), and store the resulting PNG `Blob` in `sources`.
 - `src/codec/encode.ts`: extend `ExportFormat` to `'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'`. `bmp` runs synchronously via `src/codec/bmp-writer.ts`; `tiff` lazy-loads `utif2`; `avif` lazy-loads `@jsquash/avif` in `export.worker.ts` (never imported on the main thread). All three carry zero EXIF/GPS/ICC metadata.
 

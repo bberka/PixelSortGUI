@@ -312,7 +312,7 @@ Acceptance criteria:
 
 ### F21. Extended image formats
 
-Today (`v0.1.0`), import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`).
+Today (`v0.1.0`), import decodes any format supported natively by `createImageBitmap` (`src/codec/decode.ts`: JPEG, PNG, WebP, GIF first frame, BMP, AVIF in Chrome/Edge 120+ and Firefox 128+), and export encodes PNG, JPEG, and probed WebP via `OffscreenCanvas.convertToBlob` (`src/codec/encode.ts`, `src/features/export/export-dialog.tsx`). Since `v0.1.0`, the first-frame notice, the HEIC/HEIF and RAW refusals, and the explicit AVIF, BMP, and GIF picker entries and tests listed below have been implemented; the rest of this section has not.
 
 Next-release additions (all bundled offline with MIT-compatible licences, zero runtime network calls; full browser support matrix and sources in [engine.md section 16.4](engine.md#164-extended-format-support-f21)):
 

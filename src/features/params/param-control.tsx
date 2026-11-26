@@ -2,6 +2,7 @@ import {AngleControl} from './angle-control.tsx';
 import {BooleanControl} from './boolean-control.tsx';
 import {EnumControl} from './enum-control.tsx';
 import {booleanFrom, numberFrom, pairFrom, stringFrom} from './format.ts';
+import {ImageControl} from './image-control.tsx';
 import {NumberControl} from './number-control.tsx';
 import {RangeControl} from './range-control.tsx';
 import {SeedControl} from './seed-control.tsx';
@@ -106,10 +107,15 @@ export function ParamControl({
 			);
 		}
 
-		// No control yet: every effect with an image parameter is unlisted
-		// (engine.md section 16.5).
 		case 'image': {
-			return null;
+			return (
+				<ImageControl
+					instanceId={instanceId}
+					paramKey={paramKey}
+					spec={spec}
+					value={stringFrom(value, spec.default)}
+				/>
+			);
 		}
 
 		default: {

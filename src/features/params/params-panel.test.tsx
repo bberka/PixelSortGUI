@@ -10,6 +10,7 @@ import {
 	type FakeCoordinator,
 	type FakeTimerEnv,
 } from '../../../tests/state/fixtures.ts';
+import {ImagePickProvider} from './image-pick.tsx';
 import {ParameterPanel} from './params-panel.tsx';
 import type {Slider as SliderComponent} from '@/components/ui/slider';
 import {TooltipProvider} from '@/components/ui/tooltip';
@@ -216,7 +217,9 @@ function mountPanel(
 				}}
 			>
 				<TooltipProvider>
-					<ParameterPanel random={random} registry={registry} />
+					<ImagePickProvider>
+						<ParameterPanel random={random} registry={registry} />
+					</ImagePickProvider>
 					<LiveRegion />
 				</TooltipProvider>
 			</AppRuntimeProvider>,
@@ -392,21 +395,6 @@ function lastHistoryLabel(harness: Harness): string | undefined {
 }
 
 describe('parameter panel states', () => {
-	it('builds a stored image blend without a control or group for its image', async () => {
-		const harness = await setup({type: 'imageBlend'});
-		const panel = mount(harness);
-		await flush();
-
-		const headings = [...panel.querySelectorAll('h3')].map(
-			(heading) => heading.textContent,
-		);
-		expect(headings).toContain('Blend');
-		expect(headings).toContain('Placement');
-		expect(headings).not.toContain('Source');
-		expect(panel.textContent).toContain('Blend mode');
-		expect(panel.textContent).not.toContain('Blend image');
-	});
-
 	it('shows a note when no instance is selected and nothing without a project', async () => {
 		const harness = await setup({type: 'pixelSort'});
 		harness.store.getState().selectEffect(null);
@@ -468,7 +456,8 @@ describe('parameter panel states', () => {
 			'Unsupported effect (futureEffect v7)',
 		);
 		expect(container?.querySelector('[role="slider"]')).toBeNull();
-		expect(container?.querySelector('input')).toBeNull();
+		// The image picker keeps its hidden file input.
+		expect(container?.querySelector('input:not([type="file"])')).toBeNull();
 	});
 });
 

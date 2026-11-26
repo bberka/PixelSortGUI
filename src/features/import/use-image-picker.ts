@@ -5,8 +5,8 @@ import {useRef, type ChangeEvent, type RefObject} from 'react';
  TIFF are listed by extension because not every operating system maps them to
  an `image/*` type.
  */
-export const IMPORT_ACCEPT =
-	'image/*,.avif,.bmp,.gif,.svg,.tif,.tiff,.glproj,.zip';
+export const IMAGE_ACCEPT = 'image/*,.avif,.bmp,.gif,.svg,.tif,.tiff';
+export const IMPORT_ACCEPT = `${IMAGE_ACCEPT},.glproj,.zip`;
 
 export function isProjectFileName(name: string): boolean {
 	return /\.glproj$/i.test(name);

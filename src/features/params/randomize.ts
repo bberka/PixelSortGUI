@@ -39,7 +39,11 @@ function drawStepped(
 		: (first + pickIndex(random, last - first + 1)) * step;
 }
 
-function drawOne(spec: ParamSpec, random: RandomSource): ParamValue {
+function drawOne(
+	spec: ParamSpec,
+	random: RandomSource,
+	current: ParamValue | undefined,
+): ParamValue {
 	switch (spec.kind) {
 		case 'number': {
 			return drawStepped(random, spec.min, spec.max, spec.step);
@@ -75,24 +79,26 @@ function drawOne(spec: ParamSpec, random: RandomSource): ParamValue {
 
 		// Only the user can choose an image.
 		case 'image': {
-			return spec.default;
+			return current ?? spec.default;
 		}
 	}
 }
 
 /**
- A random valid value for every parameter of a schema. It reads only the
- specs, so it needs no knowledge of any effect, and it draws in schema key
- order so one random source gives one result. The values go through
- `validateParams`, the same normalisation the store applies to a commit.
+ A random valid value for every parameter of a schema, except that an `image`
+ keeps its `current` value. It reads only the specs, so it needs no knowledge
+ of any effect, and it draws in schema key order so one random source gives one
+ result. The values go through `validateParams`, the same normalisation the
+ store applies to a commit.
  */
 export function randomizeParams<P extends Record<string, ParamValue>>(
 	specs: ParamSpecs<P>,
 	random: RandomSource,
+	current: Readonly<Record<string, ParamValue>> = {},
 ): P {
 	const drawn: Record<string, ParamValue> = {};
 	for (const [key, spec] of Object.entries<ParamSpec>(specs)) {
-		drawn[key] = drawOne(spec, random);
+		drawn[key] = drawOne(spec, random, current[key]);
 	}
 
 	return validateParams(specs, drawn);

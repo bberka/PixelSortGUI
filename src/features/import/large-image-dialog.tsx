@@ -22,9 +22,11 @@ function megapixels(width: number, height: number): string {
 export function LargeImageDialog({
 	prompt,
 	onDecide,
+	onCloseAutoFocus,
 }: {
 	readonly prompt: LargeImagePrompt;
 	readonly onDecide: ImageImport['decide'];
+	readonly onCloseAutoFocus?: (event: Event) => void;
 }) {
 	return (
 		<AlertDialog
@@ -35,7 +37,7 @@ export function LargeImageDialog({
 				}
 			}}
 		>
-			<AlertDialogContent>
+			<AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>
 						{prompt.fileName} is {prompt.width} × {prompt.height} px

@@ -119,6 +119,4 @@ export const imageBlendSpec: Omit<
 		'Composite another image over the current result with blend mode, fit, and transform.',
 	category: 'color',
 	params: imageBlendParamSpecs,
-	// Nothing can set `image` until the image control exists (roadmap T8.10).
-	unlisted: true,
 };

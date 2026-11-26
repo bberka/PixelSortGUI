@@ -17,9 +17,11 @@ import {
 export function ImportProblemDialog({
 	problems,
 	onDismiss,
+	onCloseAutoFocus,
 }: {
 	readonly problems: readonly ImportProblem[];
 	readonly onDismiss: () => void;
+	readonly onCloseAutoFocus?: (event: Event) => void;
 }) {
 	return (
 		<AlertDialog
@@ -30,7 +32,7 @@ export function ImportProblemDialog({
 				}
 			}}
 		>
-			<AlertDialogContent>
+			<AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>{problemDialogTitle(problems)}</AlertDialogTitle>
 					<AlertDialogDescription asChild>

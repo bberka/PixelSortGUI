@@ -199,7 +199,7 @@ describe('add effect picker', () => {
 			expect(document.body.textContent).toContain(definition.description);
 		}
 
-		expect(document.body.textContent).not.toContain('Image blend');
+		expect(document.body.textContent).toContain('Image blend');
 
 		const choice = [...document.querySelectorAll('button')].find((button) =>
 			button.textContent?.startsWith('Channel shift'),

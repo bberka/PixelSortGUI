@@ -308,6 +308,8 @@ While a request is unanswered the button reads `"Requesting protection..."` and 
 3. Update `meta.schemaInfo` to `dbVersion: 2`.
 4. `sources`, `presets`, and `thumbnails` are untouched. `MemoryStorageAdapter` writes the same fields.
 
+**Order of edits.** The app store runs edits one at a time, in the order they were asked for: every stack commit, geometry commit, undo, redo, history jump and change of the side being edited. Each reads the project only after the one before it has been written and applied, so an edit made while another is still being written drops neither. A held keyboard change is committed ahead of the next edit. Opening or closing a project, importing, duplicating the open project, saving a project file or a backup, and saving a preset first wait for the edits already asked for.
+
 **Reading stored geometry (`src/storage/geometry.ts`):**
 
 - A transform is valid when it has the shape of `SourceTransform` (a rotation of 0, 90, 180 or 270; boolean flips; `crop` and `resize` each an object or `null`) and `effectiveDimensions` accepts it for the source size. A missing transform means the identity.

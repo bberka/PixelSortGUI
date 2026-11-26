@@ -53,6 +53,7 @@ Defined as space-separated RGB triples in `src/styles/app.css` and exposed throu
 | `--accent-text` | `#1d4ed8` / `29 78 216` | `#60a5fa` / `96 165 250` | Accent text/links on `--background` or `--card` (≥ 6.5:1) |
 | `--ring` | `#2563eb` / `37 99 235` | `#60a5fa` / `96 165 250` | Keyboard focus ring (`2 px solid`) |
 | `--destructive` | `#dc2626` / `220 38 38` | `#ef4444` / `239 68 68` | Delete button fill and error indicators |
+| `--destructive-hover` | `#b91c1c` / `185 28 28` | `#f87171` / `248 113 113` | Destructive button and linked badge fill on hover (≥ 6.4:1 with `--destructive-foreground`) |
 | `--destructive-text` | `#b91c1c` / `185 28 28` | `#f87171` / `248 113 113` | Destructive text on `--background` or `--card` (≥ 6.4:1) |
 | `--destructive-foreground` | `#ffffff` / `255 255 255` | `#000000` / `0 0 0` | Text on `--destructive` fill |
 | `--warning` | `#b45309` / `180 83 9` | `#f59e0b` / `245 158 11` | Storage warning accent |
@@ -158,6 +159,13 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 | Status tags (`Off`, `Original`, `Persistent`) | F4, F11, F16 | `Badge` | Text + icon, never colour alone |
 | Update ready / Deleted project | F3, F15 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
 | Persistent warning (Storage unavailable) | F16 | Inline alert bar (`role="status"` or `role="alert"`) | Docked directly under the top bar; never overlays canvas controls |
+
+#### Destructive buttons
+
+- **Default:** `--destructive` fill with `--destructive-foreground` text.
+- **Hover:** `--destructive-hover` fill, which moves away from the text colour in both themes, so contrast rises. A translucent fill (`bg-destructive/90`) is not used, because over the Light popover it drops the label below 4.5:1.
+- **Focus:** the default fill plus the shared `2 px` `--ring` outline.
+- **Disabled:** the default state at `50%` opacity with pointer events off (WCAG 2.2 sets no contrast minimum for disabled controls).
 
 ### 5.4 Scrollbars
 

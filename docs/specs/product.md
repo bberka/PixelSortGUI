@@ -450,6 +450,29 @@ Acceptance criteria:
 - AC-F26.6: Attempting to reference a 9th distinct extra image in one project is rejected with `"A project can use at most 8 extra blend images."`
 - AC-F26.7: Saving a stack containing `imageBlend` as a user preset clears the `image` parameter to empty; applying that preset adds `imageBlend` with its blend/fit/transform parameters and `"No image selected"`.
 
+### F27. In-app guide and first-launch welcome
+
+A Guide screen inside the app at `#/guide`, so the user can learn Drift without leaving it or going online. There is no separate landing page: the app still opens straight to the Library ([decisions.md D32](decisions.md#d32-in-app-guide-instead-of-a-landing-page-2026-11-26)).
+
+- **Opening it:** an icon button `"Guide"` (question-mark circle, tooltip `"Guide (?)"`) in the app bar of the Library and the Editor; a `"Read the guide"` link in Settings -> About; and the `?` key anywhere in the app, unless focus is in a text field or a dialog is open. On the Guide, the app bar has a back button (`"Back to editor"` when a project is open, otherwise `"Back to library"`) and Settings. Opening the Guide does not close the open project or change its stack, history or view.
+- **Content, in this order:** what Drift is (offline, photos stay on the device, saved automatically in the browser); quick start (import, add effects, tweak, compare or split, export); the effect stack; effects reference; pixel sort concepts (angle, line, selection, run, interval, sort key, mask) in plain words from [CONTEXT.md](../../CONTEXT.md) and [engine.md section 5](engine.md#5-pixel-sort-effect-pixelsort); presets; undo and history; compare and split view; export, including the file-size limit; keyboard shortcuts; storage and privacy (quota, private browsing, no backup yet); install and offline use. The text describes only what the app does today.
+- **Generated parts:** the effects reference lists every effect in the registry with its label, description and each parameter's label, range, default, help and visibility condition, read from the parameter schema (engine.md section 3). The built-in preset names come from the preset list. A new effect or preset appears with no change to the guide.
+- **Text in one place:** all other guide and welcome text is in `src/features/guide/content.ts`.
+- **Table of contents:** at 1024 px width and wider a sticky list beside the text; narrower, a collapsible `"Contents"` button above it. Choosing an entry scrolls to the section, moves focus to its heading and (when collapsible) closes the list. The URL stays `#/guide`.
+- **Empty Library:** shows the link `"New here? Read the guide"` once the welcome card is dismissed.
+- **Welcome card:** on a first launch the empty Library shows a card `"Welcome to Drift"` with `"Import a photo"`, `"Read the guide"` and a dismiss button. It is dismissed by that button or by the first import, stored as `welcomeDismissed` in app settings ([persistence.md](persistence.md)), and never shown again. A profile that already holds projects never sees it, because it only appears in an empty Library and any later import dismisses it.
+
+Acceptance criteria:
+
+- AC-F27.1: The `"Guide"` button in the Library and Editor app bar opens `#/guide`; the back button returns to the previous screen, and an open project renders as before.
+- AC-F27.2: Pressing `?` in the Library or Editor opens the Guide; pressing it while typing in a text field or with a dialog open does nothing.
+- AC-F27.3: Settings -> About -> `"Read the guide"` closes Settings and opens the Guide.
+- AC-F27.4: Every effect type in the registry, with every parameter label, appears in the effects reference (unit test).
+- AC-F27.5: At 1440 x 900 the contents list stays visible while the text scrolls; at 390 x 844 and 820 x 1180 it is collapsed behind `"Contents"`. Choosing an entry scrolls to that section and focuses its heading.
+- AC-F27.6: After one online visit, loading `#/guide` offline shows the Guide, with no request to another origin.
+- AC-F27.7: On a fresh profile the welcome card is shown; after dismissing it and reloading, it does not return and the empty Library shows `"New here? Read the guide"`.
+- AC-F27.8: axe reports no violations on the Guide in both themes at the three test viewports, and no horizontal page scroll occurs.
+
 ## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).

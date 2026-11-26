@@ -121,6 +121,7 @@ type AppStateRecord = {
 	activeProjectId: string | null; // null when user is on the Library screen
 	theme: ThemePreference; // default 'system'
 	compareMode: CompareMode; // default 'toggle'
+	welcomeDismissed?: boolean; // F27 welcome card; absent means false
 };
 
 type SchemaInfoRecord = {
@@ -159,6 +160,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
+| Dismiss welcome card or first import (F27) | `meta` | Immediate | Sets `meta.appState.welcomeDismissed = true`. The field is optional, so no database version change. |
 
 ## 5. Private browsing and storage unavailability
 

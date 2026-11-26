@@ -477,7 +477,7 @@ test('AC-F10.2 AC-F10.3 AC-F10.4: save, reload, apply to another project, rename
 	// AC-F10.3: built-in presets have no rename/delete actions
 	await openPresets(page);
 	const builtinList = page.getByRole('list', {name: 'Built-in presets'});
-	await expect(builtinList.getByRole('listitem')).toHaveCount(6);
+	await expect(builtinList.getByRole('listitem')).toHaveCount(8);
 	await expect(builtinList.getByRole('button', {name: /actions$/})).toHaveCount(
 		0,
 	);

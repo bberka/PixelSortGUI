@@ -1,6 +1,10 @@
 import {createRegistry} from '../registry.ts';
 import type {EffectDefinition} from '../types.ts';
 import {
+	blockShuffleSpec,
+	type BlockShuffleParams,
+} from './block-shuffle-spec.ts';
+import {
 	channelShiftSpec,
 	type ChannelShiftParams,
 } from './channel-shift-spec.ts';
@@ -40,6 +44,14 @@ const lazySliceShiftEffect: EffectDefinition<SliceShiftParams> = {
 	},
 };
 
+const lazyBlockShuffleEffect: EffectDefinition<BlockShuffleParams> = {
+	...blockShuffleSpec,
+	async render(input, output, params, ctx) {
+		const {blockShuffleEffect} = await import('./block-shuffle.ts');
+		return blockShuffleEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -51,6 +63,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyChannelShiftEffect,
 	lazyChannelSwapEffect,
 	lazySliceShiftEffect,
+	lazyBlockShuffleEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

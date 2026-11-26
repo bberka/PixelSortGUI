@@ -10,10 +10,11 @@ import {
 	dropImages,
 	makeImage,
 	readImportState,
-	readStorageUsage,
+	readSettledStorageUsage,
 	startStallSampler,
 	stopStallSampler,
 	withExifOrientation,
+	withTrailingBytes,
 	type ImageFixture,
 } from './import.ts';
 import {PROOF_VIEWPORTS, type ProofViewport} from './viewports.ts';
@@ -71,6 +72,12 @@ function importButton(page: Page) {
 async function waitForProjectCount(page: Page, count: number): Promise<void> {
 	await expect
 		.poll(async () => (await readImportState(page)).projects.length)
+		.toBe(count);
+}
+
+async function waitForThumbnailCount(page: Page, count: number): Promise<void> {
+	await expect
+		.poll(async () => (await readImportState(page)).thumbnailCount)
 		.toBe(count);
 }
 
@@ -316,39 +323,52 @@ test('importing the same file twice keeps one stored copy (AC-F1.7)', async ({
 	expect(snapshot.sourceCount).toBe(1);
 });
 
-test('the second import grows storage by less than 1% of the file size (AC-F1.7)', async ({
-	page,
-	browserName,
-}) => {
-	test.skip(
-		browserName === 'firefox',
-		'Firefox rounds navigator.storage.estimate(), so byte growth is not readable there',
-	);
-	await gotoLibrary(page);
+test.describe('storage growth', () => {
+	// The service worker fills its precache while the app is in use, and that
+	// lands in the same usage estimate as the imported photos.
+	test.use({serviceWorkers: 'block'});
 
-	const fixture = await makeImage(page, {
-		name: 'large-repeat.jpg',
-		width: 2400,
-		height: 1800,
-		type: 'image/jpeg',
-		quality: 0.92,
+	test('the second import grows storage by less than 1% of the file size (AC-F1.7)', async ({
+		page,
+		browserName,
+	}) => {
+		test.skip(
+			browserName === 'firefox',
+			'Firefox rounds navigator.storage.estimate(), so byte growth is not readable there',
+		);
+		await gotoLibrary(page);
+
+		const small = await makeImage(page, {
+			name: 'large-repeat.jpg',
+			width: 400,
+			height: 300,
+			type: 'image/jpeg',
+		});
+		// Large enough that the new project's records stay under 1%. Two copies
+		// stay under the ~5 MiB of blobs that Chromium's estimate counts in
+		// Playwright's in-memory profile.
+		const fixture = withTrailingBytes(small, 2 * 1024 * 1024);
+		const fileSize = fixture.buffer.byteLength;
+		const emptyUsage = await readSettledStorageUsage(page);
+
+		await chooseImages(page, [fixture]);
+		await expectEditorOpen(page);
+		await waitForThumbnailCount(page, 1);
+		const usageAfterFirst = await readSettledStorageUsage(page);
+		// Proves the estimate counts a stored copy, so a duplicate would show.
+		expect(usageAfterFirst - emptyUsage).toBeGreaterThanOrEqual(fileSize);
+
+		await page.getByRole('button', {name: 'Back to library'}).click();
+		await chooseImages(page, [fixture]);
+		await expectEditorOpen(page);
+		await waitForThumbnailCount(page, 2);
+		const growth = (await readSettledStorageUsage(page)) - usageAfterFirst;
+
+		expect(
+			growth,
+			`Second import of a ${fileSize} byte file added ${growth} bytes`,
+		).toBeLessThan(fileSize / 100);
 	});
-	await chooseImages(page, [fixture]);
-	await expectEditorOpen(page);
-	const usageAfterFirst = await readStorageUsage(page);
-	expect(usageAfterFirst).not.toBeNull();
-
-	await page.getByRole('button', {name: 'Back to library'}).click();
-	await chooseImages(page, [fixture]);
-	await expectEditorOpen(page);
-	const usageAfterSecond = await readStorageUsage(page);
-	expect(usageAfterSecond).not.toBeNull();
-
-	const growth = (usageAfterSecond ?? 0) - (usageAfterFirst ?? 0);
-	expect(
-		growth,
-		`Second import of a ${fixture.buffer.byteLength} byte file added ${growth} bytes`,
-	).toBeLessThan(fixture.buffer.byteLength / 100);
 });
 
 test('a full storage shows the shell dialog and creates no project (AC-F16.2)', async ({

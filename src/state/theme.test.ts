@@ -8,7 +8,7 @@ import {
 
 describe('theme state helpers', () => {
 	it('uses the spec localStorage key', () => {
-		expect(THEME_STORAGE_KEY).toBe('psg:theme');
+		expect(THEME_STORAGE_KEY).toBe('drift:theme');
 	});
 
 	it('validates and normalizes theme preferences', () => {

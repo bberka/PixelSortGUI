@@ -5,7 +5,7 @@ Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low)
 Updated with post-v0.1.0 specs (DB v2 geometry transform and history jump) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and multi-image source reference counting (F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
-# PixelSortGUI persistence spec
+# Drift persistence spec
 
 Status: settled for first release, 2026-11-24. Companion specs: [product.md](product.md), [engine.md](engine.md), [../../DESIGN.md](../../DESIGN.md), [roadmap.md](roadmap.md), [decisions.md](decisions.md). Terms follow [product.md section 2](product.md#2-terms). Effect stack types follow [engine.md section 2.2](engine.md#22-effect-stack).
 
@@ -15,15 +15,15 @@ All user data stays inside browser storage on the device. The app makes no netwo
 
 Three storage mechanisms are used, each with one responsibility:
 
-1. **IndexedDB (`pixelsortgui`, version 1):** Authoritative durable store for source image blobs, project metadata, effect stacks, view state, export settings, thumbnails, commit history, user presets, and global app state.
-2. **`localStorage` (one key: `psg:theme`):** Synchronous mirror of the user's theme preference (`'system' | 'light' | 'dark'`) read by an inline boot script in `index.html` before first paint so reloading never flashes the wrong theme (AC-F14.2). No project data or blobs are written to `localStorage`.
+1. **IndexedDB (`drift`, version 1):** Authoritative durable store for source image blobs, project metadata, effect stacks, view state, export settings, thumbnails, commit history, user presets, and global app state.
+2. **`localStorage` (one key: `drift:theme`):** Synchronous mirror of the user's theme preference (`'system' | 'light' | 'dark'`) read by an inline boot script in `index.html` before first paint so reloading never flashes the wrong theme (AC-F14.2). No project data or blobs are written to `localStorage`.
 3. **In-memory fallback (`MemoryStorageAdapter`):** Activated automatically when IndexedDB cannot be opened (section 5), allowing the app to run for the current session with a persistent warning banner (AC-F16.4).
 
 Origin Private File System (OPFS) and the File System Access API are not used as primary stores in the first release (decision D4 in [decisions.md](decisions.md)). Secure context (`https://` or `http://localhost`) is required for IndexedDB persistence requests, `crypto.randomUUID`, `crypto.subtle`, and the service worker (product.md section 4).
 
 ## 2. Database and object stores
 
-Database name: `pixelsortgui`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` in `v0.3.0` per section 8.5).
+Database name: `drift`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` in `v0.3.0` per section 8.5).
 
 | Store | Key path | Indexes | Contents and sizing notes |
 |---|---|---|---|
@@ -156,7 +156,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState`, same `stack` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
-| Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('psg:theme', theme)` synchronously. |
+| Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
 
 ## 5. Private browsing and storage unavailability
 
@@ -164,7 +164,7 @@ Two distinct situations must be handled cleanly:
 
 ### 5.1 IndexedDB cannot be opened
 
-If `indexedDB.open('pixelsortgui', 1)` throws or fires `error` (for example, storage disabled by enterprise policy, corrupted backing store, or strict iframe sandbox), the app does not crash:
+If `indexedDB.open('drift', 1)` throws or fires `error` (for example, storage disabled by enterprise policy, corrupted backing store, or strict iframe sandbox), the app does not crash:
 
 1. Switch the storage repository to `MemoryStorageAdapter`, which implements the exact same async repository interface backed by `Map`s in RAM.
 2. Set `storageUnavailable = true` in app state so the UI displays the persistent, non-dismissable banner: `"Storage unavailable: nothing will be saved after you close this tab."` (AC-F16.4).
@@ -516,11 +516,11 @@ Import writes in four strict phases so the library can **never** end up with a p
 1. **Pre-flight quota check:** Compute `newSourceBytes` = sum of `byteLength` for all sources referenced by the user's checked projects that are not already in `sources`. Run `checkQuotaForImport(newSourceBytes)` (`1.15x` headroom). If insufficient, write nothing and open `"Storage is full"`.
 2. **Stage new source blobs:** Insert each missing `SourceRecord` into `sources` one at a time, tracking `insertedHashes: string[]` and checking for Cancel between blobs. If `QuotaExceededError` or Cancel occurs here, delete every hash in `insertedHashes` in a cleanup transaction, leave all existing projects/presets/settings untouched, and show `"Storage is full"` (or close silently on Cancel).
 3. **Atomic metadata commit:** Run **one** `readwrite` transaction across `['projects', 'history', 'thumbnails', 'presets', 'meta']` (pure JSON + optional small thumbnails):
-   - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings (also syncing `localStorage` `psg:theme` if settings were imported).
+   - **Replace mode:** Clear `projects`, `history`, `thumbnails`, and `presets`, clear `meta.appState.activeProjectId`, then insert all checked projects (preserving their IDs), their history (or a single `seq: 0` `"Initial"` entry when `includesHistory` is false), optional thumbnails, checked presets, and checked settings (also syncing `localStorage` `drift:theme` if settings were imported).
    - **Merge mode:**
      - For each checked project: if `project.id` is absent, insert as-is. If `project.id` exists and matches `(sourceHash, name, updatedAt, canonicalJson({transform, stack}))`, skip. Otherwise assign a new UUID, rename to `"<name> (imported)"` (deduplicated as in section 8.3.5, max 120 chars), remap history/thumbnail `projectId`, and insert without overwriting the local project.
      - For each preset (when checked): skip if same `id` or same `nameLower` and `canonicalStackJson(stack)`; assign a new `'user:' + crypto.randomUUID()` on `id` clash with different content; otherwise insert as-is.
-     - If settings checked: update `meta.appState.theme` and `compareMode` and sync `localStorage` `psg:theme`.
+     - If settings checked: update `meta.appState.theme` and `compareMode` and sync `localStorage` `drift:theme`.
    - If this transaction aborts for any reason (including `QuotaExceededError`), IndexedDB rolls back the entire metadata commit cleanly; then delete `insertedHashes` in a cleanup pass and show `"Storage is full"`.
 4. **Orphan cleanup (Replace mode):** Run `cleanupOrphanedSources()` after the metadata commit succeeds so sources that belonged only to replaced projects are freed.
 5. Show a summary toast (for example `"Imported 3 projects and 2 presets."`) and refresh the Library.
@@ -553,13 +553,13 @@ When `F26` (`imageBlend`) lands, a project can reference up to **8** additional 
 
 Startup is designed so that with 50 projects stored, the Library (or the reopened project with a visual placeholder) is visible within 1 s on a reference laptop (AC-F3.7).
 
-1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('psg:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
+1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('drift:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
 2. **Step 1 (Secure context gate):** Check `window.isSecureContext`. If `false`, render the secure-context error screen (DESIGN.md section 9) and stop (product.md section 4).
-3. **Step 2 (Open database):** Open IndexedDB `pixelsortgui` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` in `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
+3. **Step 2 (Open database):** Open IndexedDB `drift` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` in `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
    - If `VersionError` (stored DB is newer than app): render the blocking reload/update screen and stop.
    - If any other error: instantiate `MemoryStorageAdapter`, set `storageUnavailable = true`, and continue (AC-F16.4).
 4. **Step 3 (Fast metadata read):** Run one `readonly` transaction across `['meta', 'projects', 'presets']` to load:
-   - `meta.appState` (if missing on first visit, initialize defaults and write lazily; if `localStorage` lacked `psg:theme`, mirror `appState.theme` into `localStorage`).
+   - `meta.appState` (if missing on first visit, initialize defaults and write lazily; if `localStorage` lacked `drift:theme`, mirror `appState.theme` into `localStorage`).
    - All `ProjectRecord`s via `projects.index('byOpenedAt')` in descending order. Neither `sources`, `thumbnails`, nor `history` are read in this step.
    - All `UserPresetRecord`s via `presets.index('byNameLower')` in ascending order.
 5. **Step 4 (Route resolution):** Inspect `window.location.hash`:

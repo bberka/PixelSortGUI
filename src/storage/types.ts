@@ -1,6 +1,6 @@
 import type {EffectStack} from '../engine/types.ts';
 
-export const DB_NAME = 'pixelsortgui';
+export const DB_NAME = 'drift';
 export const DB_VERSION = 1;
 
 export const STORE_NAMES = {
@@ -24,7 +24,7 @@ export const MIN_ZOOM = 0.01;
 export const MAX_ZOOM = 32;
 export const DEFAULT_SPLIT_POSITION = 0.5;
 export const QUOTA_HEADROOM_MULTIPLIER = 1.15;
-export const THEME_STORAGE_KEY = 'psg:theme';
+export const THEME_STORAGE_KEY = 'drift:theme';
 
 export type SourceRecord = {
 	sha256: string;

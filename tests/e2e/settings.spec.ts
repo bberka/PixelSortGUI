@@ -89,7 +89,7 @@ test.describe('Settings, storage status, and About', () => {
 			page.getByRole('button', {name: 'Back to library'}),
 		).toBeVisible();
 		const editorDialog = await openSettings(page);
-		await expect(editorDialog.getByText('PixelSortGUI')).toBeVisible();
+		await expect(editorDialog.getByText('Drift')).toBeVisible();
 
 		expect(externalRequests).toEqual([]);
 	});
@@ -188,7 +188,7 @@ test.describe('Settings, storage status, and About', () => {
 				page,
 			}) => {
 				await page.addInitScript((selectedTheme) => {
-					globalThis.localStorage.setItem('psg:theme', selectedTheme);
+					globalThis.localStorage.setItem('drift:theme', selectedTheme);
 				}, theme);
 
 				await page.setViewportSize({

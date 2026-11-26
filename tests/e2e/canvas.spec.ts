@@ -1120,7 +1120,7 @@ for (const theme of THEMES) {
 			const consoleErrors = collectConsoleErrors(page);
 			await page.emulateMedia({colorScheme: theme.media});
 			await page.addInitScript((value) => {
-				globalThis.localStorage.setItem('psg:theme', value);
+				globalThis.localStorage.setItem('drift:theme', value);
 			}, theme.stored);
 			await page.setViewportSize({
 				width: viewport.width,

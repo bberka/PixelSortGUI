@@ -100,7 +100,7 @@ Goal: the always-loaded files stay small as the docs grow.
 
 ## Deployment and release
 
-Hosting target: **GitHub Pages** on the custom domain **`glitch.bbay.dev`** (`.github/workflows/pages.yml`). Pushes to `main` and manual dispatch build and deploy; pull requests build and validate output without deployment. The production build (`dist/`) must work when served from the domain root (`/`), and the published output includes `CNAME` containing `glitch.bbay.dev`. Run `pnpm run check:pages-output` locally to check the built output, including `THIRD-PARTY-NOTICES.txt`.
+Hosting target: **GitHub Pages** on the custom domain **`drift.bbay.dev`** (`.github/workflows/pages.yml`). Pushes to `main` and manual dispatch build and deploy; pull requests build and validate output without deployment. The production build (`dist/`) must work when served from the domain root (`/`), and the published output includes `CNAME` containing `drift.bbay.dev`. Run `pnpm run check:pages-output` locally to check the built output, including `THIRD-PARTY-NOTICES.txt`.
 
 ZeroVer, `0.<minor>.<patch>`. The `VERSION` file holds the minor number only and is bumped by hand in a normal pull request when starting a new minor series; the release workflow never commits or pushes to `main`. A manual workflow `release.yml` (`workflow_dispatch`, default branch only) does, in order:
 

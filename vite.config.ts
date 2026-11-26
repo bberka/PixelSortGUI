@@ -28,8 +28,8 @@ export default defineConfig({
 			injectRegister: false,
 			/* eslint-disable @typescript-eslint/naming-convention -- Web App Manifest specification requires snake_case keys */
 			manifest: {
-				name: 'PixelSortGUI',
-				short_name: 'PixelSortGUI',
+				name: 'Drift',
+				short_name: 'Drift',
 				description:
 					'Offline web editor for glitch art and pixel sorting of still photos.',
 				start_url: '/',

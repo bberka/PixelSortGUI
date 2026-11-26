@@ -1,6 +1,6 @@
 import {create} from 'zustand';
 
-export const THEME_STORAGE_KEY = 'psg:theme';
+export const THEME_STORAGE_KEY = 'drift:theme';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';

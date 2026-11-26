@@ -17,8 +17,8 @@ import {Button} from '@/components/ui/button';
 import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 
-const TABLET_PANEL_HEIGHT_KEY = 'psg:tablet-panel-height';
-const TABLET_PANEL_COLLAPSED_KEY = 'psg:tablet-panel-collapsed';
+const TABLET_PANEL_HEIGHT_KEY = 'drift:tablet-panel-height';
+const TABLET_PANEL_COLLAPSED_KEY = 'drift:tablet-panel-collapsed';
 const TABLET_DEFAULT_HEIGHT = 360;
 const TABLET_MIN_HEIGHT = 240;
 const TABLET_COLLAPSED_HEIGHT = 48;

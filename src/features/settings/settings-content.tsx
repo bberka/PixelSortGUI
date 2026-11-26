@@ -282,7 +282,7 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 					About
 				</h2>
 				<div className="flex items-baseline justify-between gap-2">
-					<span className="font-medium text-foreground">PixelSortGUI</span>
+					<span className="font-medium text-foreground">Drift</span>
 					<span className="font-mono text-[13px] leading-[18px] text-muted-foreground tabular-nums">
 						{versionLabel}
 					</span>

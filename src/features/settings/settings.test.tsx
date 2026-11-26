@@ -232,7 +232,7 @@ describe('Settings view', () => {
 		await flush();
 
 		const dialog = document.querySelector('[role="dialog"]')!;
-		expect(dialog.textContent).toContain('PixelSortGUI');
+		expect(dialog.textContent).toContain('Drift');
 		expect(dialog.textContent).not.toContain('0.x (dev)');
 		expect(dialog.textContent).toMatch(/0\.\d+\./);
 		expect(dialog.textContent).toContain(

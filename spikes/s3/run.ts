@@ -167,7 +167,7 @@ async function runQuestion1(
 		await page1.goto(baseUrl, {waitUntil: 'load'});
 
 		const writeResult = await page1.evaluate(async (testSizes) => {
-			const dbName = 'pixelsortgui';
+			const dbName = 'drift';
 
 			const openDb = () =>
 				new Promise<IDBDatabase>((resolve, reject) => {
@@ -379,7 +379,7 @@ async function runQuestion1(
 		const readResult = await page2.evaluate(async (input) => {
 			const openDb = () =>
 				new Promise<IDBDatabase>((resolve, reject) => {
-					const request = globalThis.indexedDB.open('pixelsortgui', 1);
+					const request = globalThis.indexedDB.open('drift', 1);
 					request.addEventListener('success', () => resolve(request.result));
 					request.addEventListener('error', () =>
 						reject(request.error ?? new Error('IDB open failed')),
@@ -508,7 +508,7 @@ async function runQuestion2(
 
 		const abortRolledBack = await page1.evaluate(async () => {
 			const db = await new Promise<IDBDatabase>((resolve, reject) => {
-				const req = globalThis.indexedDB.open('pixelsortgui-tx', 1);
+				const req = globalThis.indexedDB.open('drift-tx', 1);
 				req.addEventListener('upgradeneeded', () => {
 					const database = req.result;
 					database.createObjectStore('sources', {keyPath: 'sha256'});
@@ -590,7 +590,7 @@ async function runQuestion2(
 		});
 
 		await page1.evaluate(() => {
-			const req = globalThis.indexedDB.open('pixelsortgui-tx', 1);
+			const req = globalThis.indexedDB.open('drift-tx', 1);
 			req.addEventListener('success', () => {
 				const db = req.result;
 				const big = new Uint8Array(40 * 1024 * 1024);
@@ -632,7 +632,7 @@ async function runQuestion2(
 
 		const afterKill = await page2.evaluate(async () => {
 			const db = await new Promise<IDBDatabase>((resolve, reject) => {
-				const req = globalThis.indexedDB.open('pixelsortgui-tx', 1);
+				const req = globalThis.indexedDB.open('drift-tx', 1);
 				req.addEventListener('success', () => resolve(req.result));
 				req.addEventListener('error', () =>
 					reject(req.error ?? new Error('IDB open failed')),
@@ -763,7 +763,7 @@ async function runQuestion3(
 
 			const quotaResult = await page.evaluate(async () => {
 				const db = await new Promise<IDBDatabase>((resolve, reject) => {
-					const req = globalThis.indexedDB.open('pixelsortgui-quota', 1);
+					const req = globalThis.indexedDB.open('drift-quota', 1);
 					req.addEventListener('upgradeneeded', () => {
 						const database = req.result;
 						database.createObjectStore('sources', {keyPath: 'sha256'});
@@ -894,7 +894,7 @@ async function runQuestion4(
 			let writeReadWorked = false;
 			try {
 				const db = await new Promise<IDBDatabase>((resolve, reject) => {
-					const req = globalThis.indexedDB.open('pixelsortgui-private', 1);
+					const req = globalThis.indexedDB.open('drift-private', 1);
 					req.addEventListener('upgradeneeded', () => {
 						req.result.createObjectStore('kv', {keyPath: 'k'});
 					});
@@ -958,7 +958,7 @@ async function runQuestion4(
 					},
 				});
 				try {
-					globalThis.indexedDB.open('pixelsortgui', 1);
+					globalThis.indexedDB.open('drift', 1);
 				} catch {
 					fallbackTriggeredOnError = true;
 				}
@@ -1048,7 +1048,7 @@ async function runQuestion5(
 
 		const expectedHash = await page.evaluate(async () => {
 			const db = await new Promise<IDBDatabase>((resolve, reject) => {
-				const req = globalThis.indexedDB.open('pixelsortgui-offline', 1);
+				const req = globalThis.indexedDB.open('drift-offline', 1);
 				req.addEventListener('upgradeneeded', () => {
 					req.result.createObjectStore('sources', {keyPath: 'sha256'});
 				});
@@ -1090,7 +1090,7 @@ async function runQuestion5(
 			const heading =
 				globalThis.document.querySelector('h1')?.textContent ?? '';
 			const db = await new Promise<IDBDatabase>((resolve, reject) => {
-				const req = globalThis.indexedDB.open('pixelsortgui-offline', 1);
+				const req = globalThis.indexedDB.open('drift-offline', 1);
 				req.addEventListener('success', () => resolve(req.result));
 				req.addEventListener('error', () =>
 					reject(req.error ?? new Error('IDB open failed')),
@@ -1163,7 +1163,7 @@ async function runQuestion6(
 		await page.goto(baseUrl, {waitUntil: 'load'});
 
 		const result = await page.evaluate(async () => {
-			const dbName = 'pixelsortgui-upgrade';
+			const dbName = 'drift-upgrade';
 
 			const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
 				const req = globalThis.indexedDB.open(dbName, 1);

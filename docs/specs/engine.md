@@ -7,7 +7,7 @@ Updated after the engine tasks by Gemini 4 Neon (Antigravity, thought level low)
 Updated with post-v0.1.0 specs (F20 geometry, F21 formats, F22 effect catalogue) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with multi-image blending (`imageBlend`, F26) spec by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 
-# PixelSortGUI engine spec
+# Drift engine spec
 
 Status: settled for first release, 2026-11-24. Terms are defined in [product.md section 2](product.md#2-terms). Storage of everything described here is in [persistence.md](persistence.md).
 

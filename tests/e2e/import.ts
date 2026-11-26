@@ -237,7 +237,7 @@ export async function readImportState(page: Page): Promise<ImportSnapshot> {
 
 		const state = booted.bundle.store.getState();
 		const sourceCount = await new Promise<number>((resolve, reject) => {
-			const request = globalThis.indexedDB.open('pixelsortgui');
+			const request = globalThis.indexedDB.open('drift');
 			request.addEventListener('error', () => {
 				reject(request.error ?? new Error('IndexedDB open failed'));
 			});

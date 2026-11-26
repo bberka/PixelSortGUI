@@ -40,7 +40,7 @@ describe('validateEvidenceFiles', () => {
 	let proofDir: string;
 
 	beforeEach(() => {
-		workspaceDir = mkdtempSync(join(tmpdir(), 'pixelsortgui-evidence-test-'));
+		workspaceDir = mkdtempSync(join(tmpdir(), 'drift-evidence-test-'));
 		proofDir = join(workspaceDir, '.proof');
 		mkdirSync(proofDir, {recursive: true});
 	});

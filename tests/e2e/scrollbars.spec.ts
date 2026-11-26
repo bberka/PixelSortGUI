@@ -14,7 +14,7 @@ async function openLongPanel(page: Page, theme: string): Promise<Locator> {
 	await page.emulateMedia({colorScheme: theme as 'light' | 'dark'});
 	await page.goto('/');
 	await page.evaluate((value) => {
-		globalThis.localStorage.setItem('psg:theme', value);
+		globalThis.localStorage.setItem('drift:theme', value);
 	}, theme);
 	await page.reload();
 	await importSyntheticProject(page, 'Scrollbar proof');

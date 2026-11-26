@@ -96,7 +96,7 @@ describe('route host', () => {
 		const screen = mount(<App runtime={runtime} />);
 		await flush();
 
-		expect(screen.querySelector('h1')?.textContent).toBe('PixelSortGUI');
+		expect(screen.querySelector('h1')?.textContent).toBe('Drift');
 		expect(textOf(screen)).toContain('No projects yet');
 		expect(textOf(screen)).toContain('Images stay on this device.');
 		expect(
@@ -140,7 +140,7 @@ describe('startup states', () => {
 
 		expect(textOf(screen)).not.toContain('No projects yet');
 		expect(screen.querySelector('[aria-busy="true"]')).not.toBeNull();
-		expect(screen.querySelector('h1')?.textContent).toBe('PixelSortGUI');
+		expect(screen.querySelector('h1')?.textContent).toBe('Drift');
 	});
 
 	it('blocks the app with the secure-context screen outside a secure context', async () => {
@@ -152,7 +152,7 @@ describe('startup states', () => {
 			'Secure connection required',
 		);
 		expect(textOf(screen)).toContain(
-			'Open PixelSortGUI over HTTPS or http://localhost so browser storage and offline features can work.',
+			'Open Drift over HTTPS or http://localhost so browser storage and offline features can work.',
 		);
 		expect(textOf(screen)).not.toContain('No projects yet');
 	});
@@ -274,7 +274,7 @@ describe('screen error boundary', () => {
 			),
 		).toContain('Reload');
 		// The shell itself survives a screen crash.
-		expect(screen.querySelector('h1')?.textContent).toBe('PixelSortGUI');
+		expect(screen.querySelector('h1')?.textContent).toBe('Drift');
 	});
 
 	it('recovers when the route changes to a screen that renders', async () => {

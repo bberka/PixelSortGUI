@@ -21,7 +21,7 @@ for (const theme of THEMES) {
 		}) => {
 			await page.emulateMedia({colorScheme: theme.name});
 			await page.addInitScript((value) => {
-				globalThis.localStorage.setItem('psg:theme', value);
+				globalThis.localStorage.setItem('drift:theme', value);
 			}, theme.name);
 			await page.setViewportSize({
 				width: viewport.width,
@@ -30,7 +30,7 @@ for (const theme of THEMES) {
 			await page.goto(GALLERY_PATH);
 
 			await expect(
-				page.getByRole('heading', {level: 1, name: 'PixelSortGUI'}),
+				page.getByRole('heading', {level: 1, name: 'Drift'}),
 			).toBeVisible();
 
 			const metrics = await page.evaluate(() => ({
@@ -62,7 +62,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	await expect
 		.poll(() =>
 			page.evaluate(() => ({
-				stored: globalThis.localStorage.getItem('psg:theme'),
+				stored: globalThis.localStorage.getItem('drift:theme'),
 				attr: globalThis.document.documentElement.dataset.theme,
 				bg: globalThis.getComputedStyle(globalThis.document.documentElement)
 					.backgroundColor,
@@ -73,7 +73,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	await page.reload();
 	expect(
 		await page.evaluate(() => ({
-			stored: globalThis.localStorage.getItem('psg:theme'),
+			stored: globalThis.localStorage.getItem('drift:theme'),
 			attr: globalThis.document.documentElement.dataset.theme,
 			bg: globalThis.getComputedStyle(globalThis.document.documentElement)
 				.backgroundColor,
@@ -88,7 +88,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	await page.reload();
 	expect(
 		await page.evaluate(() => ({
-			stored: globalThis.localStorage.getItem('psg:theme'),
+			stored: globalThis.localStorage.getItem('drift:theme'),
 			attr: globalThis.document.documentElement.dataset.theme,
 			bg: globalThis.getComputedStyle(globalThis.document.documentElement)
 				.backgroundColor,
@@ -103,7 +103,7 @@ test('theme selection persists across reloads and True Black computes to rgb(0, 
 	await page.reload();
 	expect(
 		await page.evaluate(() => ({
-			stored: globalThis.localStorage.getItem('psg:theme'),
+			stored: globalThis.localStorage.getItem('drift:theme'),
 			attr: globalThis.document.documentElement.dataset.theme,
 		})),
 	).toEqual({stored: 'system', attr: 'system'});
@@ -156,7 +156,7 @@ test('reloading Light on dark OS and True Black on light OS applies theme before
 		await page.emulateMedia({colorScheme: scenario.os});
 		await page.goto(GALLERY_PATH);
 		await page.evaluate((value) => {
-			globalThis.localStorage.setItem('psg:theme', value);
+			globalThis.localStorage.setItem('drift:theme', value);
 		}, scenario.chosen);
 
 		await page.addInitScript(() => {
@@ -212,7 +212,7 @@ for (const theme of THEMES) {
 	}) => {
 		await page.emulateMedia({colorScheme: theme.name});
 		await page.addInitScript((value) => {
-			globalThis.localStorage.setItem('psg:theme', value);
+			globalThis.localStorage.setItem('drift:theme', value);
 		}, theme.name);
 		await page.goto(GALLERY_PATH);
 

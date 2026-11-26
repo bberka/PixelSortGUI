@@ -212,8 +212,8 @@ test.describe('PWA offline, manifest, update toast, and install UI (F15)', () =>
 			start_url: string;
 			icons: Array<{src: string; sizes: string; type: string}>;
 		};
-		expect(manifest.name).toBe('PixelSortGUI');
-		expect(manifest.short_name).toBe('PixelSortGUI');
+		expect(manifest.name).toBe('Drift');
+		expect(manifest.short_name).toBe('Drift');
 		expect(manifest.display).toBe('standalone');
 		expect(manifest.start_url).toBe('/');
 		expect(manifest.icons.length).toBeGreaterThanOrEqual(3);

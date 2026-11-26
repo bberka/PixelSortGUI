@@ -18,7 +18,7 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 	await page.goto('/');
 
 	const written = await page.evaluate(async () => {
-		const dbName = 'pixelsortgui';
+		const dbName = 'drift';
 		const idb = globalThis.indexedDB;
 		await new Promise<void>((resolve, reject) => {
 			const del = idb.deleteDatabase(dbName);
@@ -143,7 +143,7 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 	const verified = await page.evaluate(async (expectedProjectId) => {
 		const idb = globalThis.indexedDB;
 		const db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = idb.open('pixelsortgui', 1);
+			const request = idb.open('drift', 1);
 			request.addEventListener('success', () => resolve(request.result));
 			request.addEventListener('error', () =>
 				reject(request.error ?? new Error('Open failed')),
@@ -208,7 +208,7 @@ test('persists a multi-megabyte project blob across page reload in real IndexedD
 			.join('');
 
 		await new Promise<void>((resolve, reject) => {
-			const del = idb.deleteDatabase('pixelsortgui');
+			const del = idb.deleteDatabase('drift');
 			del.addEventListener('success', () => resolve());
 			del.addEventListener('error', () =>
 				reject(del.error ?? new Error('Cleanup delete failed')),

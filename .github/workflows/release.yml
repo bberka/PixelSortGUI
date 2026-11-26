@@ -80,5 +80,5 @@ jobs:
         run: |
           gh release create "v$VERSION" \
             --target "$GITHUB_SHA" \
-            --title "PixelSortGUI v$VERSION" \
+            --title "Drift v$VERSION" \
             --generate-notes

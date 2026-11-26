@@ -9,9 +9,9 @@ export function StartingScreen() {
 	return (
 		<div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
 			<AppBarFrame>
-				<h1 className="text-lg leading-6 font-semibold">PixelSortGUI</h1>
+				<h1 className="text-lg leading-6 font-semibold">Drift</h1>
 			</AppBarFrame>
-			<PendingIndicator label="Starting PixelSortGUI" />
+			<PendingIndicator label="Starting Drift" />
 		</div>
 	);
 }
@@ -33,8 +33,8 @@ export function SecureContextScreen() {
 				Secure connection required
 			</h1>
 			<p className="text-sm text-muted-foreground">
-				Open PixelSortGUI over HTTPS or http://localhost so browser storage and
-				offline features can work.
+				Open Drift over HTTPS or http://localhost so browser storage and offline
+				features can work.
 			</p>
 		</BlockingCard>
 	);
@@ -45,8 +45,8 @@ export function VersionErrorScreen({message}: {readonly message: string}) {
 		<BlockingCard>
 			<h1 className="text-lg leading-6 font-semibold">Update required</h1>
 			<p className="text-sm text-muted-foreground">
-				This browser's stored data was written by a newer version of
-				PixelSortGUI. Reload to run the newest version.
+				This browser's stored data was written by a newer version of Drift.
+				Reload to run the newest version.
 			</p>
 			<code className="max-w-full overflow-hidden font-mono text-xs break-words text-muted-foreground">
 				{message}

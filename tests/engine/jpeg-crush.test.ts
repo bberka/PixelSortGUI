@@ -165,9 +165,45 @@ describe('jpegCrushEffect', () => {
 		);
 	}, 60_000);
 
+	// 8 px blocks with subsampled chroma take the quadrant transform.
+	it('matches the specification on the quadrant chroma path', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc.integer({min: 1, max: 8}),
+				fc.integer({min: 1, max: 8}),
+				fc.integer({min: 0, max: 1_000_000}),
+				fc.constantFrom(1, 2),
+				arbParams,
+				async (across, down, noise, shrink, random) => {
+					const input = noiseImage(across * 8, down * 8, noise);
+					// Half-scale renders keep 8 render px blocks at block size 16.
+					const params = {
+						...random,
+						blockSize: 8 * shrink,
+						chromaSubsample: true,
+					};
+					const sourceWidth = input.width * shrink;
+					const out = await render(
+						input,
+						params,
+						sourceWidth,
+						input.height * shrink,
+					);
+					expect(out.data).toEqual(
+						modelJpegCrush(input, params, sourceWidth).data,
+					);
+				},
+			),
+			{numRuns: 200},
+		);
+	}, 60_000);
+
 	// Checkerboard and ramp inputs reach larger coefficients than noise does.
 	it('matches the specification on extreme blocks', async () => {
-		for (const quality of [1, 50, 100]) {
+		const cases = [1, 50, 100].flatMap((quality) =>
+			[false, true].map((chromaSubsample) => ({quality, chromaSubsample})),
+		);
+		for (const {quality, chromaSubsample} of cases) {
 			for (const period of [1, 2, 4, 8]) {
 				const input = createImage(24, 16);
 				for (let i = 0; i < input.data.length; i += 4) {
@@ -180,7 +216,7 @@ describe('jpegCrushEffect', () => {
 				const params = {
 					...DEFAULTS,
 					quality,
-					chromaSubsample: false,
+					chromaSubsample,
 					corruptRate: 0.5,
 					corruptShift: 1,
 					seed: period,

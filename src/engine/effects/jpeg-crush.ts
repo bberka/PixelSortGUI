@@ -154,6 +154,7 @@ function forwardDct(block: Int32Array): void {
 */
 function inverseDct(block: Int32Array): void {
 	let anyAc = 0;
+	let anyVertical = 0;
 	for (let v = 0; v < 8; v++) {
 		const f0 = block[v];
 		const f1 = block[v + 8];
@@ -165,6 +166,7 @@ function inverseDct(block: Int32Array): void {
 		const f7 = block[v + 56];
 		const ac = f1 | f2 | f3 | f4 | f5 | f6 | f7;
 		anyAc |= v === 0 ? ac : ac | f0;
+		anyVertical |= ac;
 		if (ac === 0) {
 			const flat = (K4 * f0 + 1024) >> 11;
 			pass[v] = flat;
@@ -207,6 +209,12 @@ function inverseDct(block: Int32Array): void {
 	}
 
 	for (let row = 0; row < 64; row += 8) {
+		// With every column flat, all rows of the second pass are the same.
+		if (row > 0 && anyVertical === 0) {
+			block.copyWithin(row, 0, 8);
+			continue;
+		}
+
 		const f0 = pass[row];
 		const f1 = pass[row + 1];
 		const f2 = pass[row + 2];
@@ -248,19 +256,22 @@ function sample(sum: number): number {
 
 function quantise(block: Int32Array, table: Int32Array): void {
 	for (let i = 0; i < 64; i++) {
-		const value = block[i];
-		const q = table[i];
-		const half = q << 14;
-		// True exactly when `-half < value < half`, which rounds to level 0.
-		if ((value + half - 1) >>> 0 < (q << 15) - 1) {
-			block[i] = 0;
-			continue;
-		}
-
-		const magnitude = Math.abs(value);
-		const level = Math.trunc((magnitude + half) / (q << 15)) * q;
-		block[i] = value < 0 ? -level : level;
+		block[i] = dequantised(block[i], table[i]);
 	}
+}
+
+/**
+The coefficient `value` rounded to a multiple of `q`, before the 2^15 scale.
+*/
+function dequantised(value: number, q: number): number {
+	const half = q << 14;
+	// True exactly when `-half < value < half`, which rounds to level 0.
+	if ((value + half - 1) >>> 0 < (q << 15) - 1) {
+		return 0;
+	}
+
+	const level = Math.trunc((Math.abs(value) + half) / (q << 15)) * q;
+	return value < 0 ? -level : level;
 }
 
 type Corruption = {cb: number; cr: number; bx: number; by: number};
@@ -406,15 +417,14 @@ function fromGrid(
 }
 
 /**
-Runs steps 3 to 8 on one plane of a `w` by `h` block, in place.
+Steps 3 to 5: transforms and quantises the plane of a `w` by `h` block.
 */
-function crushPlane(
+function toCoefficients(
 	plane: Int32Array,
 	w: number,
 	h: number,
 	table: Int32Array,
-	edit: ((block: Int32Array) => void) | undefined,
-): void {
+): Int32Array {
 	// An 8 by 8 block is its own grid.
 	const isGrid = w === 8 && h === 8;
 	const block = isGrid ? plane : sharedGrid;
@@ -424,11 +434,185 @@ function crushPlane(
 
 	forwardDct(block);
 	quantise(block, table);
-	edit?.(block);
+	return block;
+}
+
+/**
+Steps 7 and 8: returns the coefficients of `toCoefficients` to the plane.
+*/
+function toSamples(
+	block: Int32Array,
+	w: number,
+	h: number,
+	plane: Int32Array,
+): void {
 	inverseDct(block);
-	if (!isGrid) {
+	if (block !== plane) {
 		fromGrid(block, w, h, plane);
 	}
+}
+
+// The sums of `DCT_TABLE` rows 1, 3, 5 and 7 over the first four columns.
+const H1 = K1 + K3 + K5 + K7;
+const H3 = K3 - K7 - K1 - K5;
+const H5 = K5 - K1 + K7 + K3;
+const H7 = K7 - K5 + K3 - K1;
+
+/**
+The rounded mean of the 4 by 4 quadrant of an 8 by 8 plane starting at `at`.
+*/
+function quadrantMean(plane: Int32Array, at: number): number {
+	let sum = 0;
+	for (let row = at; row < at + 32; row += 8) {
+		sum += plane[row] + plane[row + 1] + plane[row + 2] + plane[row + 3];
+	}
+
+	return (sum + 8) >> 4;
+}
+
+/**
+ `forwardDct` and `quantise` of an 8 by 8 block whose four quadrants are each
+ flat, with sample values `a`, `b` on top and `c`, `d` below. Only rows and
+ columns 0, 1, 3, 5 and 7 can be non-zero.
+ */
+function forwardQuadrants(
+	block: Int32Array,
+	table: Int32Array,
+	a: number,
+	b: number,
+	c: number,
+	d: number,
+): void {
+	for (let i = 0; i < 64; i++) {
+		block[i] = 0;
+	}
+
+	const top = a - b;
+	const bottom = c - d;
+	spreadColumn(
+		block,
+		table,
+		0,
+		(K4 * (4 * (a + b) - 1024) + 1024) >> 11,
+		(K4 * (4 * (c + d) - 1024) + 1024) >> 11,
+	);
+	spreadColumn(
+		block,
+		table,
+		1,
+		(H1 * top + 1024) >> 11,
+		(H1 * bottom + 1024) >> 11,
+	);
+	spreadColumn(
+		block,
+		table,
+		3,
+		(H3 * top + 1024) >> 11,
+		(H3 * bottom + 1024) >> 11,
+	);
+	spreadColumn(
+		block,
+		table,
+		5,
+		(H5 * top + 1024) >> 11,
+		(H5 * bottom + 1024) >> 11,
+	);
+	spreadColumn(
+		block,
+		table,
+		7,
+		(H7 * top + 1024) >> 11,
+		(H7 * bottom + 1024) >> 11,
+	);
+}
+
+/**
+The second pass for column `v`, whose upper rows are `p` and lower rows `q`.
+*/
+function spreadColumn(
+	block: Int32Array,
+	table: Int32Array,
+	v: number,
+	p: number,
+	q: number,
+): void {
+	const difference = p - q;
+	block[v] = dequantised(4 * K4 * (p + q), table[v]);
+	block[v + 8] = dequantised(H1 * difference, table[v + 8]);
+	block[v + 24] = dequantised(H3 * difference, table[v + 24]);
+	block[v + 40] = dequantised(H5 * difference, table[v + 40]);
+	block[v + 56] = dequantised(H7 * difference, table[v + 56]);
+}
+
+/**
+ Steps 2 to 8 for a chroma plane of an 8 by 8 block that subsampling splits into
+ four 4 by 4 quadrants. `shift` is the corruption of the DC level.
+ */
+function crushQuadrants(
+	plane: Int32Array,
+	table: Int32Array,
+	shift: number,
+): void {
+	forwardQuadrants(
+		plane,
+		table,
+		quadrantMean(plane, 0),
+		quadrantMean(plane, 4),
+		quadrantMean(plane, 32),
+		quadrantMean(plane, 36),
+	);
+	plane[0] += 8 * shift;
+	inverseDct(plane);
+}
+
+type Planes = {luma: Int32Array; blue: Int32Array; red: Int32Array};
+
+type Tables = {luma: Int32Array; chroma: Int32Array};
+
+/**
+Steps 2 to 8 for one chroma plane of a block. `subs` is absent without step 2.
+*/
+function crushChroma(
+	plane: Int32Array,
+	w: number,
+	h: number,
+	table: Int32Array,
+	shift: number,
+	subs: BlockSubs | undefined,
+): void {
+	if (subs !== undefined) {
+		if (subs.quadrants) {
+			crushQuadrants(plane, table, shift);
+			return;
+		}
+
+		subsample(plane, w, h, subs.columns, subs.rows);
+	}
+
+	const block = toCoefficients(plane, w, h, table);
+	block[0] += 8 * shift;
+	toSamples(block, w, h, plane);
+}
+
+type BlockSubs = {
+	columns: Int32Array;
+	rows: Int32Array;
+	/**
+	Whether the sub-blocks are the four 4 by 4 quadrants of an 8 by 8 block.
+	*/
+	quadrants: boolean;
+};
+
+/**
+Whether 8 render pixels of one block split into two sub-blocks of 4.
+*/
+function splitsInHalves(subs: Int32Array, from: number, n: number): boolean {
+	return (
+		n === 8 &&
+		subs[from] === subs[from + 3] &&
+		subs[from + 3] !== subs[from + 4] &&
+		subs[from + 4] === subs[from + 7]
+	);
 }
 
 /**
@@ -493,6 +677,63 @@ function subsample(
 	}
 }
 
+/**
+Step 1 for the block whose first byte in `src` is `origin`.
+*/
+function toYcc(
+	src: Uint8ClampedArray,
+	origin: number,
+	width: number,
+	w: number,
+	h: number,
+	{luma, blue, red}: Planes,
+): void {
+	for (let y = 0, p = 0; y < h; y++) {
+		let read = origin + y * width * 4;
+		for (let x = 0; x < w; x++, p++, read += 4) {
+			const r8 = src[read];
+			const g8 = src[read + 1];
+			const b8 = src[read + 2];
+			luma[p] = thousandth(299 * r8 + 587 * g8 + 114 * b8 + 500);
+			// Adding 128 * 1000 first keeps the dividend positive.
+			const cb = thousandth(-169 * r8 - 331 * g8 + 500 * b8 + 128_500);
+			const cr = thousandth(500 * r8 - 419 * g8 - 81 * b8 + 128_500);
+			blue[p] = Math.min(cb, 255);
+			red[p] = Math.min(cr, 255);
+		}
+	}
+}
+
+/**
+Step 9, writing the block whose first byte in `dst` is `origin`.
+*/
+function toRgb(
+	src: Uint8ClampedArray,
+	dst: Uint8ClampedArray,
+	origin: number,
+	width: number,
+	w: number,
+	h: number,
+	{luma, blue, red}: Planes,
+): void {
+	for (let y = 0, p = 0; y < h; y++) {
+		let write = origin + y * width * 4;
+		for (let x = 0; x < w; x++, p++, write += 4) {
+			const y8 = luma[p];
+			const cb = blue[p];
+			const cr = red[p];
+			// The green dividend is shifted by 200 * 1000 to stay positive.
+			const green =
+				thousandth(200_500 - 344 * (cb - 128) - 714 * (cr - 128)) - 200;
+			// `dst` is clamped, so out-of-range sums saturate to 0..255.
+			dst[write] = y8 + redOffsets[cr];
+			dst[write + 1] = y8 + green;
+			dst[write + 2] = y8 + blueOffsets[cb];
+			dst[write + 3] = src[write + 3];
+		}
+	}
+}
+
 export const jpegCrushEffect: EffectDefinition<JpegCrushParams> = {
 	...jpegCrushSpec,
 	async render(input, output, params, ctx) {
@@ -500,20 +741,35 @@ export const jpegCrushEffect: EffectDefinition<JpegCrushParams> = {
 		const dst = output.data;
 		const {scale} = ctx;
 		const {blockSize, quality, chromaSubsample, seed} = params;
-		const lumaQ = scaledTable(LUMA_TABLE, quality);
-		const chromaQ = scaledTable(CHROMA_TABLE, quality);
+		const tables: Tables = {
+			luma: scaledTable(LUMA_TABLE, quality),
+			chroma: scaledTable(CHROMA_TABLE, quality),
+		};
 		const columns = sourceAxis(width, scale, blockSize);
 		const rows = sourceAxis(height, scale, blockSize);
 
-		const luma = new Int32Array(MAX_SIDE * MAX_SIDE);
-		const blue = new Int32Array(MAX_SIDE * MAX_SIDE);
-		const red = new Int32Array(MAX_SIDE * MAX_SIDE);
+		const planes: Planes = {
+			luma: new Int32Array(MAX_SIDE * MAX_SIDE),
+			blue: new Int32Array(MAX_SIDE * MAX_SIDE),
+			red: new Int32Array(MAX_SIDE * MAX_SIDE),
+		};
+		// Per column of blocks, so the block loop allocates no views.
+		const columnSubs = columns.blocks.map((_block, c) =>
+			columns.subBlocks.subarray(columns.starts[c], columns.starts[c + 1]),
+		);
+		const columnHalves = columnSubs.map((subs) =>
+			splitsInHalves(subs, 0, subs.length),
+		);
+		const subs: BlockSubs | undefined = chromaSubsample
+			? {columns: columnSubs[0], rows: rows.subBlocks, quadrants: false}
+			: undefined;
 		let sinceCheckpoint = CHECKPOINT_PIXELS;
 
 		for (let r = 0; r < rows.blocks.length; r++) {
 			const y0 = rows.starts[r];
 			const h = rows.starts[r + 1] - y0;
 			const rowSubs = rows.subBlocks.subarray(y0, y0 + h);
+			const rowHalves = splitsInHalves(rows.subBlocks, y0, h);
 
 			for (let c = 0; c < columns.blocks.length; c++) {
 				const x0 = columns.starts[c];
@@ -529,76 +785,25 @@ export const jpegCrushEffect: EffectDefinition<JpegCrushParams> = {
 
 				sinceCheckpoint += w * h;
 
-				for (let y = 0; y < h; y++) {
-					let read = ((y0 + y) * width + x0) * 4;
-					for (let p = y * w; p < (y + 1) * w; p++, read += 4) {
-						const r8 = src[read];
-						const g8 = src[read + 1];
-						const b8 = src[read + 2];
-						luma[p] = thousandth(299 * r8 + 587 * g8 + 114 * b8 + 500);
-						// Adding 128 * 1000 first keeps the dividend positive.
-						const cb = thousandth(-169 * r8 - 331 * g8 + 500 * b8 + 128_500);
-						const cr = thousandth(500 * r8 - 419 * g8 - 81 * b8 + 128_500);
-						blue[p] = Math.min(cb, 255);
-						red[p] = Math.min(cr, 255);
-					}
-				}
-
-				if (chromaSubsample) {
-					const columnSubs = columns.subBlocks.subarray(x0, x0 + w);
-					subsample(blue, w, h, columnSubs, rowSubs);
-					subsample(red, w, h, columnSubs, rowSubs);
+				const origin = (y0 * width + x0) * 4;
+				toYcc(src, origin, width, w, h, planes);
+				if (subs !== undefined) {
+					subs.columns = columnSubs[c];
+					subs.rows = rowSubs;
+					subs.quadrants = rowHalves && columnHalves[c];
 				}
 
 				const bent = corruptionFor(params, columns.blocks[c], rows.blocks[r]);
-
-				crushPlane(
-					luma,
-					w,
-					h,
-					lumaQ,
-					bent &&
-						((block) => {
-							corruptLuma(block, bent, seed);
-						}),
-				);
-				crushPlane(
-					blue,
-					w,
-					h,
-					chromaQ,
-					bent &&
-						((block) => {
-							block[0] += 8 * bent.cb;
-						}),
-				);
-				crushPlane(
-					red,
-					w,
-					h,
-					chromaQ,
-					bent &&
-						((block) => {
-							block[0] += 8 * bent.cr;
-						}),
-				);
-
-				for (let y = 0; y < h; y++) {
-					let write = ((y0 + y) * width + x0) * 4;
-					for (let p = y * w; p < (y + 1) * w; p++, write += 4) {
-						const y8 = luma[p];
-						const cb = blue[p];
-						const cr = red[p];
-						// The green dividend is shifted by 200 * 1000 to stay positive.
-						const green =
-							thousandth(200_500 - 344 * (cb - 128) - 714 * (cr - 128)) - 200;
-						// `dst` is clamped, so out-of-range sums saturate to 0..255.
-						dst[write] = y8 + redOffsets[cr];
-						dst[write + 1] = y8 + green;
-						dst[write + 2] = y8 + blueOffsets[cb];
-						dst[write + 3] = src[write + 3];
-					}
+				const block = toCoefficients(planes.luma, w, h, tables.luma);
+				if (bent) {
+					corruptLuma(block, bent, seed);
 				}
+
+				toSamples(block, w, h, planes.luma);
+				const {blue, red} = planes;
+				crushChroma(blue, w, h, tables.chroma, bent?.cb ?? 0, subs);
+				crushChroma(red, w, h, tables.chroma, bent?.cr ?? 0, subs);
+				toRgb(src, dst, origin, width, w, h, planes);
 			}
 
 			ctx.progress((y0 + h) / height);

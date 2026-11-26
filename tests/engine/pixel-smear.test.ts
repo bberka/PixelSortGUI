@@ -15,6 +15,7 @@ import {
 	type DebugView,
 	type RgbaImage,
 } from '../../src/engine/types.ts';
+import {modelPixelSmear} from './pixel-smear-reference.ts';
 import {
 	bytes,
 	image,
@@ -199,28 +200,31 @@ describe('pixelSmearEffect', () => {
 		expect(reds(out)).toEqual([255, 128, 64, 0]);
 	});
 
-	it('renders buffers that are not word aligned', async () => {
-		const input = noiseImage(9, 7, 3);
-		const shifted = (data?: Uint8ClampedArray): RgbaImage => {
-			const buffer = new Uint8ClampedArray(input.data.length + 1).subarray(1);
-			buffer.set(data ?? []);
-			return {width: 9, height: 7, data: buffer};
-		};
+	it.each([30, 270])(
+		'renders buffers that are not word aligned at %d degrees',
+		async (angle) => {
+			const input = noiseImage(9, 7, 3);
+			const shifted = (data?: Uint8ClampedArray): RgbaImage => {
+				const buffer = new Uint8ClampedArray(input.data.length + 1).subarray(1);
+				buffer.set(data ?? []);
+				return {width: 9, height: 7, data: buffer};
+			};
 
-		const output = shifted();
-		await pixelSmearEffect.render(
-			shifted(input.data),
-			output,
-			{...DEFAULTS, angle: 30},
-			createRenderContext({
-				level: 'full',
-				sourceWidth: 9,
-				sourceHeight: 7,
-				renderWidth: 9,
-			}),
-		);
-		expect([...output.data]).toEqual(bytes(await render(input, {angle: 30})));
-	});
+			const output = shifted();
+			await pixelSmearEffect.render(
+				shifted(input.data),
+				output,
+				{...DEFAULTS, angle},
+				createRenderContext({
+					level: 'full',
+					sourceWidth: 9,
+					sourceHeight: 7,
+					renderWidth: 9,
+				}),
+			);
+			expect([...output.data]).toEqual(bytes(await render(input, {angle})));
+		},
+	);
 
 	it('darkens unselected pixels in the selection view', async () => {
 		const input = image(3, 1, [200, 220, 240, 255, 40, 80, 123, 9, 9, 9, 9, 0]);
@@ -292,6 +296,35 @@ describe('pixelSmearEffect', () => {
 			{numRuns: 200},
 		);
 	});
+
+	it('matches the line walk on the column path, transparency included', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				arbImage,
+				arbParams,
+				fc.constantFrom(90, 270),
+				fc.constantFrom(1, 2, 3.7),
+				async (input, params, angle, shrink) => {
+					const vertical = {...params, angle};
+					const sourceWidth = Math.round(input.width * shrink);
+					const out = await render(input, vertical, {
+						sourceWidth,
+						sourceHeight: Math.round(input.height * shrink),
+					});
+					const {pxLength} = createRenderContext({
+						level: 'full',
+						sourceWidth,
+						sourceHeight: Math.round(input.height * shrink),
+						renderWidth: input.width,
+					});
+					expect(out.data).toEqual(
+						modelPixelSmear(input, vertical, pxLength(params.maxLength)).data,
+					);
+				},
+			),
+			{numRuns: 300},
+		);
+	}, 30_000);
 
 	it('is the identity at decay 0 and when every pixel is selected', async () => {
 		await fc.assert(

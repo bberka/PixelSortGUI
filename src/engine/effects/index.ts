@@ -20,6 +20,10 @@ import {
 	scanlineWaveSpec,
 	type ScanlineWaveParams,
 } from './scanline-wave-spec.ts';
+import {
+	thresholdInvertSpec,
+	type ThresholdInvertParams,
+} from './threshold-invert-spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
 	...pixelSortSpec,
@@ -101,6 +105,14 @@ const lazyRgbNoiseEffect: EffectDefinition<RgbNoiseParams> = {
 	},
 };
 
+const lazyThresholdInvertEffect: EffectDefinition<ThresholdInvertParams> = {
+	...thresholdInvertSpec,
+	async render(input, output, params, ctx) {
+		const {thresholdInvertEffect} = await import('./threshold-invert.ts');
+		return thresholdInvertEffect.render(input, output, params, ctx);
+	},
+};
+
 const lazyPixelSmearEffect: EffectDefinition<PixelSmearParams> = {
 	...pixelSmearSpec,
 	async render(input, output, params, ctx) {
@@ -126,6 +138,7 @@ export const effects: readonly EffectDefinition[] = [
 	lazyMirrorFoldEffect,
 	lazyBayerDitherEffect,
 	lazyRgbNoiseEffect,
+	lazyThresholdInvertEffect,
 	lazyPixelSmearEffect,
 ];
 

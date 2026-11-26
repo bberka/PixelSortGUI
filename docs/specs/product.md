@@ -452,7 +452,7 @@ A user can save any single project to disk as a self-contained `.glproj` file (a
 - **Extension and neutrality:** `.glproj` (standard ZIP container built and read with `fflate`, MIT). The extension and manifest (`kind: 'project'`) do not embed the app name so renaming the app never breaks saved files.
 - **UI entry points:**
   - **Save:** `"Save project file"` in each library card menu (`src/features/library/project-card.tsx`) and in the editor toolbar / phone overflow menu (`src/features/toolbar/editor-toolbar.tsx`). Opens a compact dialog with `"Include undo history"` (checked by default), `"Save"`, and a progress bar with `"Cancel"` while assembling.
-  - **Open:** Supported alongside image import in the `"Open images"` file picker (`src/features/import/use-image-picker.ts`, accepting `.glproj` and `.zip` in addition to image types) and by dragging and dropping `.glproj` (or `.zip`) files onto the library or editor (`src/features/import/window-file-drop.tsx`).
+  - **Open:** Supported alongside image import in the `"Open images"` file picker (`src/features/import/use-image-picker.ts`, accepting `.glproj` and `.zip` in addition to image types) and by dragging and dropping `.glproj` files, or `.zip` files that hold a project (F17 covers other `.zip` files), onto the library or editor (`src/features/import/window-file-drop.tsx`).
 - **Name clash and deduplication:** Opening a `.glproj` always creates a new project with a fresh UUID so an existing local project is never overwritten. If a project with the same name already exists (case-insensitive trimmed match), the imported copy is named `"<name> (imported)"` (or `"<name> (imported 2)"`, etc., truncated to 120 characters). If the source SHA-256 already exists in `sources`, the existing stored blob is reused without storing a second copy.
 
 Acceptance criteria:
@@ -478,7 +478,8 @@ Export all browser data (projects, user presets, and app settings) or a chosen s
   - **Replace:** Requires an explicit confirmation dialog (`"Replace all local data? This deletes <N> existing project(s) and <M> user preset(s) on this device before importing."`). Existing data is never removed until archive validation and source writes succeed.
 - **Size limit:** One backup holds at most 4 GB (and 200 MB per image). A larger export is refused with a message that says to select fewer projects or leave out undo history ([decisions.md D44](decisions.md#d44-backups-stay-below-4-gib-instead-of-writing-zip64-2026-11-27)).
 - **Progress, cancel, and quota safety:** Both export and import show stage progress (`Reading`, `Packing` / `Validating`, `Importing`) with a `"Cancel"` button that stops within 1 s without leaving partial projects. If browser storage runs out during import, newly written unreferenced blobs are cleaned up and the library stays completely consistent.
-- **UI locations:** `"Export backup"` and `"Import backup"` live in Settings -> Storage (`src/features/settings/settings-content.tsx`) and in a Library app-bar overflow menu (`src/app/app-bar-actions.ts`).
+- **UI locations:** `"Export backup"` and `"Import backup"` live in Settings -> Storage (`src/features/settings/settings-content.tsx`), in a Library app-bar overflow menu (`src/app/app-bar-actions.ts`) and in the phone editor's app-bar overflow menu.
+- **Opening a `.zip`:** a backup dropped on the window or chosen in an import picker opens the `"Import backup"` preview, a project archive opens as a project (F25), and any other `.zip` is refused with a message. Nothing is written before the user confirms a backup import.
 
 Acceptance criteria:
 
@@ -489,6 +490,9 @@ Acceptance criteria:
 - AC-F17.5: Cancelling a backup export or import stops within 1 s and leaves IndexedDB unchanged.
 - AC-F17.6: Triggering a quota error during backup import leaves zero partial or broken projects (every existing project still opens and renders cleanly) and opens the `"Storage is full"` dialog.
 - AC-F17.7: Importing a corrupt ZIP, a backup with a tampered source byte, or a backup with `backupVersion` higher than supported writes nothing and shows the exact error message from [persistence.md section 8.4.4](persistence.md#844-validation-quota-safety-and-merge-vs-replace).
+- AC-F17.8: At `390 × 844`, `820 × 1180` and `1440 × 900`, `"Export backup"` and `"Import backup"` are reachable from Settings -> Storage and from the Library overflow menu (on a phone also from the editor's overflow menu), and closing the dialog returns focus to the control that opened it.
+- AC-F17.9: Dropping or picking a backup `.zip` opens the `"Import backup"` dialog, a project `.zip` opens the project, and a `.zip` with neither manifest `kind` (or a file that is not a ZIP) writes nothing and shows the exact message from [persistence.md section 8.4.3](persistence.md#843-selective-export-and-selective-import-flow).
+- AC-F17.10: A Replace import started from the editor ends in the Library with the imported projects, the result toast and focus on the Settings button.
 
 ### F26. Blending multiple images (`imageBlend`)
 

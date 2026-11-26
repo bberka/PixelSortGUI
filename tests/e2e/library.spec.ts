@@ -609,6 +609,14 @@ for (const {viewport, theme} of DIALOG_CASES) {
 		await openCardMenu(page, 'Alpha');
 		await page.getByRole('menuitem', {name: 'Delete'}).click();
 		await expect(page.getByRole('alertdialog')).toBeVisible();
+		// On a phone the pointer is left over the confirm button; the scan judges
+		// the resting colours.
+		await page.mouse.move(0, 0);
+		await page.waitForFunction(() =>
+			globalThis.document
+				.getAnimations()
+				.every((item) => item.playState !== 'running'),
+		);
 		await assertNoA11yViolations(page);
 		await page.keyboard.press('Escape');
 		await expect(page.getByRole('alertdialog')).toHaveCount(0);

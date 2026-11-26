@@ -1124,9 +1124,14 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				compareMode: payload.compareMode,
 				welcomeDismissed: payload.welcomeDismissed ?? false,
 				route: payload.route,
+				// Keep both: a restore notice must not hide a geometry reset.
 				notice:
-					payload.notice ??
-					(stored ? geometryNotice(stored, stored.transform) : null),
+					[
+						payload.notice,
+						stored ? geometryNotice(stored, stored.transform) : null,
+					]
+						.filter(Boolean)
+						.join(' ') || null,
 				activeProjectId: activeProject?.id ?? null,
 				activeProject,
 				stackNeedsWriteBack: resolved?.needsWriteBack ?? false,

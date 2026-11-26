@@ -10,14 +10,21 @@ import {
 	type ChannelShiftParams,
 } from './channel-shift-spec.ts';
 import {channelSwapSpec, type ChannelSwapParams} from './channel-swap-spec.ts';
+import {pixelSmearSpec, type PixelSmearParams} from './pixel-smear-spec.ts';
+import {jpegCrushSpec, type JpegCrushParams} from './jpeg-crush-spec.ts';
 import {pixelSortSpec, type PixelSortParams} from './pixel-sort/spec.ts';
 import {sliceShiftSpec, type SliceShiftParams} from './slice-shift-spec.ts';
 import {mirrorFoldSpec, type MirrorFoldParams} from './mirror-fold-spec.ts';
 import {posterizeSpec, type PosterizeParams} from './posterize-spec.ts';
+import {rgbNoiseSpec, type RgbNoiseParams} from './rgb-noise-spec.ts';
 import {
 	scanlineWaveSpec,
 	type ScanlineWaveParams,
 } from './scanline-wave-spec.ts';
+import {
+	thresholdInvertSpec,
+	type ThresholdInvertParams,
+} from './threshold-invert-spec.ts';
 
 const lazyPixelSortEffect: EffectDefinition<PixelSortParams> = {
 	...pixelSortSpec,
@@ -91,6 +98,38 @@ const lazyBayerDitherEffect: EffectDefinition<BayerDitherParams> = {
 	},
 };
 
+const lazyRgbNoiseEffect: EffectDefinition<RgbNoiseParams> = {
+	...rgbNoiseSpec,
+	async render(input, output, params, ctx) {
+		const {rgbNoiseEffect} = await import('./rgb-noise.ts');
+		return rgbNoiseEffect.render(input, output, params, ctx);
+	},
+};
+
+const lazyThresholdInvertEffect: EffectDefinition<ThresholdInvertParams> = {
+	...thresholdInvertSpec,
+	async render(input, output, params, ctx) {
+		const {thresholdInvertEffect} = await import('./threshold-invert.ts');
+		return thresholdInvertEffect.render(input, output, params, ctx);
+	},
+};
+
+const lazyPixelSmearEffect: EffectDefinition<PixelSmearParams> = {
+	...pixelSmearSpec,
+	async render(input, output, params, ctx) {
+		const {pixelSmearEffect} = await import('./pixel-smear.ts');
+		return pixelSmearEffect.render(input, output, params, ctx);
+	},
+};
+
+const lazyJpegCrushEffect: EffectDefinition<JpegCrushParams> = {
+	...jpegCrushSpec,
+	async render(input, output, params, ctx) {
+		const {jpegCrushEffect} = await import('./jpeg-crush.ts');
+		return jpegCrushEffect.render(input, output, params, ctx);
+	},
+};
+
 /**
  Main-thread effect registry: carries schemas, labels, and defaults without
  statically importing render implementations (such as the direction table).
@@ -107,6 +146,10 @@ export const effects: readonly EffectDefinition[] = [
 	lazyScanlineWaveEffect,
 	lazyMirrorFoldEffect,
 	lazyBayerDitherEffect,
+	lazyRgbNoiseEffect,
+	lazyThresholdInvertEffect,
+	lazyPixelSmearEffect,
+	lazyJpegCrushEffect,
 ];
 
 export const effectRegistry = createRegistry(effects);

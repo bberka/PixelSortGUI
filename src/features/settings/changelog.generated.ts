@@ -5,6 +5,11 @@ export const CHANGELOG_TEXT = `# Changelog
 
 - New effect: Mirror fold, which mirrors or folds the image left to right, top to bottom, four ways or as a kaleidoscope.
 - New effect: Bayer dither.
+- New effect: RGB noise, which adds colour or monochrome noise and dead or hot pixels.
+- New effect: Threshold invert, which inverts channels inside a key range and can show the selection.
+- New effect: Pixel smear, which drags selected pixels along an angle in fading trails.
+- New effect: JPEG crush, which crushes blocks like a badly saved JPEG and can corrupt some of them into colour glitches.
+- A new start screen while the library is empty: drop photos or open them, try a built-in sample picture, or pick one of four effect previews to see it applied. It replaces the welcome card.
 
 ## v0.2.0
 

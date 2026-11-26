@@ -1,8 +1,18 @@
 # Drift `v0.2.0` Acceptance Traceability (`T7.17`)
 
-Maps every acceptance criterion added since `v0.1.0` in [product.md](product.md) to its automated tests: the next-release features `F20` to `F24`, the side-by-side effect stacks and horizontal split (`AC-F11.5` to `AC-F11.14`, `AC-F12.10`), the export file-size limit (`AC-F12.8`, `AC-F12.9`) and the in-app guide (`F27`). Features present in `v0.1.0` stay mapped in [acceptance-v0.1.0.md](acceptance-v0.1.0.md).
+Maps every acceptance criterion added since `v0.1.0` in [product.md](product.md) to its automated tests: the next-release features `F20` to `F24`, the side-by-side effect stacks and horizontal split (`AC-F11.5` to `AC-F11.14`, `AC-F12.10`), the export file-size limit (`AC-F12.8`, `AC-F12.9`) the in-app guide (`F27`) and the empty Library (`AC-F2.8` to `AC-F2.12`, added after the `v0.2.0` release). Features present in `v0.1.0` stay mapped in [acceptance-v0.1.0.md](acceptance-v0.1.0.md).
 
 Each test is written as its file, then its title in quotes. Titles with `%s` or `%i` are table-driven tests. The `M` numbers point to the [manual desktop checklist](#manual-desktop-checklist), which covers what a test machine cannot judge. Run the automated tests with `vp run check` (unit and component), `vp run test:e2e` (Playwright, Chromium and Firefox) and `vp run test:perf` (speed budgets).
+
+## F2: empty Library
+
+| Criterion | Automated coverage | Manual |
+|---|---|---|
+| `AC-F2.8` Centred, scrolls from the top | `tests/e2e/landing.spec.ts` "the empty library is centred at %s width (AC-F2.8)"<br>`tests/e2e/landing.spec.ts` "a screen too short for the empty library scrolls from its top (AC-F2.8)" | — |
+| `AC-F2.9` App bar actions at every width | `tests/e2e/landing.spec.ts` "the app bar shows Import images, Guide and Settings at %s width (AC-F2.9)"<br>`src/features/library/library-screen.test.tsx` "keeps Import images, Guide and Settings in the app bar (AC-F2.9)" | — |
+| `AC-F2.10` Try a sample, offline | `tests/e2e/landing.spec.ts` "Try a sample creates one 1200 x 900 project and opens it (AC-F2.10)"<br>`tests/e2e/landing.spec.ts` "previews and the sample work offline with no external request (AC-F2.10)"<br>`src/features/library/use-sample-project.test.tsx` "creates one project for two activations in a row (AC-F2.10)"<br>`src/features/library/sample-image.test.ts` "defaults to an opaque 1200 x 900 picture (AC-F2.10)" | — |
+| `AC-F2.11` Effect tiles | `tests/e2e/landing.spec.ts` "the %s tile opens the sample with its effects, undoable (AC-F2.11)"<br>`src/features/library/showcase.test.ts` "$name keeps the original on the left and changes the right half"<br>`src/features/library/use-sample-project.test.tsx` "applies the picked tile as one history entry (AC-F2.11)" | — |
+| `AC-F2.12` Keyboard and axe | `tests/e2e/landing.spec.ts` "every action works from the keyboard (AC-F2.12)"<br>`tests/e2e/landing.spec.ts` "@a11y the empty library is clean in %s at %ix%i, with and without the introduction (AC-F2.12)" | — |
 
 ## F11 and F12: split sides, horizontal split and export
 
@@ -74,7 +84,7 @@ Each test is written as its file, then its title in quotes. Titles with `%s` or 
 | `AC-F24.1` Offline "View changelog" | `tests/e2e/settings.spec.ts` "AC-F24.1 & AC-F24.2: expands the CHANGELOG.md release notes offline with zero network requests"<br>`src/features/settings/settings.test.tsx` "AC-F24.1: expands and collapses the bundled release notes" | `M7` |
 | `AC-F24.2` Bundled from `CHANGELOG.md` | `scripts/changelog.test.ts` "matches the root CHANGELOG.md"<br>`tests/e2e/settings.spec.ts` "AC-F24.1 & AC-F24.2: expands the CHANGELOG.md release notes offline with zero network requests" | `M7` |
 
-## F27: in-app guide and welcome card
+## F27: in-app guide and effect introduction
 
 | Criterion | Automated coverage | Manual |
 |---|---|---|
@@ -84,8 +94,8 @@ Each test is written as its file, then its title in quotes. Titles with `%s` or 
 | `AC-F27.4` Every effect and parameter listed | `src/features/guide/effects-reference.test.tsx` "lists every registered effect with every parameter label" | `M8` |
 | `AC-F27.5` Contents list per width | `tests/e2e/guide.spec.ts` "the contents list stays beside the text on desktop and moves focus (AC-F27.5)"<br>`tests/e2e/guide.spec.ts` "the contents list collapses at phone width (AC-F27.5)"<br>`tests/e2e/guide.spec.ts` "the contents list collapses at tablet width (AC-F27.5)" | — |
 | `AC-F27.6` Offline, same origin | `tests/e2e/guide.spec.ts` "#/guide loads offline with no external request (AC-F27.6)" | — |
-| `AC-F27.7` Welcome card once | `tests/e2e/guide.spec.ts` "the welcome card appears once and stays dismissed after reload (AC-F27.7)"<br>`tests/state/app-store-guide.test.ts` "dismisses the welcome card on the first import" | — |
-| `AC-F27.8` axe and no horizontal scroll | `tests/e2e/guide.spec.ts` "@a11y guide and welcome card are clean in light at 390x844 (AC-F27.8)" (also `820x1180` and `1440x900`, `light` and `dark`) | — |
+| `AC-F27.7` Introduction once | `tests/e2e/guide.spec.ts` "the effect introduction appears once and stays dismissed after reload (AC-F27.7)"<br>`tests/e2e/guide.spec.ts` "a first import removes the introduction for good (AC-F27.7)"<br>`src/features/library/library-screen.test.tsx` "shows the effect introduction until it is dismissed, then keeps the actions (AC-F27.7)"<br>`tests/state/app-store-guide.test.ts` "dismisses the introduction on the first import" | — |
+| `AC-F27.8` axe and no horizontal scroll | `tests/e2e/guide.spec.ts` "@a11y guide and empty library are clean in light at 390x844 (AC-F27.8)" (also `820x1180` and `1440x900`, `light` and `dark`) | — |
 
 ## Manual desktop checklist
 

@@ -110,7 +110,10 @@ test('the app opens on the library screen with the empty state', async ({
 		page.getByRole('heading', {level: 1, name: 'Drift'}),
 	).toBeVisible();
 	await expect(
-		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
 	).toBeVisible();
 	await expect(page.getByText('Images stay on this device.')).toBeVisible();
 	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();
@@ -124,7 +127,10 @@ test('an unknown project id shows the notice and lands on the library', async ({
 
 	await hoverNoticeToast(page);
 	await expect(
-		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
 	).toBeVisible();
 	expect(new URL(page.url()).hash).toBe('#/');
 });
@@ -140,7 +146,10 @@ test('with IndexedDB unavailable the banner shows and the app stays usable', asy
 		'Storage unavailable: nothing will be saved after you close this tab.',
 	);
 	await expect(
-		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
 	).toBeVisible();
 
 	await importSyntheticProject(page, 'Memory only');
@@ -330,7 +339,10 @@ for (const theme of THEMES) {
 			const consoleErrors = collectConsoleErrors(page);
 			await openInTheme(page, theme, '/', viewport);
 			await expect(
-				page.getByRole('heading', {level: 2, name: 'No projects yet'}),
+				page.getByRole('heading', {
+					level: 2,
+					name: 'Glitch art and pixel sorting for your photos',
+				}),
 			).toBeVisible();
 			await expectLayoutAndA11y(page, viewport, consoleErrors);
 		});

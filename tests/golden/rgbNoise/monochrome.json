@@ -1,0 +1,24 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "rn000001",
+				"type": "rgbNoise",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"amount": 0.4,
+					"monochrome": true,
+					"dropout": 0,
+					"grainSize": 1,
+					"seed": 1234
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

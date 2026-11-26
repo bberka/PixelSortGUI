@@ -14,7 +14,7 @@ Drift is a darkroom-style still-photo utility. The user's image is the visual fo
 
 Rules every screen follows:
 
-- **No decoration or marketing copy.** No hero banners, gradients, background grids, onboarding tours, landing pages, or explanatory subtitles that restate labels. Help lives on the Guide screen (section 7.3); the only first-launch aid is one dismissible welcome card in the empty Library.
+- **No decoration or marketing copy.** No gradients, background grids, onboarding tours, separate landing pages, or explanatory subtitles that restate labels. The one exception is the empty Library (section 7.3), which introduces the app with a hero, one line of pitch and four effect previews. Its colour comes only from the sample picture; its chrome uses the same tokens as every other screen. Help lives on the Guide screen (section 7.3).
 - **No remote assets.** System fonts only, bundled `lucide-react` icons only. Zero network requests at runtime, except the cloud backup and sync the user connects (product.md F28), which brings no remote font, icon or style of ours; Google's sign-in script and its style are the provider's.
 - **Semantic tokens only.** Never write raw hex, `rgb()`, or Tailwind palette color utilities (`bg-zinc-900`, `text-blue-500`) in `.tsx` components. Use semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) mapped in `src/styles/app.css`.
 - **Same features on every screen size.** Phone, tablet, and desktop layouts expose the exact same first-release capabilities; only chrome placement and target sizing adapt. First-release acceptance is desktop only; phone and tablet widths are checked in a desktop browser for layout only.
@@ -69,6 +69,7 @@ System stacks only (zero network requests):
 | Role | Font | Size / Line height | Weight | Extra rules |
 |---|---|---|---|---|
 | App / Screen heading (`h1`) | Sans | 18 px / 24 px | 600 | Single `h1` per screen |
+| Empty Library pitch (`h2`) | Sans | 24 px / 32 px; 30 px / 36 px from 640 px | 600 | `text-wrap: balance`; used nowhere else |
 | Dialog / Sheet title | Sans | 16 px / 22 px | 600 | |
 | Parameter group heading | Sans | 11 px / 16 px | 600 | Uppercase, `letter-spacing: 0.05em`, `text-muted-foreground` |
 | Control label / Body | Sans | 14 px / 20 px | 500 (label), 400 (body) | |
@@ -192,6 +193,8 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 - **Grid columns:** Phone (`390 × 844`): 2 columns, `12 px` gap, `12 px` page padding. Tablet (`820 × 1180`): 3 columns, `16 px` gap, `16 px` padding. Desktop (`1440 × 900`): `repeat(auto-fill, minmax(220px, 1fr))`, `16 px` gap, `24 px` padding.
 - **Drag and drop (desktop, AC-F1.2):** Dragging files over the window displays a high-contrast dashed overlay (`"Drop images to open"`).
 - **Card interaction (AC-F2.7):** Card body is a focusable button (`Enter` / `Space` opens project); overflow `⋯` button sits in the card footer with `Open`, `Rename`, `Duplicate`, `Delete`.
+- **App bar (AC-F2.9):** `Import images`, `Guide` and `Settings` stay at the right end of the bar at every width, with or without projects.
+- **No projects:** the grid is replaced by the empty Library (section 7.3).
 
 ### 6.2 Editor screen: Desktop (`1440 × 900`)
 
@@ -333,14 +336,45 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - Clicking `"Choose image"` opens a `Popover` (desktop/tablet) / `Sheet` (phone) with two options: `"From device"` (opens native image file picker with F1 validation/50 MP flow) and `"From library"` (scrollable grid of existing library project thumbnails to reuse a stored `SourceRecord` without duplicating bytes).
   - If the referenced source is missing (`'missing-source'` warning), displays a destructive-text inline note `"Missing image"` beside `"Choose image"`.
 
-### 7.3 Guide screen and welcome card (F27)
+### 7.3 Empty Library and Guide screen (F2, F27)
+
+Empty Library, desktop and tablet (phone stacks the actions at full width):
+
+```
++-------------------------------------------------------------------+
+| [icon] Drift                  [Import images] [Guide] [Settings]  |
++-------------------------------------------------------------------+
+|                              [icon 56]                            |
+|             Glitch art and pixel sorting for your photos          |
+|        + - - - - - - - - - - - - - - - - - - - - - - - +          |
+|        '                 [ImageUp icon]                 '        |
+|        '                Drop photos here                '        |
+|        '  [Open images] [Try a sample] [Read the guide] '        |
+|        + - - - - - - - - - - - - - - - - - - - - - - - +          |
+|          Images stay on this device. Drift works offline ...      |
+|       Opens JPEG, PNG, ... Shortcuts: [?] Guide [\] Compare ...     |
+|                                                                   |
+|    See what Drift does                                      [x]   |
+|    [before|after]  [before|after]  [before|after]  [before|after] |
+|     Pixel sort      Channel shift   Slice shift     Posterize     |
++-------------------------------------------------------------------+
+```
+
+- **Column:** one `ScrollArea` fills `<main>`. Its content is horizontally centred, at most `896 px` wide, with `16 px` side padding (`24 px` from 640 px), and vertically centred while it is shorter than the screen.
+- **Hero:** the app icon at `56 px` (decorative, `alt=""`), then the pitch as the screen's `h2`. It takes focus (`tabIndex={-1}`) after the introduction is dismissed or the last project is deleted.
+- **Drop zone:** a named `section` ("Add photos") at most `576 px` wide, `2 px` dashed `border-input`, `--card` fill, `8 px` radius, `lucide` `ImageUp` icon, `"Drop photos here"` in `16 / 24` semibold. It is a visual target: the whole window accepts drops, and the drop overlay (section 6.1) covers the screen while dragging.
+- **Actions:** `Button` default `"Open images"` (the only primary), `"Try a sample"` outline (disabled and reading `"Creating sample…"` while saving), `"Read the guide"` ghost link. A row from 640 px; stacked full width below. If the sample cannot be made, a toast says `"Couldn't create the sample project."`.
+- **Privacy and tips:** the privacy line in `14 / 20`, the tip line in `12 / 16`, both `text-muted-foreground`, centred. Keys use `kbd` with `--secondary` fill and the mono font.
+- **Introduction:** a named `section` with `h3` `"See what Drift does"`, one line `"Pick one to try it on a sample picture. Left is the original, right is the result."`, and a ghost icon button `"Dismiss introduction"`. Four tiles in 2 columns below 1024 px and 4 from 1024 px, `12 px` gap. Each tile is one `button` (`--card`, `1 px` border, `8 px` radius, hover `--secondary`): a `4:3` canvas with the original in the left half, the result in the right half and the split divider line of section 7.2 between them (decorative, `aria-hidden`), then the tile name (`14 / 20` semibold) and one line of description (`12 / 16` muted). While a preview renders, or if it fails, the canvas area is `--muted`; the tile works either way.
+- **Sample picture:** original artwork generated by code: a banded dusk sky, a striped sun, three ridges and rippled water with fine grain, so every effect has edges and runs to work on. It is part of the photo layer, not the UI, so its colours are not tokens.
+
+Guide screen:
 
 - **App bar:** a ghost icon `Button` with `CircleHelp` (`aria-label="Guide"`, tooltip `"Guide (?)"`) before Settings on the Library and Editor. On the Guide, a back arrow on the left and Settings on the right.
 - **Layout:** one `ScrollArea` for the page. At `>= 1024 px` a `224 px` contents column, sticky at the top, beside a text column of at most `68ch`. Below that, a sticky bar with a full-width outline `Button` `"Contents"` (`aria-expanded`) that opens the list; the list scrolls inside `60dvh`.
 - **Contents:** plain full-width buttons with hover fill on `--secondary`; `32 px` tall, `44 px` on coarse pointer. Activating one scrolls the section into view without animation and focuses its heading.
 - **Type:** page title `24 / 32` semibold (`h2`), section titles `18 / 24` semibold (`h3`), effect names `16 / 24` (`h4`), body `14 / 24`.
 - **Effects reference:** one bordered `--card` block per effect with a definition list of parameters, divided by `1 px` `--border`. Keys in the shortcut table use `kbd` with `--secondary` fill and the mono font.
-- **Welcome card:** `Card` at most `448 px` wide below the empty-state column: title `"Welcome to Drift"`, one line of text, outline `"Import a photo"`, ghost `"Read the guide"`, and a ghost icon button `"Dismiss welcome"` at the top right. Dismissing moves focus to the `"No projects yet"` heading.
 
 ## 8. Interaction: touch, pointer and keyboard
 
@@ -394,7 +428,7 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 
 | State | Trigger | Presentation and exact copy | Actions |
 |---|---|---|---|
-| Empty library (AC-F2.1) | 0 projects stored | Centered column: heading `"No projects yet"`, note `"Images stay on this device."` | `"Open images"` (primary); the welcome card on a first launch, afterwards the link `"New here? Read the guide"` (section 7.3) |
+| Empty library (AC-F2.1) | 0 projects stored | The empty Library of section 7.3: pitch, `"Drop photos here"`, note `"Images stay on this device."` | `"Open images"` (primary), `"Try a sample"`, `"Read the guide"`; on a first launch also the effect introduction |
 | Empty effect stack | New project or all effects removed | Centered note in stack panel: `"No effects yet"` | `"Add effect"`, `"Browse presets"` |
 | Render in progress (AC-F8.3) | Preview render running > 300 ms | Thin `2 px` `--accent` progress bar pinned to top of canvas stage | Disappears on finish or cancel |
 | Full-resolution render (AC-F8.4) | Zoom > 1.25× settle proxy | Compact pill at bottom-left of canvas: `"Rendering full resolution"` | Disappears on finish or cancel (AC-F8.5) |

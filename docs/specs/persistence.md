@@ -135,7 +135,7 @@ type AppStateRecord = {
 	activeProjectId: string | null; // null when user is on the Library screen
 	theme: ThemePreference; // default 'system'
 	compareMode: CompareMode; // default 'toggle'
-	welcomeDismissed?: boolean; // F27 welcome card; absent means false
+	welcomeDismissed?: boolean; // F27 effect introduction dismissed; absent means false
 };
 
 type SchemaInfoRecord = {
@@ -179,7 +179,7 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; counts remaining `projects` with index `bySourceHash === sourceHash` and deletes the `sources` record if count is 0 (AC-F2.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
-| Dismiss welcome card or first import (F27) | `meta` | Immediate | Sets `meta.appState.welcomeDismissed = true`. The field is optional, so no database version change. |
+| Dismiss the effect introduction or first import (F27) | `meta` | Immediate | Sets `meta.appState.welcomeDismissed = true`. The field is optional, so no database version change. |
 
 ## 5. Private browsing and storage unavailability
 
@@ -678,7 +678,7 @@ Unit tests run in Node under `vp test run` using `fake-indexeddb` (MIT, dev depe
 
 ## 11. Cloud backup and sync (F28)
 
-Status: proposed, 2026-11-26; takes effect when the owner merges it. What the user sees is in [product.md F28](product.md#f28-optional-cloud-backup-and-sync-dropbox-google-drive); reasons are in [decisions.md D38 to D40](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). Nothing here is implemented. Facts about the providers were read on 2026-11-26 (sources in section 11.12); the items in section 11.13 are not confirmed and are settled by a spike before code.
+Status: proposed, 2026-11-26; takes effect when the owner merges it. What the user sees is in [product.md F28](product.md#f28-optional-cloud-backup-and-sync-dropbox-google-drive); reasons are in [decisions.md D39 to D41](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). Nothing here is implemented. Facts about the providers were read on 2026-11-26 (sources in section 11.12); the items in section 11.13 are not confirmed and are settled by a spike before code.
 
 ### 11.1 Rules
 

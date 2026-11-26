@@ -6,6 +6,7 @@ import {createTestStore} from '../../tests/state/fixtures.ts';
 import {App} from './app.tsx';
 import {announce} from './announcer.ts';
 import type {ScreenRegistry} from './route-host.tsx';
+import {LANDING} from '@/features/guide/content.ts';
 import type {RestoreResult} from '@/storage/restore.ts';
 import type {AppRuntime} from '@/state/index.ts';
 import type {AppRoute} from '@/state/router.ts';
@@ -97,7 +98,7 @@ describe('route host', () => {
 		await flush();
 
 		expect(screen.querySelector('h1')?.textContent).toBe('Drift');
-		expect(textOf(screen)).toContain('No projects yet');
+		expect(textOf(screen)).toContain(LANDING.pitch);
 		expect(textOf(screen)).toContain('Images stay on this device.');
 		expect(
 			[...screen.querySelectorAll('button')].map(
@@ -133,7 +134,7 @@ describe('route host', () => {
 			'Effect stack',
 			'Parameters',
 		]);
-		expect(textOf(screen)).not.toContain('No projects yet');
+		expect(textOf(screen)).not.toContain(LANDING.pitch);
 	});
 });
 
@@ -149,7 +150,7 @@ describe('startup states', () => {
 		);
 		const screen = mount(<App runtime={runtime} />);
 
-		expect(textOf(screen)).not.toContain('No projects yet');
+		expect(textOf(screen)).not.toContain(LANDING.pitch);
 		expect(screen.querySelector('[aria-busy="true"]')).not.toBeNull();
 		expect(screen.querySelector('h1')?.textContent).toBe('Drift');
 	});
@@ -165,7 +166,7 @@ describe('startup states', () => {
 		expect(textOf(screen)).toContain(
 			'Open Drift over HTTPS or http://localhost so browser storage and offline features can work.',
 		);
-		expect(textOf(screen)).not.toContain('No projects yet');
+		expect(textOf(screen)).not.toContain(LANDING.pitch);
 	});
 
 	it('blocks the app with the newer-version screen when storage was written by a newer app', async () => {
@@ -193,7 +194,7 @@ describe('startup states', () => {
 		expect(banner?.textContent).toBe(
 			'Storage unavailable: nothing will be saved after you close this tab.',
 		);
-		expect(textOf(screen)).toContain('No projects yet');
+		expect(textOf(screen)).toContain(LANDING.pitch);
 	});
 
 	it('shows no banner when storage opened normally', async () => {
@@ -212,7 +213,7 @@ describe('startup states', () => {
 		const screen = mount(<App runtime={runtime} />);
 		await flush();
 
-		expect(textOf(screen)).toContain('No projects yet');
+		expect(textOf(screen)).toContain(LANDING.pitch);
 		expect(store.getState().notice).toBeNull();
 		// The toast library mounts the message on a later tick than the store update.
 		await vi.waitFor(() => {
@@ -244,7 +245,7 @@ describe('startup states', () => {
 		await flush();
 
 		expect(store.getState().storage.quotaFull).toBe(false);
-		expect(textOf(screen)).toContain('No projects yet');
+		expect(textOf(screen)).toContain(LANDING.pitch);
 	});
 });
 

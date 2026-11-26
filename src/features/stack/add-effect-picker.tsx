@@ -98,7 +98,11 @@ export function AddEffectPicker({
 					<DialogHeader>
 						<DialogTitle>Add effect</DialogTitle>
 					</DialogHeader>
-					<EffectOptions registry={registry} onAdd={add} />
+					<EffectOptions
+						registry={registry}
+						className="-mx-1 max-h-[60dvh] overflow-y-auto px-1"
+						onAdd={add}
+					/>
 				</DialogContent>
 			</Dialog>
 		);
@@ -110,7 +114,9 @@ export function AddEffectPicker({
 			<PopoverContent
 				align="start"
 				aria-labelledby={titleId}
-				className="w-72 p-1"
+				// The list outgrows short windows; it scrolls inside the space Radix
+				// says is free below or above the trigger.
+				className="flex max-h-(--radix-popover-content-available-height) w-72 flex-col p-1"
 			>
 				<p
 					id={titleId}
@@ -118,7 +124,11 @@ export function AddEffectPicker({
 				>
 					Add effect
 				</p>
-				<EffectOptions registry={registry} onAdd={add} />
+				<EffectOptions
+					registry={registry}
+					className="min-h-0 overflow-y-auto"
+					onAdd={add}
+				/>
 			</PopoverContent>
 		</Popover>
 	);

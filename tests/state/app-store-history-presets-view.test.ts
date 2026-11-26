@@ -6,6 +6,7 @@ import {
 	selectRedoLabel,
 	selectUndoLabel,
 } from '../../src/state/app-store.ts';
+import {SHOWCASE_TILES} from '../../src/features/library/showcase.ts';
 import {StorageValidationError} from '../../src/storage/types.ts';
 import {createTestStore, flushMicrotasks, makeTestBlob} from './fixtures.ts';
 
@@ -283,6 +284,29 @@ describe('app store — undo/redo, presets, and view-state persistence', () => {
 			'Apply preset ASDF classic',
 		);
 		expect(coordinator.calls).toHaveLength(1);
+	});
+
+	it('applyStack replaces the stack as one entry under the given label and undoes to the previous one', async () => {
+		const {store, repository, project} = await setupWithProject();
+		const {stack} = SHOWCASE_TILES.find((tile) => tile.id === 'posterize')!;
+
+		await store.getState().applyStack(stack, 'Apply preset Posterize');
+
+		const [instance] = store.getState().activeProject!.stack.instances;
+		expect(instance).toMatchObject({
+			type: 'posterize',
+			params: {levels: 4},
+		});
+		expect(instance.id).not.toBe(stack.instances[0].id);
+		expect(store.getState().activeProject!.selectedInstanceId).toBe(
+			instance.id,
+		);
+		expect(
+			(await repository.getHistory(project.id)).map((entry) => entry.label),
+		).toEqual(['Initial', 'Apply preset Posterize']);
+
+		await store.getState().undo();
+		expect(store.getState().activeProject!.stack.instances).toEqual([]);
 	});
 
 	it('addPresetToStack appends preset instances with fresh non-colliding ids, persists, and tells coordinator', async () => {

@@ -104,7 +104,10 @@ test('the empty library shows the heading, the note and the import action', asyn
 	await page.goto('/');
 
 	await expect(
-		page.getByRole('heading', {level: 2, name: 'No projects yet'}),
+		page.getByRole('heading', {
+			level: 2,
+			name: 'Glitch art and pixel sorting for your photos',
+		}),
 	).toBeVisible();
 	await expect(page.getByText('Images stay on this device.')).toBeVisible();
 	await expect(page.getByRole('button', {name: 'Open images'})).toBeEnabled();

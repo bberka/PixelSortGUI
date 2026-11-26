@@ -1,0 +1,25 @@
+{
+	"input": "alpha-32x32",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sm000001",
+				"type": "pixelSmear",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 180,
+					"selectKey": "luma",
+					"threshold": [0.4, 0.6],
+					"invert": false,
+					"decay": 0.92,
+					"maxLength": 12
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

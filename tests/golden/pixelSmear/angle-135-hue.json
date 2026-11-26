@@ -1,0 +1,25 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "sm000001",
+				"type": "pixelSmear",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"angle": 135,
+					"selectKey": "hue",
+					"threshold": [0, 0.1],
+					"invert": false,
+					"decay": 0.99,
+					"maxLength": 24
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

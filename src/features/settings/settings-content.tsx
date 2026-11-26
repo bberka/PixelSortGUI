@@ -11,6 +11,7 @@ import {
 	SunIcon,
 } from 'lucide-react';
 import {ABOUT_EXTERNAL_LINKS} from './about-links.ts';
+import {CHANGELOG_TEXT} from './changelog.generated.ts';
 import {
 	THIRD_PARTY_NOTICES,
 	THIRD_PARTY_NOTICES_FILE,
@@ -75,6 +76,7 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 
 	const [requestingPersistence, setRequestingPersistence] = useState(false);
 	const [noticesOpen, setNoticesOpen] = useState(false);
+	const [changelogOpen, setChangelogOpen] = useState(false);
 	const mountedRef = useRef(true);
 
 	useEffect(() => {
@@ -385,6 +387,41 @@ export function SettingsContent({open, storageManager}: SettingsContentProps) {
 									</li>
 								))}
 							</ul>
+						</ScrollArea>
+					) : null}
+				</div>
+
+				<div className="flex flex-col gap-2">
+					<div className="flex items-center justify-between gap-2">
+						<span className="text-foreground">Changelog</span>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							aria-expanded={changelogOpen}
+							aria-controls="settings-changelog"
+							onClick={() => {
+								setChangelogOpen((previous) => !previous);
+							}}
+						>
+							{changelogOpen ? (
+								<ChevronDownIcon className="size-4" aria-hidden="true" />
+							) : (
+								<ChevronRightIcon className="size-4" aria-hidden="true" />
+							)}
+							<span>{changelogOpen ? 'Hide changelog' : 'View changelog'}</span>
+						</Button>
+					</div>
+					{changelogOpen ? (
+						<ScrollArea
+							id="settings-changelog"
+							role="region"
+							aria-label="Release notes"
+							className="max-h-56 rounded-md border border-border bg-secondary"
+						>
+							<p className="px-3 py-2 text-xs leading-4 break-words whitespace-pre-wrap text-foreground">
+								{CHANGELOG_TEXT}
+							</p>
 						</ScrollArea>
 					) : null}
 				</div>

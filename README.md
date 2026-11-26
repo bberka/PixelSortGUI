@@ -17,7 +17,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Compare view: toggle or hold Compare (button or `\`) to view the original image, and split view (`S`) with a draggable and keyboard-operable vertical divider.
 - Responsive editor layouts: a fixed right sidebar on desktop, a resizable and collapsible docked bottom panel on tablet, a horizontal stack strip with a three-detent bottom sheet on portrait phone, and a collapsible right drawer on landscape phone.
 - Export as PNG, JPEG or WebP (WebP only where the browser can encode it). JPEG and WebP have a quality setting. Size is full, half, quarter or a custom longest side, with an optional output file-size limit (compressing JPEG/WebP quality and scaling dimensions as needed). You can set the file name.
-- Settings: theme (System, Light or True Black), storage usage and storage protection status, an "Install app" button when the browser offers installation, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, and a link to their full licence texts.
+- Settings: theme (System, Light or True Black), storage usage and storage protection status, an "Install app" button when the browser offers installation, and links to the source code, issue tracker, licence and releases, the list of bundled third-party packages, a link to their full licence texts, and a changelog that works offline.
 - Offline use and installable PWA: after the first visit, the app loads, edits and exports offline via a precached service worker. When a new version is ready, a "Reload to update" toast appears without interrupting active edits.
 
 ## Not there yet

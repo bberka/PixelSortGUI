@@ -219,7 +219,15 @@ The Compare button toggles between the result and the source image (keyboard: `\
 
 ### F12. Export
 
-The export dialog offers format (PNG, JPEG, and WebP only where the browser's native encoder produces WebP), quality for JPEG and WebP (50 to 100, default 92, divided by 100 for the encoder), size (Full, 1/2, 1/4, or a custom longest side, never larger than the source), and the file name (default `<project name>-<YYYYMMDD-HHmmss>.<ext>`). Transparent pixels are flattened onto white for JPEG. A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of such images is later work. Export renders at the chosen size in a separate worker with a progress bar and Cancel. On browsers that support sharing files (`navigator.canShare({files})`), a Share button is shown next to Download. Exported files carry no EXIF, GPS or ICC metadata and are sRGB.
+The export dialog offers format (PNG, JPEG, and WebP only where the browser's native encoder produces WebP), quality for JPEG and WebP (50 to 100, default 92, divided by 100 for the encoder), size (Full, 1/2, 1/4, or a custom longest side, never larger than the source), an optional output file-size limit (Off by default, or a target maximum size in KB/MB with quick presets — 500 KB, 1 MB, 2 MB, 5 MB, 10 MB — plus a custom value clamped to 10 KB–100 MB), and the file name (default `<project name>-<YYYYMMDD-HHmmss>.<ext>`). Transparent pixels are flattened onto white for JPEG. A PNG with partial transparency does not round-trip exactly because browsers premultiply alpha in a 2D canvas (opaque images are exact); exact decoding of such images is later work.
+
+When a file-size limit is active:
+- For JPEG and WebP, the encoder first encodes at the requested dimensions and quality; if the output exceeds the target, it binary-searches quality down to a minimum of 10, and if still over the limit, progressively scales down dimensions until the output fits (or reaches the minimum side of 64 px).
+- For PNG (lossless), the encoder scales down dimensions to fit, and the dialog shows a brief helper note explaining that PNG scales dimensions to fit and JPEG or WebP compress more tightly.
+- When export finishes, the dialog displays the final exported file size along with any adjusted dimensions or quality (and a gentle notice if even the minimum size exceeded the target).
+- The file-size limit is persisted per project alongside the other export settings.
+
+Export renders at the chosen size in a separate worker with a progress bar and Cancel. On browsers that support sharing files (`navigator.canShare({files})`), a Share button is shown next to Download. Exported files carry no EXIF, GPS or ICC metadata and are sRGB.
 
 - AC-F12.1: Exporting a 12 MP project as PNG at Full size downloads a PNG of exactly the source dimensions within 5 s on a reference laptop.
 - AC-F12.2: WebP appears in the format list only when the startup `convertToBlob` probe confirms the browser encodes WebP (offered in Chrome, Edge and Firefox).
@@ -227,6 +235,8 @@ The export dialog offers format (PNG, JPEG, and WebP only where the browser's na
 - AC-F12.4: Cancel stops the export within 1 s and no file is written.
 - AC-F12.6: The exported file has no EXIF block (checked with an EXIF reader).
 - AC-F12.7: The export settings last used for a project are preselected the next time its export dialog opens.
+- AC-F12.8: Exporting with a file-size limit produces a file whose byte size is at or below the chosen target (or reaches the 64 px minimum side and reports that the target could not be met) while preserving EXIF-free output and clean cancellation within 1 s.
+- AC-F12.9: The chosen file-size limit (Off, preset, or custom) is persisted per project and restored the next time the export dialog opens.
 
 ### F13. Zoom and pan
 

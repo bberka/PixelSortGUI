@@ -28,6 +28,7 @@ import {
 	savedCrop,
 	type AspectId,
 } from '@/state/geometry.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 
 const FIELDS: ReadonlyArray<{key: keyof CropRect; label: string}> = [
 	{key: 'x', label: 'X'},
@@ -43,6 +44,8 @@ export function CropSection() {
 	const aspect = useTransientStore((state) => state.geometry.aspect);
 	const draft = useTransientStore((state) => state.geometry.draft);
 	const id = useId();
+	// Short panels: the crop buttons go above the fields so they stay in view.
+	const actionsFirst = usePhoneLayout();
 	const primaryRef = useRef<HTMLButtonElement | null>(null);
 	const wasCroppingRef = useRef(cropping);
 
@@ -86,6 +89,60 @@ export function CropSection() {
 		controller.setBox(next, typedSize ? 'free' : undefined);
 	};
 
+	const actions = (
+		<div className="flex flex-wrap items-center gap-2">
+			{cropping ? (
+				<>
+					<Button
+						key="apply"
+						ref={primaryRef}
+						type="button"
+						size="sm"
+						onClick={() => {
+							void controller.applyCrop();
+						}}
+					>
+						Apply crop
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => {
+							controller.cancelCrop();
+						}}
+					>
+						Cancel
+					</Button>
+				</>
+			) : (
+				<Button
+					key="edit"
+					ref={primaryRef}
+					type="button"
+					variant="outline"
+					size="sm"
+					onClick={() => {
+						controller.startCrop();
+					}}
+				>
+					Edit crop
+				</Button>
+			)}
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				className="ml-auto"
+				onClick={() => {
+					void controller.resetCrop();
+				}}
+			>
+				Reset crop
+			</Button>
+		</div>
+	);
+
 	return (
 		<GeometrySection title="Crop">
 			<div className="flex items-center justify-between gap-2">
@@ -108,6 +165,7 @@ export function CropSection() {
 					</SelectContent>
 				</Select>
 			</div>
+			{actionsFirst ? actions : null}
 			<div className="grid grid-cols-2 gap-x-3 gap-y-2">
 				{FIELDS.map(({key, label}) => (
 					<div key={key} className="flex min-w-0 items-center gap-2">
@@ -133,57 +191,7 @@ export function CropSection() {
 					Applying this crop removes the resize.
 				</p>
 			) : null}
-			<div className="flex flex-wrap items-center gap-2">
-				{cropping ? (
-					<>
-						<Button
-							key="apply"
-							ref={primaryRef}
-							type="button"
-							size="sm"
-							onClick={() => {
-								void controller.applyCrop();
-							}}
-						>
-							Apply crop
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={() => {
-								controller.cancelCrop();
-							}}
-						>
-							Cancel
-						</Button>
-					</>
-				) : (
-					<Button
-						key="edit"
-						ref={primaryRef}
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={() => {
-							controller.startCrop();
-						}}
-					>
-						Edit crop
-					</Button>
-				)}
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					className="ml-auto"
-					onClick={() => {
-						void controller.resetCrop();
-					}}
-				>
-					Reset crop
-				</Button>
-			</div>
+			{actionsFirst ? null : actions}
 		</GeometrySection>
 	);
 }

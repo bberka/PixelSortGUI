@@ -1,6 +1,7 @@
 import {
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type KeyboardEvent,
@@ -13,7 +14,15 @@ import {
 	PanelRightOpenIcon,
 } from 'lucide-react';
 import {EditorSlot} from './editor-slots.tsx';
-import {useAppRuntime, useTransientStore} from '@/app/runtime-context.tsx';
+import {
+	useAppRuntime,
+	useAppStore,
+	useTransientStore,
+} from '@/app/runtime-context.tsx';
+import {
+	ParamsLayoutContext,
+	type ParamsLayout,
+} from '@/features/params/params-layout.ts';
 import {SplitSideSwitcher} from '@/features/stack/split-side-switcher.tsx';
 import {Button} from '@/components/ui/button';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
@@ -21,6 +30,7 @@ import {HistoryPanel} from '@/features/history/history-panel.tsx';
 import {geometryController} from '@/features/transform/geometry-controller.ts';
 import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
+import {selectEditingStack} from '@/state/split-sides.ts';
 
 const TABLET_PANEL_HEIGHT_KEY = 'drift:tablet-panel-height';
 const TABLET_PANEL_COLLAPSED_KEY = 'drift:tablet-panel-collapsed';
@@ -29,8 +39,6 @@ const TABLET_MIN_HEIGHT = 240;
 const TABLET_COLLAPSED_HEIGHT = 48;
 const TABLET_KEY_STEP = 20;
 const TABLET_KEY_SHIFT_STEP = 60;
-
-type PhoneSheetDetent = 'collapsed' | 'half' | 'expanded';
 
 function maxTabletHeight(): number {
 	const viewportHeight =
@@ -77,54 +85,53 @@ function writeStorage(key: string, value: string): void {
 	} catch {}
 }
 
-function nextDetent(detent: PhoneSheetDetent): PhoneSheetDetent {
-	switch (detent) {
-		case 'collapsed': {
-			return 'half';
-		}
+type PhoneControls = 'one' | 'all';
 
-		case 'half': {
-			return 'expanded';
-		}
+// All controls: as tall as leaves the canvas 40% of the screen under the app
+// bar, toolbar and effect strip; the split side switcher comes out of it too.
+const PHONE_ALL_CONTROLS_HEIGHT =
+	'max(160px, calc(60dvh - 160px - var(--split-switcher-height, 0px)))';
+const PHONE_DRAG_THRESHOLD = 24;
 
-		case 'expanded': {
-			return 'collapsed';
-		}
-	}
-}
+/**
+ The handle above the portrait phone panel: drag up for all controls, down for
+ one. The panel's own buttons do the same without a drag.
+ */
+function PanelHandle({
+	onSnap,
+}: {
+	readonly onSnap: (controls: PhoneControls) => void;
+}) {
+	const startRef = useRef<number | null>(null);
 
-function detentButtonLabel(detent: PhoneSheetDetent): string {
-	switch (detent) {
-		case 'collapsed': {
-			return 'Show parameters';
-		}
+	return (
+		<div
+			aria-hidden="true"
+			data-slot="panel-handle"
+			className="flex h-4 shrink-0 cursor-row-resize touch-none items-center justify-center"
+			onPointerDown={(event) => {
+				event.currentTarget.setPointerCapture(event.pointerId);
+				startRef.current = event.clientY;
+			}}
+			onPointerUp={(event) => {
+				const start = startRef.current;
+				startRef.current = null;
+				if (start === null) {
+					return;
+				}
 
-		case 'half': {
-			return 'Expand parameters';
-		}
-
-		case 'expanded': {
-			return 'Collapse parameters';
-		}
-	}
-}
-
-function phoneSheetHeightStyle(detent: PhoneSheetDetent): string {
-	switch (detent) {
-		case 'collapsed': {
-			return 'calc(56px + env(safe-area-inset-bottom, 0px))';
-		}
-
-		case 'half': {
-			// Cap Half detent so the canvas keeps >= 40% of viewport height while a slider is dragged.
-			// The split side switcher, when present, comes out of this budget.
-			return 'min(42dvh, calc(60dvh - 142px - var(--split-switcher-height, 0px)))';
-		}
-
-		case 'expanded': {
-			return '80dvh';
-		}
-	}
+				const delta = start - event.clientY;
+				if (Math.abs(delta) > PHONE_DRAG_THRESHOLD) {
+					onSnap(delta > 0 ? 'all' : 'one');
+				}
+			}}
+			onPointerCancel={() => {
+				startRef.current = null;
+			}}
+		>
+			<span className="h-1 w-10 rounded-full bg-input" />
+		</div>
+	);
 }
 
 /**
@@ -144,7 +151,7 @@ export function EditorScreen() {
 	const [tabletCollapsed, setTabletCollapsed] = useState(
 		readStoredTabletCollapsed,
 	);
-	const [phoneDetent, setPhoneDetent] = useState<PhoneSheetDetent>('half');
+	const [phoneControls, setPhoneControls] = useState<PhoneControls>('one');
 	const [landscapeDrawerOpen, setLandscapeDrawerOpen] = useState(true);
 	const [panelTab, setPanelTab] = useState('stack');
 	const {bundle} = useAppRuntime();
@@ -157,7 +164,6 @@ export function EditorScreen() {
 			setPanelTab('stack');
 			setTabletCollapsed(false);
 			setLandscapeDrawerOpen(true);
-			setPhoneDetent((detent) => (detent === 'collapsed' ? 'half' : detent));
 		}
 	}
 
@@ -174,10 +180,6 @@ export function EditorScreen() {
 	const historyActive = showPanelTabs && panelTab === 'history';
 
 	const dragRef = useRef<{startY: number; startHeight: number} | null>(null);
-	const sheetDragRef = useRef<{
-		startY: number;
-		startDetent: PhoneSheetDetent;
-	} | null>(null);
 
 	const updateTabletHeight = useCallback((next: number) => {
 		const clamped = clampTabletHeight(next);
@@ -279,356 +281,332 @@ export function EditorScreen() {
 		}
 	};
 
-	const handleSheetPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-		if (
-			(event.button !== 0 && event.pointerType === 'mouse') ||
-			(event.target instanceof Element && event.target.closest('button'))
-		) {
-			return;
+	const stackEmpty = useAppStore(
+		(state) => (selectEditingStack(state)?.instances.length ?? 0) === 0,
+	);
+	const isPhone = isPhonePortrait || isPhoneLandscape;
+	// The Geometry panel needs the taller snap point.
+	const phoneShowsAll = geometryOpen || phoneControls === 'all';
+
+	const paramsLayout = useMemo<ParamsLayout>(() => {
+		if (isDesktop) {
+			return {density: 'regular'};
 		}
 
-		event.currentTarget.setPointerCapture(event.pointerId);
-		sheetDragRef.current = {startY: event.clientY, startDetent: phoneDetent};
-	};
-
-	const handleSheetPointerUp = (event: PointerEvent<HTMLDivElement>) => {
-		const active = sheetDragRef.current;
-		if (!active) {
-			return;
+		if (isTablet) {
+			return {density: 'compact'};
 		}
 
-		sheetDragRef.current = null;
-		try {
-			event.currentTarget.releasePointerCapture(event.pointerId);
-		} catch {}
+		return {
+			density: phoneControls === 'one' ? 'focused' : 'compact',
+			onToggleFocus() {
+				setPhoneControls((current) => (current === 'one' ? 'all' : 'one'));
+			},
+		};
+	}, [isDesktop, isTablet, phoneControls]);
 
-		const delta = active.startY - event.clientY;
-		if (delta > 32) {
-			setPhoneDetent(active.startDetent === 'collapsed' ? 'half' : 'expanded');
-		} else if (delta < -32) {
-			setPhoneDetent(active.startDetent === 'expanded' ? 'half' : 'collapsed');
-		}
-	};
-
-	const handleSheetKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			setPhoneDetent((current) =>
-				current === 'collapsed' ? 'half' : 'expanded',
-			);
-		} else if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			setPhoneDetent((current) =>
-				current === 'expanded' ? 'half' : 'collapsed',
-			);
-		}
-	};
+	// A phone toolbar sits under the canvas, within thumb reach. Keys keep both
+	// slots mounted when a rotation swaps their order.
+	const toolbarSlot = (
+		<EditorSlot
+			key="toolbar"
+			className={cn(
+				'shrink-0 border-border',
+				isPhone ? 'h-13 border-t bg-background' : 'h-10 border-b',
+			)}
+			id="toolbar"
+			label="Canvas toolbar"
+		/>
+	);
+	const canvasSlot = (
+		<EditorSlot
+			key="canvas"
+			className="min-h-0 flex-1 bg-canvas-stage"
+			id="canvas"
+			label="Canvas"
+		/>
+	);
 
 	const horizontalShell = isDesktop || isPhoneLandscape;
 	const tabletMax = maxTabletHeight();
 
 	return (
-		<div
-			data-viewport-class={viewportClass}
-			className={cn(
-				'flex min-h-0 flex-1 overflow-hidden',
-				horizontalShell ? 'flex-row' : 'flex-col',
-			)}
-		>
-			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-				<EditorSlot
-					className="h-10 shrink-0 border-b border-border"
-					id="toolbar"
-					label="Canvas toolbar"
-				/>
-				<EditorSlot
-					className="min-h-0 flex-1 bg-canvas-stage"
-					id="canvas"
-					label="Canvas"
-				/>
-			</div>
-
-			<aside
-				aria-label="Effects"
-				data-collapsed={
-					(isTablet && tabletCollapsed) ||
-					(isPhoneLandscape && !landscapeDrawerOpen)
-						? 'true'
-						: 'false'
-				}
-				data-sheet-detent={isPhonePortrait ? phoneDetent : undefined}
-				style={
-					isTablet
-						? {
-								height: tabletCollapsed
-									? `${TABLET_COLLAPSED_HEIGHT}px`
-									: `${tabletHeight}px`,
-							}
-						: undefined
-				}
+		<ParamsLayoutContext value={paramsLayout}>
+			<div
+				data-viewport-class={viewportClass}
 				className={cn(
-					'flex min-h-0 min-w-0 shrink-0 flex-col bg-card',
-					'has-data-[slot=split-side-switcher]:[--split-switcher-height:44px]',
-					isDesktop && 'w-[340px] border-l border-border',
-					isTablet && 'w-full border-t border-border',
-					isPhonePortrait && 'w-full border-t border-border',
-					isPhoneLandscape &&
-						(landscapeDrawerOpen
-							? 'w-[300px] border-l border-border'
-							: 'w-11 border-l border-border'),
+					'flex min-h-0 flex-1 overflow-hidden',
+					horizontalShell ? 'flex-row' : 'flex-col',
 				)}
 			>
-				{isTablet ? (
-					<div
-						className={cn(
-							'flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3',
-							tabletCollapsed
-								? 'h-12 border-b-0'
-								: 'h-7 [@media(pointer:coarse)]:min-h-11',
-						)}
-					>
-						{tabletCollapsed ? (
-							<span className="text-xs font-semibold tracking-[0.05em] text-muted-foreground uppercase">
-								Effects
-							</span>
-						) : (
-							<div
-								role="slider"
-								aria-orientation="vertical"
-								aria-label="Resize effects panel"
-								aria-valuemin={TABLET_MIN_HEIGHT}
-								aria-valuemax={tabletMax}
-								aria-valuenow={tabletHeight}
-								aria-valuetext={`${tabletHeight} px`}
-								tabIndex={0}
-								className="flex h-6 flex-1 cursor-row-resize touch-none items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [@media(pointer:coarse)]:min-h-11"
-								onPointerDown={handleTabletSeparatorPointerDown}
-								onPointerMove={handleTabletSeparatorPointerMove}
-								onPointerUp={handleTabletSeparatorPointerUp}
-								onPointerCancel={handleTabletSeparatorPointerUp}
-								onKeyDown={handleTabletSeparatorKeyDown}
-							>
-								<span
-									aria-hidden="true"
-									className="h-1 w-10 rounded-full bg-input"
-								/>
-							</div>
-						)}
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-xs"
-							aria-label={
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col">
+					{isPhone ? [canvasSlot, toolbarSlot] : [toolbarSlot, canvasSlot]}
+				</div>
+
+				<aside
+					aria-label="Effects"
+					data-collapsed={
+						(isTablet && tabletCollapsed) ||
+						(isPhoneLandscape && !landscapeDrawerOpen)
+							? 'true'
+							: 'false'
+					}
+					data-controls={
+						isPhonePortrait ? (phoneShowsAll ? 'all' : 'one') : undefined
+					}
+					style={
+						isTablet
+							? {
+									height: tabletCollapsed
+										? `${TABLET_COLLAPSED_HEIGHT}px`
+										: `${tabletHeight}px`,
+								}
+							: undefined
+					}
+					className={cn(
+						'flex min-h-0 min-w-0 shrink-0 flex-col bg-card',
+						'has-data-[slot=split-side-switcher]:[--split-switcher-height:44px]',
+						isDesktop && 'w-[340px] border-l border-border',
+						isTablet && 'w-full border-t border-border',
+						isPhonePortrait &&
+							'w-full border-t border-border pb-[env(safe-area-inset-bottom)]',
+						isPhoneLandscape &&
+							(landscapeDrawerOpen
+								? 'w-[300px] border-l border-border'
+								: 'w-11 border-l border-border'),
+					)}
+				>
+					{isTablet ? (
+						<div
+							className={cn(
+								'flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3',
 								tabletCollapsed
-									? 'Expand effects panel'
-									: 'Collapse effects panel'
-							}
-							aria-expanded={!tabletCollapsed}
-							onClick={toggleTabletCollapsed}
+									? 'h-12 border-b-0'
+									: 'h-7 [@media(pointer:coarse)]:min-h-11',
+							)}
 						>
 							{tabletCollapsed ? (
-								<ChevronUpIcon aria-hidden="true" />
+								<span className="text-xs font-semibold tracking-[0.05em] text-muted-foreground uppercase">
+									Effects
+								</span>
 							) : (
-								<ChevronDownIcon aria-hidden="true" />
+								<div
+									role="slider"
+									aria-orientation="vertical"
+									aria-label="Resize effects panel"
+									aria-valuemin={TABLET_MIN_HEIGHT}
+									aria-valuemax={tabletMax}
+									aria-valuenow={tabletHeight}
+									aria-valuetext={`${tabletHeight} px`}
+									tabIndex={0}
+									className="flex h-6 flex-1 cursor-row-resize touch-none items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [@media(pointer:coarse)]:min-h-11"
+									onPointerDown={handleTabletSeparatorPointerDown}
+									onPointerMove={handleTabletSeparatorPointerMove}
+									onPointerUp={handleTabletSeparatorPointerUp}
+									onPointerCancel={handleTabletSeparatorPointerUp}
+									onKeyDown={handleTabletSeparatorKeyDown}
+								>
+									<span
+										aria-hidden="true"
+										className="h-1 w-10 rounded-full bg-input"
+									/>
+								</div>
 							)}
-						</Button>
-					</div>
-				) : null}
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								aria-label={
+									tabletCollapsed
+										? 'Expand effects panel'
+										: 'Collapse effects panel'
+								}
+								aria-expanded={!tabletCollapsed}
+								onClick={toggleTabletCollapsed}
+							>
+								{tabletCollapsed ? (
+									<ChevronUpIcon aria-hidden="true" />
+								) : (
+									<ChevronDownIcon aria-hidden="true" />
+								)}
+							</Button>
+						</div>
+					) : null}
 
-				{isPhoneLandscape ? (
-					<div
-						className={cn(
-							'flex shrink-0 items-center border-b border-border bg-background',
-							landscapeDrawerOpen
-								? 'h-7 justify-between px-1.5 [@media(pointer:coarse)]:min-h-11'
-								: 'h-full flex-col justify-start border-b-0 px-0 py-1.5',
-						)}
-					>
-						{landscapeDrawerOpen ? (
-							<span className="px-1 text-[11px] font-semibold tracking-[0.05em] text-muted-foreground uppercase">
-								Effects
-							</span>
-						) : null}
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon-xs"
-							aria-label={
+					{isPhoneLandscape ? (
+						<div
+							className={cn(
+								'flex shrink-0 items-center border-b border-border bg-background',
 								landscapeDrawerOpen
-									? 'Collapse effects drawer'
-									: 'Expand effects drawer'
-							}
-							aria-expanded={landscapeDrawerOpen}
-							onClick={() => {
-								setLandscapeDrawerOpen((open) => !open);
-							}}
+									? 'h-7 justify-between px-1.5 [@media(pointer:coarse)]:min-h-11'
+									: 'h-full flex-col justify-start border-b-0 px-0 py-1.5',
+							)}
 						>
 							{landscapeDrawerOpen ? (
-								<PanelRightCloseIcon aria-hidden="true" />
-							) : (
-								<PanelRightOpenIcon aria-hidden="true" />
-							)}
-						</Button>
-					</div>
-				) : null}
-
-				{(isTablet && tabletCollapsed) ||
-				(isPhoneLandscape && !landscapeDrawerOpen) ||
-				// The desktop history view replaces the stack and parameters.
-				(isDesktop && historyActive) ? null : (
-					<SplitSideSwitcher />
-				)}
-
-				<Tabs
-					className={cn(
-						'min-h-0 min-w-0 flex-1 gap-0',
-						isTablet &&
-							'grid grid-cols-[260px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]',
-						((isTablet && tabletCollapsed) ||
-							(isPhoneLandscape && !landscapeDrawerOpen)) &&
-							'hidden',
-					)}
-					value={historyActive ? 'history' : 'stack'}
-					onValueChange={(tab) => {
-						setPanelTab(tab);
-						// The desktop history view hides the crop controls.
-						if (isDesktop && tab === 'history') {
-							geometryController(bundle).cancelCrop();
-						}
-					}}
-				>
-					{showPanelTabs ? (
-						<div
-							className={cn(
-								'flex shrink-0 border-b border-border p-1.5',
-								isTablet && 'col-start-1 row-start-1 border-r',
-							)}
-						>
-							{/* Radix leaves the list itself tabbable, which traps Shift+Tab
-							    in Firefox, so only the selected tab is a tab stop. */}
-							<TabsList
-								tabIndex={-1}
-								aria-label="Effects views"
-								className="w-full group-data-[orientation=horizontal]/tabs:[@media(pointer:coarse)]:h-12"
-							>
-								<TabsTrigger value="stack" tabIndex={historyActive ? -1 : 0}>
-									Stack
-								</TabsTrigger>
-								<TabsTrigger value="history" tabIndex={historyActive ? 0 : -1}>
-									History
-								</TabsTrigger>
-							</TabsList>
-						</div>
-					) : null}
-
-					<TabsContent
-						forceMount
-						value="stack"
-						{...(showPanelTabs
-							? {tabIndex: -1}
-							: {
-									role: undefined,
-									tabIndex: undefined,
-									'aria-labelledby': undefined,
-								})}
-						className={cn(
-							'flex min-h-0 min-w-0 flex-none flex-col',
-							isDesktop && 'max-h-[38%] min-h-[72px]',
-							isTablet && 'col-start-1 row-start-2',
-							historyActive && 'hidden',
-						)}
-					>
-						<EditorSlot
-							className={cn(
-								'flex-auto border-border',
-								isDesktop && 'w-full border-b',
-								isTablet && 'w-full border-r',
-								(isPhonePortrait || isPhoneLandscape) &&
-									'h-12 w-full flex-none border-b',
-							)}
-							id="stack"
-							label="Effect stack"
-						/>
-					</TabsContent>
-
-					{showPanelTabs ? (
-						<TabsContent
-							value="history"
-							tabIndex={-1}
-							className={cn(
-								'min-h-0 min-w-0',
-								isTablet && 'col-start-1 row-start-2 border-r border-border',
-							)}
-						>
-							<HistoryPanel />
-						</TabsContent>
-					) : null}
-
-					{isPhonePortrait ? (
-						<div
-							style={{height: phoneSheetHeightStyle(phoneDetent)}}
-							className="flex shrink-0 flex-col bg-card pb-[env(safe-area-inset-bottom)] transition-[height] duration-150 motion-reduce:transition-none"
-						>
-							<div
-								className={cn(
-									'flex shrink-0 touch-none items-center justify-between gap-2 border-b border-border bg-background px-3',
-									phoneDetent === 'collapsed'
-										? 'h-14 border-b-0'
-										: 'h-7 [@media(pointer:coarse)]:min-h-11',
-								)}
-								onPointerDown={handleSheetPointerDown}
-								onPointerUp={handleSheetPointerUp}
-								onPointerCancel={handleSheetPointerUp}
-							>
-								<span className="text-[11px] font-semibold tracking-[0.05em] text-muted-foreground uppercase">
-									{geometryOpen ? 'Transform' : 'Parameters'}
+								<span className="px-1 text-[11px] font-semibold tracking-[0.05em] text-muted-foreground uppercase">
+									Effects
 								</span>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									aria-label={detentButtonLabel(phoneDetent)}
-									aria-expanded={phoneDetent !== 'collapsed'}
-									aria-controls="editor-phone-params-panel"
-									onClick={() => {
-										setPhoneDetent((current) => nextDetent(current));
-									}}
-									onKeyDown={handleSheetKeyDown}
-								>
-									{phoneDetent === 'expanded' ? (
-										<ChevronDownIcon aria-hidden="true" />
-									) : (
-										<ChevronUpIcon aria-hidden="true" />
-									)}
-								</Button>
-							</div>
+							) : null}
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								aria-label={
+									landscapeDrawerOpen
+										? 'Collapse effects drawer'
+										: 'Expand effects drawer'
+								}
+								aria-expanded={landscapeDrawerOpen}
+								onClick={() => {
+									setLandscapeDrawerOpen((open) => !open);
+								}}
+							>
+								{landscapeDrawerOpen ? (
+									<PanelRightCloseIcon aria-hidden="true" />
+								) : (
+									<PanelRightOpenIcon aria-hidden="true" />
+								)}
+							</Button>
+						</div>
+					) : null}
+
+					{(isTablet && tabletCollapsed) ||
+					(isPhoneLandscape && !landscapeDrawerOpen) ||
+					// The desktop history view replaces the stack and parameters.
+					(isDesktop && historyActive) ? null : (
+						<SplitSideSwitcher />
+					)}
+
+					<Tabs
+						className={cn(
+							'min-h-0 min-w-0 flex-1 gap-0',
+							isTablet &&
+								'grid grid-cols-[260px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]',
+							((isTablet && tabletCollapsed) ||
+								(isPhoneLandscape && !landscapeDrawerOpen)) &&
+								'hidden',
+						)}
+						value={historyActive ? 'history' : 'stack'}
+						onValueChange={(tab) => {
+							setPanelTab(tab);
+							// The desktop history view hides the crop controls.
+							if (isDesktop && tab === 'history') {
+								geometryController(bundle).cancelCrop();
+							}
+						}}
+					>
+						{showPanelTabs ? (
 							<div
-								id="editor-phone-params-panel"
 								className={cn(
-									'flex min-h-0 flex-1 flex-col',
-									phoneDetent === 'collapsed' && 'hidden',
+									'flex shrink-0 border-b border-border p-1.5',
+									isTablet && 'col-start-1 row-start-1 border-r',
 								)}
 							>
-								<EditorSlot
-									className="min-h-0 flex-1"
-									id="params"
-									label="Parameters"
-								/>
+								{/* Radix leaves the list itself tabbable, which traps Shift+Tab
+							    in Firefox, so only the selected tab is a tab stop. */}
+								<TabsList
+									tabIndex={-1}
+									aria-label="Effects views"
+									className="w-full group-data-[orientation=horizontal]/tabs:[@media(pointer:coarse)]:h-12"
+								>
+									<TabsTrigger value="stack" tabIndex={historyActive ? -1 : 0}>
+										Stack
+									</TabsTrigger>
+									<TabsTrigger
+										value="history"
+										tabIndex={historyActive ? 0 : -1}
+									>
+										History
+									</TabsTrigger>
+								</TabsList>
 							</div>
-						</div>
-					) : (
-						<EditorSlot
+						) : null}
+
+						<TabsContent
+							forceMount
+							value="stack"
+							{...(showPanelTabs
+								? {tabIndex: -1}
+								: {
+										role: undefined,
+										tabIndex: undefined,
+										'aria-labelledby': undefined,
+									})}
 							className={cn(
-								'min-h-0 flex-1',
-								isTablet && 'col-start-2 row-span-2 row-start-1',
-								isDesktop && historyActive && 'hidden',
+								'flex min-h-0 min-w-0 flex-none flex-col',
+								isDesktop && 'max-h-[38%] min-h-[72px]',
+								isTablet && 'col-start-1 row-start-2',
+								historyActive && 'hidden',
 							)}
-							id="params"
-							label="Parameters"
-						/>
-					)}
-				</Tabs>
-			</aside>
-		</div>
+						>
+							<EditorSlot
+								className={cn(
+									'flex-auto border-border',
+									isDesktop && 'w-full border-b',
+									isTablet && 'w-full border-r',
+									(isPhonePortrait || isPhoneLandscape) &&
+										'h-13 w-full flex-none border-b',
+								)}
+								id="stack"
+								label="Effect stack"
+							/>
+						</TabsContent>
+
+						{showPanelTabs ? (
+							<TabsContent
+								value="history"
+								tabIndex={-1}
+								className={cn(
+									'min-h-0 min-w-0',
+									isTablet && 'col-start-1 row-start-2 border-r border-border',
+								)}
+							>
+								<HistoryPanel />
+							</TabsContent>
+						) : null}
+
+						{isPhone ? (
+							// With no effect and no Geometry panel there is nothing to
+							// edit, so a portrait canvas takes the room.
+							isPhonePortrait && stackEmpty && !geometryOpen ? null : (
+								<div
+									id="editor-phone-params-panel"
+									style={
+										isPhonePortrait && phoneShowsAll
+											? {height: PHONE_ALL_CONTROLS_HEIGHT}
+											: undefined
+									}
+									className={cn(
+										'flex min-h-0 flex-col',
+										isPhoneLandscape ? 'flex-1' : 'shrink-0',
+										// Handle, parameter row with its border, control area.
+										isPhonePortrait && !phoneShowsAll && 'h-[211px]',
+									)}
+								>
+									{isPhoneLandscape || geometryOpen ? null : (
+										<PanelHandle onSnap={setPhoneControls} />
+									)}
+									<EditorSlot
+										className="min-h-0 flex-1"
+										id="params"
+										label="Parameters"
+									/>
+								</div>
+							)
+						) : (
+							<EditorSlot
+								className={cn(
+									'min-h-0 flex-1',
+									isTablet && 'col-start-2 row-span-2 row-start-1',
+									isDesktop && historyActive && 'hidden',
+								)}
+								id="params"
+								label="Parameters"
+							/>
+						)}
+					</Tabs>
+				</aside>
+			</div>
+		</ParamsLayoutContext>
 	);
 }

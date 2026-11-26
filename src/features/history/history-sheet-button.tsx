@@ -8,6 +8,7 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from '@/components/ui/sheet';
+import {PHONE_TOOL_CLASS} from '@/features/toolbar/phone-tool.ts';
 import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 
@@ -20,10 +21,11 @@ export function HistorySheetButton() {
 				<Button
 					type="button"
 					variant="ghost"
-					size="icon-sm"
+					className={PHONE_TOOL_CLASS}
 					aria-label="History"
 				>
 					<HistoryIcon aria-hidden="true" />
+					<span>History</span>
 				</Button>
 			</SheetTrigger>
 			<SheetContent

@@ -131,3 +131,21 @@ export function sideHistoryLabel(
 		? `${label} (side ${sideLetter(side)})`
 		: label;
 }
+
+/**
+ The name of the button that turns the split: it states where it will go.
+ */
+export function orientationSwitchLabel(orientation: SplitOrientation): string {
+	return orientation === 'vertical'
+		? 'Switch to top/bottom view'
+		: 'Switch to left/right view';
+}
+
+/**
+ What turning the split to `orientation` announces.
+ */
+export function orientationAnnouncement(orientation: SplitOrientation): string {
+	return orientation === 'vertical'
+		? 'Split view left and right'
+		: 'Split view top and bottom';
+}

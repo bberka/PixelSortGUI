@@ -2,9 +2,7 @@
 import {afterEach, describe, expect, it} from 'vite-plus/test';
 import {
 	formatRedoAriaLabel,
-	formatRedoTooltip,
 	formatUndoAriaLabel,
-	formatUndoTooltip,
 	getShortcutLabels,
 	isEditableTarget,
 	isMacPlatform,
@@ -160,11 +158,5 @@ describe('label and shortcut formatters', () => {
 		expect(formatUndoAriaLabel('Change Angle')).toBe('Undo Change Angle');
 		expect(formatRedoAriaLabel(null)).toBe('Redo');
 		expect(formatRedoAriaLabel('Add Pixel sort')).toBe('Redo Add Pixel sort');
-		expect(formatUndoTooltip('Change Angle', 'Ctrl+Z')).toBe(
-			'Undo Change Angle (Ctrl+Z)',
-		);
-		expect(formatRedoTooltip('Add Pixel sort', 'Ctrl+Shift+Z')).toBe(
-			'Redo Add Pixel sort (Ctrl+Shift+Z)',
-		);
 	});
 });

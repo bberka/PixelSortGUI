@@ -2,6 +2,7 @@ Written by Gemini 4 Neon (Antigravity, thought level high), spec subagent.
 Updated with post-v0.1.0 UI specs (F20, F23, F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with project files (F25), full backup and restore (F17), and image blend (F26) UI specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and per-side stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with the phone editor redesign and the keyboard hint rule (F18) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with the cloud sync network exception (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 
 # Drift design system
@@ -111,9 +112,19 @@ Every control renders a visible `<label>` (equal to its accessible name, AC-F5.6
 | `angle` | Custom `AngleDial` + numeric `Input` (unit `°`, step `0.1`) | 44 × 44 px circular dial with pointer/touch drag; snaps within `±4°` to `spec.snaps` (`0, 45, 90, 135, 180, 225, 270, 315`), Shift bypasses snap. Keyboard on dial: Arrow ±1°, Shift+Arrow ±15°, Home 0°. |
 | `seed` | Numeric `Input` (`inputMode="numeric"`, uint32) + `"New seed"` `Button` (`Dices` icon) | `"New seed"` writes a random uint32 from `crypto.getRandomValues` as 1 commit. |
 
+#### Control density
+
+The same controls have three presentations, chosen by the editor layout (`src/features/params/params-layout.ts`), never by an effect:
+
+- **Regular** (desktop sidebar): as in the table above, each numeric field on its own line below its slider.
+- **Compact** (tablet panel, phone with all controls shown): a numeric field sits on the same line as its slider, to its right. A range puts its `Low` field left and its `High` field right of the slider, with both labels for screen readers only. Row padding is `4 px`.
+- **Focused** (phone, one control at a time, section 6.4): compact, and the angle dial grows to `56 × 56 px`.
+
 #### Slider presentation
 
 All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/components/ui/slider.tsx`), whose default variant is **`fader`** (`DEFAULT_SLIDER_VARIANT`):
+
+- **Touch scrolling:** under `@media (pointer: coarse)` the row is `44 px` tall and allows vertical panning (`touch-action: pan-y`). A swipe up or down that starts on a slider scrolls the panel and changes nothing; a sideways drag moves the slider.
 
 - **Dimensions and radii:** `32 px` (`h-8`) interactive row height; `10 px` (`h-2.5`, `4 px` radius) thick track; `12 × 24 px` (`4 px` radius) rectangular studio-fader grip centered inside a `24 × 28 px` pointer target (`44 × 44 px` under `@media (pointer: coarse)`).
 - **Tokens and contrast:** Unfilled track uses `bg-muted` with `1 px solid` `border-input`; filled range uses `bg-accent` (≥ 4.6:1 against `bg-muted` in both Light and True Black themes). The grip uses `bg-card` with a `2 px` `border-foreground` frame and a `2 × 12 px` `bg-foreground` centre notch (`border-accent` on hover). End ticks at `0%` and `100%` use `bg-input`; the default-value tick uses `bg-foreground`. Focus renders `2 px solid` `outline-ring` with `2 px` offset. Disabled state reduces opacity to `50%` and blocks pointer events.
@@ -126,7 +137,7 @@ All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/
 
 Displayed in the parameter panel whenever an effect instance is selected (outside `ParamSpec`):
 
-- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit), plus a `"Randomize"` `Button` (ghost, `DicesIcon`, tooltip) before it that sets every param to a random valid value as 1 commit and leaves `mix`, `blend` and `enabled` alone; icon-only on phone widths (F5).
+- **Header row:** Effect label, `"Show selection"` `Switch` (only when `def.debugViews?.includes('selection')`, F6), and `"Reset all"` `Button` (ghost, resets all params + `mix` + `blend` to defaults as 1 commit), plus a `"Randomize"` `Button` (ghost, `DicesIcon`, tooltip) before it that sets every param to a random valid value as 1 commit and leaves `mix`, `blend` and `enabled` alone; icon-only on phone widths (F5). With one control shown on a phone (section 6.4) the header is for screen readers only: `"Show selection"` becomes an icon toggle button (`ScanEye`, `aria-pressed`) and `"Randomize"` stays beside it at the end of the parameter row, while `"Reset all"` appears with all controls.
 - **Blend & Mix group (bottom section):**
   - `Mix`: `Slider` + numeric `Input` (`0` to `100%`, step `1%`, stored as `0..1` step `0.01`, default `100%`).
   - `Blend`: `ToggleGroup` (`normal` "Normal", `lighten` "Lighten", `darken` "Darken", `difference` "Difference").
@@ -135,14 +146,14 @@ Displayed in the parameter panel whenever an effect instance is selected (outsid
 
 | UI element | Feature | shadcn component | Notes |
 |---|---|---|---|
-| Primary / toolbar / icon buttons | All | `Button` + `Tooltip` | Every icon-only button has `aria-label` and a `Tooltip` (desktop) |
+| Primary / toolbar / icon buttons | All | `Button` + `Tooltip` | Every icon-only button has `aria-label` and a `Tooltip` (desktop). A key named in a tooltip or menu follows section 8.4 |
 | Library project card | F2 | `Card` | 4:3 thumbnail container, title (1-line truncate), `W × H px`, last-opened date, overflow `DropdownMenu` |
 | Card actions / Instance actions / Zoom menu | F2, F4, F13 | `DropdownMenu` | Keyboard-navigable menus |
 | Add effect picker | F4 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lists all registered effects with label and 1-line description (AC-F4.1) |
 | Presets picker | F10 | `Popover` (desktop/tablet) / `Dialog` (phone) | Lives in the editor toolbar (`src/features/toolbar/`), not in a sidebar tab |
 | Export / Save preset / Settings / About | F10, F12, F16 | `Dialog` (desktop/tablet) / full-height `Sheet` (phone) | Focus-trapped modals |
 | Delete project / Storage full / Large image (> 50 MP) choice | F1, F2, F16 | `AlertDialog` | Explicit confirmation or blocking choice |
-| Phone parameter panel | F18 | Custom detent bottom sheet (Radix `Dialog` non-modal or pointer-tracked region) | Drag handle + detent cycle button; never blocks canvas gestures while collapsed/half |
+| Phone parameter panel | F18 | Docked panel with two snap points; `Tabs` picks the parameter | Part of the layout, never over the canvas. Drag handle + `"Show all controls"` / `"Show one control"` button (section 6.4) |
 | Render & export progress | F8, F12 | `Progress` | `2 px` top bar on canvas (> 300 ms renders); labeled bar with Cancel in Export dialog |
 | Status tags (`Off`, `Original`, `Persistent`) | F4, F11, F16 | `Badge` | Text + icon, never colour alone |
 | Update ready / Deleted project | F3, F15 | `Sonner` (`Toaster`) | Non-blocking toasts; update toast persists until acted on or dismissed |
@@ -159,7 +170,7 @@ One component, `ScrollArea` in `src/components/ui/scroll-area.tsx` (Radix `Scrol
 - **Colour.** The thumb is `--muted-foreground`: at least `7:1` on `--background`, `--card`, `--popover` and `--secondary` in Light, and at least `6.9:1` on the same surfaces in True Black (`#000000`). Both exceed the `3:1` needed for UI components.
 - **Idle.** The bar is invisible while the area is idle and fades in (`150 ms`) while the pointer is over the area, while focus is inside it, while it scrolls (and for `800 ms` after), and during a drag.
 - **Unchanged behaviour.** Wheel, touch, keyboard scrolling and focus work as before. The viewport is an explicit tab stop (`tabIndex=0`) in the parameter panel, the Settings panel and the gallery, as before. Regions that were plain `overflow` elements keep the browser's own rule (`tabStop={false}`), so no tab stop is added.
-- **Regions.** Parameter panel, effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body and third-party notices, export sheet body, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
+- **Regions.** Parameter panel (and the phone parameter row, which scrolls horizontally), effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body and third-party notices, export sheet body, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
 
 ## 6. Layout
 
@@ -242,32 +253,40 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 
 ### 6.4 Editor screen: Phone (`390 × 844`)
 
+The photo is the largest thing on screen. Controls are docked under it and take their own space: nothing is laid over the canvas.
+
 ```
-+-------------------------------+
-| <- Drift    [Exp] [Set]|  52 px + safe-area-top
-+-------------------------------+
-| [Undo][Redo] | [Presets] ...  |  40 px toolbar
-+-------------------------------+
-| [2 px progress bar]           |
-|                               |
-|         CANVAS STAGE          |  (≥ 40% viewport height at Half detent)
-|                               |
-| [100% v]                      |
-+-------------------------------+
-| [+][Pixel sort][Ch. shift Off]|  <- 48 px horizontal scrollable stack strip
-+===========[  ===  ]===========+  <- Bottom sheet (Collapsed / Half / Expanded)
-| Pixel sort            [Reset] |
-| Show selection            [o] |
-| DIRECTION                     |
-| Angle        [dial]    45.0°  |
-| ...                           |
-+-------------------------------+  + safe-area-bottom
+One control (default)             All controls
++-------------------------------+ +-------------------------------+
+| <- Drift      [Exp] [?] [Set] | | <- Drift      [Exp] [?] [Set] |  52 px + safe-area-top
++-------------------------------+ +-------------------------------+
+| [2 px progress bar]           | |         CANVAS STAGE          |
+|                               | |    (>= 40% viewport height)   |
+|         CANVAS STAGE          | | [100% v]                      |
+|    (>= 50% viewport height)   | +-------------------------------+
+|                               | |Undo Redo Compare Split ...    |
+| [100% v]                      | +-------------------------------+
++-------------------------------+ | [+][Pixel sort (o) :][Ch. s.] |
+|Undo Redo Compare Split Trans- | +============[ === ]============+
+|          form Presets History | | Pixel sort  [dice] [Reset] [v]|
++-------------------------------+ | Show selection            [o] |
+| [+][Pixel sort (o) :][Ch. s.] | | DIRECTION                     |
++============[ === ]============+ | Angle                 45.0 deg|
+|[Angle][Interval mode].[d][^]  | | (dial) [ 45.0 ]               |
+| Angle                 45.0 deg| | SELECTION                     |
+| (dial)  [ 45.0 ]              | | ...                           |
++-------------------------------+ +-------------------------------+  + safe-area-bottom
 ```
 
-- **App bar and toolbar:** The app bar starts with the Drift icon (`/icons/icon.svg`, `24 px`, decorative with `alt=""`) immediately left of the `"Drift"` heading on every screen, after the back button where there is one. The app bar has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width. Undo, Redo, Presets, and Compare/Split live in the editor toolbar directly above the canvas.
-- **Phone horizontal stack strip:** Each effect instance is a `44 px`-tall chip showing name, enabled switch/`"Off"` text, and tap-to-select; tapping the chip's `⋮` menu opens Move left, Move right, Duplicate, Remove. A pinned `+` chip opens Add effect.
-- **Phone bottom sheet:** Starts at **Half** detent (capped so the canvas keeps at least `40%` of viewport height while a parameter is being adjusted), and cycles or drags between **Collapsed** (`56 px` + `env(safe-area-inset-bottom)`), **Half**, and **Expanded** (`80%` viewport height, dropping temporarily or remaining clear of the canvas when collapsed/half).
-- **Phone landscape (`height < 500 CSS px`):** Switches the bottom sheet and stack strip into a collapsible `300 px` right drawer so the canvas keeps at least half the viewport width and full height.
+- **App bar:** it starts with the Drift icon (`/icons/icon.svg`, `24 px`, decorative with `alt=""`) immediately left of the `"Drift"` heading on every screen, after the back button where there is one. It has no theme button (theme lives in Settings -> Appearance) and shows compact icon buttons (`Export`, `Guide`, `Settings`) on phone width.
+- **Toolbar:** a `52 px` row directly **below** the canvas, within thumb reach, holding seven equal-width buttons, each an icon with an `11 px` text label: `Undo`, `Redo`, `Compare`, `Split`, `Transform`, `Presets`, `History`. Every one acts in one tap. The split orientation button lives in the split side switcher on phones (section 7).
+- **Effect strip:** a `52 px` row. A pinned `+` button adds an effect; with an empty stack it reads `"Add effect"` beside `"No effects yet"`. Each effect is a `44 px`-tall chip. Tapping a chip selects it and shows its controls. Only the selected chip carries the enabled switch and the `⋮` menu (Move left, Move right, Duplicate, Remove), so more effects fit; a disabled effect shows its `"Off"` badge on any chip. The strip scrolls the selected chip into view.
+- **Parameter panel, one control (default):** a `16 px` drag handle, then a row of tabs naming each visible parameter plus `Mix` and `Blend` (horizontal scroll, `aria-label="Parameters"`), ending in the `Show selection` toggle (when the effect has it), `Randomize` and `"Show all controls"`. Below, only the chosen parameter's control, in a fixed `144 px` area so the canvas never changes size when switching parameters. The chosen parameter is remembered per effect type. If it becomes hidden (`visibleWhen`), the first parameter is shown.
+- **Parameter panel, all controls:** the full list of section 5.1 in a `ScrollArea`, compact density, with `"Show one control"` in its header. Its height is capped so the canvas keeps at least `40%` of the viewport.
+- **Snap points:** the button switches between the two states. Dragging the handle up more than `24 px` shows all controls and down shows one. The canvas resizes above the panel and a fitted view refits.
+- **Nothing to edit:** with an empty stack and the Geometry panel closed, the parameter panel is absent and the canvas takes the room.
+- **Transform:** the Geometry panel (section 7.2) takes the panel at the all-controls height, with no handle.
+- **Phone landscape (`height < 500 CSS px`):** the canvas column is on the left with the same labelled toolbar below the canvas, and a collapsible `300 px` right drawer holds the effect strip and the same parameter panel, one control by default or all of them, with no drag handle. The canvas keeps at least half the viewport width.
 
 ## 7. Feature-specific visual specifications
 
@@ -276,8 +295,8 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
   - When Compare toggle/hold is active, draw the `original` `settle` bitmap aligned to the exact same zoom and pan transform, and display a top-left pill `"Original"` (AC-F11.1).
   - In Split view, clip side A to `[0, splitX]` and side B to `[splitX, canvasWidth]` (vertical), or side A to `[0, splitY]` and side B to `[splitY, canvasHeight]` (horizontal), both under the same zoom and pan transform. Side A draws its rendered frame, or the source bitmap while its stack is empty or its first frame is pending. Draw a `2 px` line across the canvas (`#ffffff` with `1 px` `#000000` casing so it stays visible over any photo) and a `44 × 44 CSS px` circular grab handle at its midpoint (`role="separator"`, `aria-orientation` matching the line, `aria-label="Compare split position"`, `aria-valuemin="0"`, `aria-valuemax="100"`; `MoveHorizontal` and `ew-resize` when vertical, `MoveVertical` and `ns-resize` when horizontal).
   - Each side has a small pill reading `"Original"` while its stack is empty, otherwise `"A"` or `"B"`: side A top-left; side B top-right (vertical) or bottom-right (horizontal). In a horizontal split the `"Rendering full resolution"` pill moves to the top-right.
-  - **Split side switcher** (`src/features/stack/split-side-switcher.tsx`): a `44 px` row at the top of the effects panel (desktop sidebar, tablet bottom panel, phone above the stack strip, landscape drawer), present only while the split view is on, and hidden with a collapsed panel or while the desktop History tab is shown. It holds the label `"Editing"`, an outline `ToggleGroup` (`"A · Left"` / `"B · Right"`, or `"A · Top"` / `"B · Bottom"`), and two ghost icon `Button`s with tooltips: `"Copy to other side"` (`Copy`) and `"Swap sides"` (`ArrowLeftRight`, or `ArrowUpDown` when horizontal). On portrait phone the Half detent shrinks by the row's height so the canvas keeps `40%` of the viewport.
-  - **Toolbar:** the Split button's icon is `Columns2` (vertical) or `Rows2` (horizontal). Beside it, an icon button (`RotateCwSquare`) switches orientation; its name states the target, `"Switch to top/bottom view"` or `"Switch to left/right view"`.
+  - **Split side switcher** (`src/features/stack/split-side-switcher.tsx`): a `44 px` row at the top of the effects panel (desktop sidebar, tablet bottom panel, phone above the stack strip, landscape drawer), present only while the split view is on, and hidden with a collapsed panel or while the desktop History tab is shown. It holds the label `"Editing"`, an outline `ToggleGroup` (`"A · Left"` / `"B · Right"`, or `"A · Top"` / `"B · Bottom"`), and two ghost icon `Button`s with tooltips: `"Copy to other side"` (`Copy`) and `"Swap sides"` (`ArrowLeftRight`, or `ArrowUpDown` when horizontal). On phones the `"Editing"` label is for screen readers only and the orientation button of the toolbar bullet below ends the row. On portrait phone the all-controls panel shrinks by the row's height so the canvas keeps `40%` of the viewport, and with one control shown the canvas keeps `50%`.
+  - **Toolbar:** the Split button's icon is `Columns2` (vertical) or `Rows2` (horizontal). Beside it (on phones: at the end of the split side switcher), an icon button (`RotateCwSquare`) switches orientation; its name states the target, `"Switch to top/bottom view"` or `"Switch to left/right view"`.
 - **Selection debug view (F6):** While `"Show selection"` is on for a `pixelSort` instance, show a top-left pill `"Selection preview (not exported)"`.
 - **Effect stack row (F4):** Shows drag grip (`GripVertical`), effect label, enabled `Switch`, and when off displays BOTH an `EyeOff` icon and the text `"Off"` (AC-F4.2). An unknown or newer-version instance renders with a dashed border, label `"Unsupported effect (<type> v<version>)"`, no parameter controls, and only Move up / Move down / Remove menu items (AC-F4.6).
 - **Export dialog (F12):**
@@ -304,7 +323,7 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
 ### 7.2 Post-v0.1.0 UI specifications (F20, F23, F24)
 
 - **Geometry tools (F20):**
-  - Entry point: a `"Transform"` toggle button (`Crop` icon, `aria-pressed`) in the editor toolbar, with its text on desktop and tablet and icon-only on phones, where `"Presets"` is icon-only too so the toolbar fits a `390 px` touch screen. Activating it shows the Geometry panel (`src/features/transform/`) in place of the Parameter panel and starts crop mode. It also shows the Stack tab on desktop and tablet and opens a collapsed panel, sheet or drawer; the portrait phone sheet is headed `"Transform"`, so there the panel's own title is for screen readers only and the close button ends the orientation row. The panel closes with the toggle, its `"Close transform panel"` button, selecting or adding an effect, or leaving the editor.
+  - Entry point: a `"Transform"` toggle button (`Crop` icon, `aria-pressed`) in the editor toolbar, with its text beside the icon on desktop and tablet and under it on phones (section 6.4). Activating it shows the Geometry panel (`src/features/transform/`) in place of the Parameter panel and starts crop mode. It also shows the Stack tab on desktop and tablet and opens a collapsed panel or drawer. On a phone, portrait and landscape, the panel's title is for screen readers only, the close button ends the orientation row, and the crop buttons come right after the aspect ratio, above the number fields, so `"Apply crop"` is visible without scrolling. The panel closes with the toggle, its `"Close transform panel"` button, selecting or adding an effect, or leaving the editor.
   - Orientation row: four icon buttons (`RotateCcw` `"Rotate 90° counter-clockwise"`, `RotateCw` `"Rotate 90° clockwise"`, `FlipVertical2` `"Flip horizontal"`, `FlipHorizontal2` `"Flip vertical"`; Lucide names the flip icons by the mirror line), each committing immediately as one history entry, in or out of crop mode. The crop box and the resize turn with the image, and a ratio switches to its turned form (`16:9` to `9:16`), or to `Free` when it has none.
   - Crop section: aspect-ratio `Select` (`Free`, `Original`, `1:1`, `4:3`, `3:4`, `3:2`, `2:3`, `16:9`, `9:16`, `4:5`) and numeric `X`, `Y`, `Width`, `Height` inputs (`Enter` or blur sets the box; typing a width or height switches the ratio to `Free`). In crop mode: `"Apply crop"` primary and `"Cancel"` outline buttons. Out of it: an `"Edit crop"` outline button; choosing a ratio or typing in a field also starts crop mode. A `"Reset crop"` ghost button saves the full image at once, as one history entry.
   - Applying a crop that changes the cropped width or height removes the resize, and the panel says so beforehand. Undo, redo and a history jump drop an unapplied box and show the saved one.
@@ -352,7 +371,7 @@ Empty Library, desktop and tablet (phone stacks the actions at full width):
 |        '  [Open images] [Try a sample] [Read the guide] '        |
 |        + - - - - - - - - - - - - - - - - - - - - - - - +          |
 |          Images stay on this device. Drift works offline ...      |
-|       Opens JPEG, PNG, ... Shortcuts: [?] Guide [\] Compare ...     |
+|                    Opens JPEG, PNG, WebP, ...                     |
 |                                                                   |
 |    See what Drift does                                      [x]   |
 |    [before|after]  [before|after]  [before|after]  [before|after] |
@@ -364,17 +383,17 @@ Empty Library, desktop and tablet (phone stacks the actions at full width):
 - **Hero:** the app icon at `56 px` (decorative, `alt=""`), then the pitch as the screen's `h2`. It takes focus (`tabIndex={-1}`) after the introduction is dismissed or the last project is deleted.
 - **Drop zone:** a named `section` ("Add photos") at most `576 px` wide, `2 px` dashed `border-input`, `--card` fill, `8 px` radius, `lucide` `ImageUp` icon, `"Drop photos here"` in `16 / 24` semibold. It is a visual target: the whole window accepts drops, and the drop overlay (section 6.1) covers the screen while dragging.
 - **Actions:** `Button` default `"Open images"` (the only primary), `"Try a sample"` outline (disabled and reading `"Creating sample…"` while saving), `"Read the guide"` ghost link. A row from 640 px; stacked full width below. If the sample cannot be made, a toast says `"Couldn't create the sample project."`.
-- **Privacy and tips:** the privacy line in `14 / 20`, the tip line in `12 / 16`, both `text-muted-foreground`, centred. Keys use `kbd` with `--secondary` fill and the mono font.
+- **Privacy and formats:** the privacy line in `14 / 20`, the line naming the formats in `12 / 16`, both `text-muted-foreground`, centred. No keys are listed here (section 8.4).
 - **Introduction:** a named `section` with `h3` `"See what Drift does"`, one line `"Pick one to try it on a sample picture. Left is the original, right is the result."`, and a ghost icon button `"Dismiss introduction"`. Four tiles in 2 columns below 1024 px and 4 from 1024 px, `12 px` gap. Each tile is one `button` (`--card`, `1 px` border, `8 px` radius, hover `--secondary`): a `4:3` canvas with the original in the left half, the result in the right half and the split divider line of section 7.2 between them (decorative, `aria-hidden`), then the tile name (`14 / 20` semibold) and one line of description (`12 / 16` muted). While a preview renders, or if it fails, the canvas area is `--muted`; the tile works either way.
 - **Sample picture:** original artwork generated by code: a banded dusk sky, a striped sun, three ridges and rippled water with fine grain, so every effect has edges and runs to work on. It is part of the photo layer, not the UI, so its colours are not tokens.
 
 Guide screen:
 
-- **App bar:** a ghost icon `Button` with `CircleHelp` (`aria-label="Guide"`, tooltip `"Guide (?)"`) before Settings on the Library and Editor. On the Guide, a back arrow on the left and Settings on the right.
+- **App bar:** a ghost icon `Button` with `CircleHelp` (`aria-label="Guide"`, tooltip `"Guide (?)"`, section 8.4) before Settings on the Library and Editor. On the Guide, a back arrow on the left and Settings on the right.
 - **Layout:** one `ScrollArea` for the page. At `>= 1024 px` a `224 px` contents column, sticky at the top, beside a text column of at most `68ch`. Below that, a sticky bar with a full-width outline `Button` `"Contents"` (`aria-expanded`) that opens the list; the list scrolls inside `60dvh`.
 - **Contents:** plain full-width buttons with hover fill on `--secondary`; `32 px` tall, `44 px` on coarse pointer. Activating one scrolls the section into view without animation and focuses its heading.
 - **Type:** page title `24 / 32` semibold (`h2`), section titles `18 / 24` semibold (`h3`), effect names `16 / 24` (`h4`), body `14 / 24`.
-- **Effects reference:** one bordered `--card` block per effect with a definition list of parameters, divided by `1 px` `--border`. Keys in the shortcut table use `kbd` with `--secondary` fill and the mono font.
+- **Effects reference:** one bordered `--card` block per effect with a definition list of parameters, divided by `1 px` `--border`. Keys in the shortcut table use `kbd` with `--secondary` fill and the mono font. The `"Keyboard shortcuts"` section and its contents entry are left out where keyboard hints are hidden (section 8.4). No other guide text names a key.
 
 ## 8. Interaction: touch, pointer and keyboard
 
@@ -423,6 +442,15 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | `Space` held while dragging | Crop mode | Pan instead of moving the crop box (F20) |
 | `Alt+ArrowUp` / `Alt+ArrowDown` | Effect stack row focused | Move selected effect instance up / down 1 position (AC-F4.3) |
 | `Escape` | Any modal / menu / sheet | Close overlay and restore focus to its trigger |
+
+### 8.4 Keyboard hints
+
+One rule, in `src/lib/keyboard-hints.ts`, decides whether the app mentions keys at all.
+
+- **Hidden** when the primary input is touch with no hover, `(pointer: coarse) and (hover: none)`: phones and tablets. No tooltip, menu, screen or guide section then names a key.
+- **Shown** otherwise, including laptops with a touch screen. The rule follows the media query live.
+- **Where hints appear when shown:** in tooltips as `"<action> (<keys>)"` (`useShortcutHint`), at the end of menu items (`DropdownMenuShortcut`, which applies the rule itself), and in the Guide's `"Keyboard shortcuts"` section. Never as loose text in a panel or screen.
+- The shortcuts themselves keep working everywhere, so a keyboard attached to a tablet still operates the app.
 
 ## 9. Empty, loading and error states
 

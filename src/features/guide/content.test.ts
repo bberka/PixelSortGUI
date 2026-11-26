@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vite-plus/test';
-import {GUIDE_SECTIONS, LANDING, SHORTCUTS} from './content.ts';
+import {GUIDE_SECTIONS, SHORTCUTS} from './content.ts';
 import {isGuideShortcut} from './navigation.ts';
 import {arrowDelta} from '@/features/transform/crop-math.ts';
 import {stepSplitPosition} from '@/features/canvas/compare-logic.ts';
@@ -33,11 +33,19 @@ describe('guide content', () => {
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
-	it('tips only keys that the shortcut table lists', () => {
-		const listed = SHORTCUTS.flatMap((item) => item.keys);
-		for (const {key: tip} of LANDING.shortcuts) {
-			expect(listed).toContain(tip);
-		}
+	it('names keys only in the shortcut section, which touch devices leave out', () => {
+		const keys =
+			/\b(?:ctrl|alt\+|shift\+|enter key|arrow keys|keyboard)|⌘|\\ key/i;
+		const named = GUIDE_SECTIONS.filter((section) => !section.keyboardOnly)
+			.flatMap((section) => section.blocks)
+			.flatMap((block) => JSON.stringify(block))
+			.filter((text) => keys.test(text));
+		expect(named).toEqual([]);
+		expect(
+			GUIDE_SECTIONS.filter((section) => section.keyboardOnly).map(
+				(section) => section.id,
+			),
+		).toEqual(['shortcuts']);
 	});
 
 	it('lists only editor keys that a handler reacts to, and all view keys', () => {

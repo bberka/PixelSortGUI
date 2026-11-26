@@ -85,17 +85,3 @@ export function formatUndoAriaLabel(label: string | null): string {
 export function formatRedoAriaLabel(label: string | null): string {
 	return label ? `Redo ${label}` : 'Redo';
 }
-
-export function formatUndoTooltip(
-	label: string | null,
-	shortcut: string,
-): string {
-	return `${formatUndoAriaLabel(label)} (${shortcut})`;
-}
-
-export function formatRedoTooltip(
-	label: string | null,
-	shortcut: string,
-): string {
-	return `${formatRedoAriaLabel(label)} (${shortcut})`;
-}

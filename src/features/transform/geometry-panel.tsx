@@ -7,7 +7,7 @@ import {useAppRuntime} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {Separator} from '@/components/ui/separator';
-import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 
 /**
  Rotate, flip, crop and resize of the open project (product.md F20, DESIGN.md
@@ -15,8 +15,8 @@ import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
  */
 export function GeometryPanel() {
 	const {bundle} = useAppRuntime();
-	// The portrait phone sheet already shows the title, and height is short.
-	const compact = useEditorViewportClass() === 'phone-portrait';
+	// Height is short on phones, and the toolbar button already names the panel.
+	const compact = usePhoneLayout();
 	const close = (
 		<Button
 			type="button"

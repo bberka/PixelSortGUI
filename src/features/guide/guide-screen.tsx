@@ -1,9 +1,15 @@
 import {useEffect, useRef, useState} from 'react';
 import {ChevronDownIcon, ChevronRightIcon} from 'lucide-react';
-import {GUIDE_CONTENTS_LABEL, GUIDE_SECTIONS, GUIDE_TITLE} from './content.ts';
+import {
+	GUIDE_CONTENTS_LABEL,
+	GUIDE_SECTIONS,
+	GUIDE_TITLE,
+	type GuideSection,
+} from './content.ts';
 import {Block} from './guide-blocks.tsx';
 import {Button} from '@/components/ui/button';
 import {ScrollArea} from '@/components/ui/scroll-area';
+import {useShowKeyboardHints} from '@/lib/keyboard-hints.ts';
 
 function headingId(sectionId: string): string {
 	return `guide-${sectionId}`;
@@ -22,13 +28,15 @@ function showSection(sectionId: string): void {
 }
 
 function ContentsList({
+	sections,
 	onSelect,
 }: {
+	readonly sections: readonly GuideSection[];
 	readonly onSelect: (sectionId: string) => void;
 }) {
 	return (
 		<ul className="flex flex-col gap-0.5">
-			{GUIDE_SECTIONS.map((section) => (
+			{sections.map((section) => (
 				<li key={section.id}>
 					<button
 						type="button"
@@ -51,6 +59,10 @@ function ContentsList({
 export function GuideScreen() {
 	const [contentsOpen, setContentsOpen] = useState(false);
 	const titleRef = useRef<HTMLHeadingElement>(null);
+	const showKeys = useShowKeyboardHints();
+	const sections = GUIDE_SECTIONS.filter(
+		(section) => showKeys || !section.keyboardOnly,
+	);
 
 	useEffect(() => {
 		titleRef.current?.focus({preventScroll: true});
@@ -99,6 +111,7 @@ export function GuideScreen() {
 						className={`max-lg:mt-2 max-lg:max-h-[60dvh] lg:max-h-[calc(100dvh-8rem)] ${contentsOpen ? '' : 'max-lg:hidden'}`}
 					>
 						<ContentsList
+							sections={sections}
 							onSelect={(sectionId) => {
 								setContentsOpen(false);
 								// Wait for the collapsed list to leave the layout.
@@ -117,7 +130,7 @@ export function GuideScreen() {
 					>
 						{GUIDE_TITLE}
 					</h2>
-					{GUIDE_SECTIONS.map((section) => (
+					{sections.map((section) => (
 						<section
 							key={section.id}
 							aria-labelledby={headingId(section.id)}

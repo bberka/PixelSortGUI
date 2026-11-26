@@ -93,6 +93,18 @@ export function EffectStackPanel({
 		targetRow?.querySelector<HTMLButtonElement>('button')?.focus();
 	}, [instanceIdsKey, instances.length]);
 
+	// A narrow strip can hold the selected chip out of sight, such as a newly
+	// added effect at its end.
+	useEffect(() => {
+		if (!compact || !selectedInstanceId) {
+			return;
+		}
+
+		listRef.current
+			?.querySelector('[data-state="selected"]')
+			?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+	}, [compact, selectedInstanceId, instanceIdsKey]);
+
 	if (!stack) {
 		return null;
 	}
@@ -197,6 +209,7 @@ export function EffectStackPanel({
 		<AddEffectPicker
 			registry={registry}
 			compact={compact}
+			labelled={instances.length === 0}
 			disabled={atLimit}
 			describedBy={atLimit ? limitNoteId : undefined}
 			triggerRef={pickerTriggerRef}

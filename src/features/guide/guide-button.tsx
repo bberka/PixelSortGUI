@@ -1,10 +1,13 @@
 import {CircleHelpIcon} from 'lucide-react';
-import {GUIDE_BUTTON_LABEL, GUIDE_BUTTON_TOOLTIP} from './content.ts';
+import {GUIDE_BUTTON_LABEL} from './content.ts';
 import {openGuide} from './navigation.ts';
 import {Button} from '@/components/ui/button';
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip';
+import {useShortcutHint} from '@/lib/keyboard-hints.ts';
 
 export function GuideButton() {
+	const hint = useShortcutHint();
+
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
@@ -18,7 +21,7 @@ export function GuideButton() {
 					<CircleHelpIcon className="size-4" aria-hidden="true" />
 				</Button>
 			</TooltipTrigger>
-			<TooltipContent>{GUIDE_BUTTON_TOOLTIP}</TooltipContent>
+			<TooltipContent>{hint(GUIDE_BUTTON_LABEL, '?')}</TooltipContent>
 		</Tooltip>
 	);
 }

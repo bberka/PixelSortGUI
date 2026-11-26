@@ -936,6 +936,7 @@ test('at 390 px Randomize is an icon-only button with a tooltip beside Reset all
 }) => {
 	await page.setViewportSize({width: 390, height: 844});
 	await seedProject(page, ['pixelSort']);
+	await page.getByRole('button', {name: 'Show all controls'}).click();
 
 	const button = page.getByRole('button', {name: 'Randomize', exact: true});
 	const reset = page.getByRole('button', {name: 'Reset all'});
@@ -1161,6 +1162,16 @@ for (const theme of THEMES) {
 			await expect(
 				page.getByRole('heading', {name: 'Pixel sort'}),
 			).toBeVisible();
+			if (viewport.name === 'phone') {
+				// The phone opens on one control, which has nothing to scroll.
+				await expect(
+					page.getByRole('button', {name: 'Show selection'}),
+				).toBeVisible();
+				await page.waitForTimeout(500);
+				await assertNoA11yViolations(page);
+				await page.getByRole('button', {name: 'Show all controls'}).click();
+			}
+
 			await expect(page.getByText('Show selection')).toBeVisible();
 			await page.waitForTimeout(500);
 

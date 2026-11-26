@@ -10,10 +10,12 @@ import {ExactEntry} from './exact-entry.tsx';
 import {controlId} from './ids.ts';
 import {steppedValue} from './keyboard.ts';
 import {ParamRow} from './param-row.tsx';
+import {useParamsLayout} from './params-layout.ts';
 import {useTransientParam} from './use-drag-value.ts';
 import {Slider} from '@/components/ui/slider';
 import {Label} from '@/components/ui/label';
 import {useAppStore} from '@/app/runtime-context.tsx';
+import {cn} from '@/lib/utils';
 
 export type RangeControlProps = {
 	readonly instanceId: string;
@@ -50,6 +52,8 @@ export function RangeControl({
 	const cancelDrag = useAppStore((state) => state.cancelDrag);
 	const transient = useTransientParam(instanceId, paramKey);
 	const current = pairFrom(transient, value);
+	// Short panels put the Low and High fields on the slider's own line.
+	const inline = useParamsLayout().density !== 'regular';
 	const lowId = controlId(instanceId, paramKey, 'low');
 	const highId = controlId(instanceId, paramKey, 'high');
 	const labelId = controlId(instanceId, paramKey, 'label');
@@ -76,6 +80,52 @@ export function RangeControl({
 		nudgeParam(instanceId, paramKey, withEnd(current, end, next));
 	};
 
+	const field = (end: End) => (
+		<>
+			<Label
+				className={cn('text-xs text-muted-foreground', inline && 'sr-only')}
+				htmlFor={end === 0 ? lowId : highId}
+			>
+				{end === 0 ? 'Low' : 'High'}
+			</Label>
+			<ExactEntry
+				className={inline ? 'w-16 shrink-0' : 'w-full min-w-0'}
+				format={String}
+				id={end === 0 ? lowId : highId}
+				parse={parseNumericText}
+				value={current[end]}
+				onCommit={(next) => {
+					void commitParam(instanceId, paramKey, withEnd(current, end, next));
+				}}
+			/>
+		</>
+	);
+
+	const slider = (
+		<Slider
+			className={cn(inline && 'min-w-0 flex-1')}
+			defaultMark={spec.default}
+			max={spec.max}
+			min={spec.min}
+			minStepsBetweenThumbs={0}
+			step={spec.step}
+			thumbLabels={endLabels}
+			value={[current[0], current[1]]}
+			onKeyDownCapture={handleKeyDownCapture}
+			onPointerCancel={cancelDrag}
+			onValueChange={(values) => {
+				if (values.length === 2) {
+					dragParam(instanceId, paramKey, [values[0], values[1]]);
+				}
+			}}
+			onValueCommit={(values) => {
+				if (values.length === 2) {
+					void commitParam(instanceId, paramKey, [values[0], values[1]]);
+				}
+			}}
+		/>
+	);
+
 	return (
 		<ParamRow
 			help={spec.help}
@@ -91,55 +141,21 @@ export function RangeControl({
 			}}
 			valueText={formatRange(current)}
 		>
-			<Slider
-				defaultMark={spec.default}
-				max={spec.max}
-				min={spec.min}
-				minStepsBetweenThumbs={0}
-				step={spec.step}
-				thumbLabels={endLabels}
-				value={[current[0], current[1]]}
-				onKeyDownCapture={handleKeyDownCapture}
-				onPointerCancel={cancelDrag}
-				onValueChange={(values) => {
-					if (values.length === 2) {
-						dragParam(instanceId, paramKey, [values[0], values[1]]);
-					}
-				}}
-				onValueCommit={(values) => {
-					if (values.length === 2) {
-						void commitParam(instanceId, paramKey, [values[0], values[1]]);
-					}
-				}}
-			/>
-			<div className="flex items-center gap-1.5">
-				<Label className="text-xs text-muted-foreground" htmlFor={lowId}>
-					Low
-				</Label>
-				<ExactEntry
-					className="w-full min-w-0"
-					format={String}
-					id={lowId}
-					parse={parseNumericText}
-					value={current[0]}
-					onCommit={(next) => {
-						void commitParam(instanceId, paramKey, withEnd(current, 0, next));
-					}}
-				/>
-				<Label className="text-xs text-muted-foreground" htmlFor={highId}>
-					High
-				</Label>
-				<ExactEntry
-					className="w-full min-w-0"
-					format={String}
-					id={highId}
-					parse={parseNumericText}
-					value={current[1]}
-					onCommit={(next) => {
-						void commitParam(instanceId, paramKey, withEnd(current, 1, next));
-					}}
-				/>
-			</div>
+			{inline ? (
+				<div className="flex items-center gap-3">
+					{field(0)}
+					{slider}
+					{field(1)}
+				</div>
+			) : (
+				<>
+					{slider}
+					<div className="flex items-center gap-1.5">
+						{field(0)}
+						{field(1)}
+					</div>
+				</>
+			)}
 		</ParamRow>
 	);
 }

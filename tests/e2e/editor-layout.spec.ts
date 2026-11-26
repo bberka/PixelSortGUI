@@ -197,10 +197,11 @@ for (const theme of THEMES) {
 			const {canvas, stack, params} = regions;
 			switch (viewport.name) {
 				case 'phone': {
-					expect(canvas.height).toBeGreaterThanOrEqual(viewport.height * 0.4);
+					expect(canvas.height).toBeGreaterThanOrEqual(viewport.height * 0.5);
 					expect(canvas.width).toBe(viewport.width);
 					expect(stack.height).toBeGreaterThanOrEqual(48);
-					expect(params.height).toBeGreaterThanOrEqual(200);
+					// The parameter row and one control below it.
+					expect(params.height).toBeGreaterThanOrEqual(190);
 
 					break;
 				}
@@ -233,7 +234,14 @@ for (const theme of THEMES) {
 			const undersized = await findUndersizedControls(page);
 			expect(undersized, 'undersized interactive controls').toEqual([]);
 
-			// 4. Canvas stays visible while dragging a slider.
+			// 4. Canvas stays visible while dragging a slider. Phones show one
+			// control at a time, picked by name.
+			if (viewport.name.startsWith('phone')) {
+				await page
+					.getByRole('tab', {name: 'Threshold range', exact: true})
+					.click();
+			}
+
 			const slider = page.getByRole('slider', {name: 'Threshold range high'});
 			await slider.scrollIntoViewIfNeeded();
 			const sliderBox = await slider.boundingBox();
@@ -247,13 +255,16 @@ for (const theme of THEMES) {
 			expect(canvasWhileDragging).not.toBeNull();
 			expect(canvasWhileDragging!.width).toBeGreaterThanOrEqual(200);
 			expect(canvasWhileDragging!.height).toBeGreaterThanOrEqual(
-				viewport.name === 'phone' ? viewport.height * 0.4 : 200,
+				viewport.name === 'phone' ? viewport.height * 0.5 : 200,
 			);
 			await page.mouse.up();
 
-			// 5. Tab order follows the visual region order:
-			//    header -> toolbar -> canvas -> effects aside (stack -> params).
-			const regionOrder = ['header', 'toolbar', 'canvas', 'aside'] as const;
+			// 5. Tab order follows the visual region order: header, toolbar and
+			//    canvas (a phone puts the toolbar under the canvas), then the
+			//    effects aside (stack -> params).
+			const regionOrder = viewport.name.startsWith('phone')
+				? ['header', 'canvas', 'toolbar', 'aside']
+				: ['header', 'toolbar', 'canvas', 'aside'];
 			await page.getByRole('button', {name: 'Back to library'}).focus();
 			const visited: string[] = [];
 			for (let step = 0; step < 30; step++) {
@@ -332,25 +343,25 @@ test('tablet docked panel resizes with keyboard and pointer, persists size, and 
 		.toBe(420);
 });
 
-test('phone bottom sheet cycles detents and landscape right drawer collapses cleanly', async ({
+test('phone panel switches between one and all controls and landscape right drawer collapses cleanly', async ({
 	page,
 }) => {
 	await seedEditor(page, LAYOUT_VIEWPORTS[0], THEMES[0], ['pixelSort']);
 
 	const aside = page.locator('aside[aria-label="Effects"]');
-	await expect(aside).toHaveAttribute('data-sheet-detent', 'half');
+	await expect(aside).toHaveAttribute('data-controls', 'one');
+	await expect(
+		page.getByRole('slider', {name: 'Threshold range low'}),
+	).toHaveCount(0);
 
-	// Cycle: half -> expanded -> collapsed -> half.
-	await page.getByRole('button', {name: 'Expand parameters'}).click();
-	await expect(aside).toHaveAttribute('data-sheet-detent', 'expanded');
+	await page.getByRole('button', {name: 'Show all controls'}).click();
+	await expect(aside).toHaveAttribute('data-controls', 'all');
+	await expect(
+		page.getByRole('slider', {name: 'Threshold range low'}),
+	).toBeAttached();
 
-	await page.getByRole('button', {name: 'Collapse parameters'}).click();
-	await expect(aside).toHaveAttribute('data-sheet-detent', 'collapsed');
-	await expect(page.locator('section[aria-label="Parameters"]')).toBeHidden();
-
-	await page.getByRole('button', {name: 'Show parameters'}).click();
-	await expect(aside).toHaveAttribute('data-sheet-detent', 'half');
-	await expect(page.locator('section[aria-label="Parameters"]')).toBeVisible();
+	await page.getByRole('button', {name: 'Show one control'}).click();
+	await expect(aside).toHaveAttribute('data-controls', 'one');
 
 	// Rotate to phone landscape: right drawer is 300 px and collapses cleanly.
 	await page.setViewportSize({width: 844, height: 390});
@@ -488,19 +499,19 @@ test('AC-F18.3: coarse pointer chrome controls meet 44x44 px without overflowing
 		);
 		expect(isCoarse).toBe(true);
 
-		// 1. Phone portrait detent toggle is >= 44x44 and does not overlap params.
-		const detentButton = page.getByRole('button', {name: 'Expand parameters'});
-		const detentBox = (await detentButton.boundingBox())!;
-		const paramsBox = (await page
-			.locator('section[aria-label="Parameters"]')
-			.boundingBox())!;
-		expect(detentBox.width).toBeGreaterThanOrEqual(44);
-		expect(detentBox.height).toBeGreaterThanOrEqual(44);
-		expect(boxesOverlap(detentBox, paramsBox)).toBe(false);
-		await expect(detentButton).toHaveAttribute(
+		// 1. The phone panel's buttons are >= 44x44.
+		const showAll = page.getByRole('button', {name: 'Show all controls'});
+		await expect(showAll).toHaveAttribute(
 			'aria-controls',
 			'editor-phone-params-panel',
 		);
+		for (const name of ['Show all controls', 'Randomize', 'Show selection']) {
+			const box = (await page
+				.getByRole('button', {name, exact: true})
+				.boundingBox())!;
+			expect(box.width, name).toBeGreaterThanOrEqual(44);
+			expect(box.height, name).toBeGreaterThanOrEqual(44);
+		}
 
 		// 2. Phone landscape drawer toggle is >= 44x44 and fits inside the collapsed rail.
 		await page.setViewportSize({width: 844, height: 390});

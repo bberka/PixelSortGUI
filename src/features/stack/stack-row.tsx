@@ -60,6 +60,8 @@ export function StackRow({
 		onMove(index + (event.key === 'ArrowUp' ? -1 : 1));
 	};
 
+	// Phone chips stay narrow: only the selected one carries its controls.
+	const showControls = !compact || isSelected || isUnsupported;
 	const moveUpLabel = compact ? 'Move left' : 'Move up';
 	const moveDownLabel = compact ? 'Move right' : 'Move down';
 
@@ -94,7 +96,11 @@ export function StackRow({
 				<button
 					type="button"
 					aria-current={isSelected ? 'true' : undefined}
-					className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					className={cn(
+						'flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+						compact && 'min-h-10 px-2',
+						!showControls && 'min-w-11 justify-center',
+					)}
 					onClick={onSelect}
 				>
 					<span className="min-w-0 truncate">{label}</span>
@@ -106,64 +112,66 @@ export function StackRow({
 					)}
 				</button>
 			)}
-			{isUnsupported ? null : (
+			{isUnsupported || !showControls ? null : (
 				<Switch
 					aria-label={label}
 					checked={instance.enabled}
 					onCheckedChange={onToggleEnabled}
 				/>
 			)}
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-xs"
-						aria-label={`${label} actions`}
-						className={compact ? 'h-11 w-11' : undefined}
-					>
-						<MoreVerticalIcon aria-hidden="true" />
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end">
-					<DropdownMenuItem
-						disabled={index === 0}
-						onSelect={() => {
-							onMove(index - 1);
-						}}
-					>
-						{moveUpLabel}
-						<DropdownMenuShortcut>Alt+Up</DropdownMenuShortcut>
-					</DropdownMenuItem>
-					<DropdownMenuItem
-						disabled={index >= total - 1}
-						onSelect={() => {
-							onMove(index + 1);
-						}}
-					>
-						{moveDownLabel}
-						<DropdownMenuShortcut>Alt+Down</DropdownMenuShortcut>
-					</DropdownMenuItem>
-					{isUnsupported ? (
-						<>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem variant="destructive" onSelect={onRemove}>
-								Remove
-							</DropdownMenuItem>
-						</>
-					) : (
-						<>
-							<DropdownMenuItem onSelect={onDuplicate}>
-								Duplicate
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem variant="destructive" onSelect={onRemove}>
-								Remove
-							</DropdownMenuItem>
-						</>
-					)}
-				</DropdownMenuContent>
-			</DropdownMenu>
+			{showControls ? (
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							aria-label={`${label} actions`}
+							className={compact ? 'h-11 w-11' : undefined}
+						>
+							<MoreVerticalIcon aria-hidden="true" />
+						</Button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						<DropdownMenuItem
+							disabled={index === 0}
+							onSelect={() => {
+								onMove(index - 1);
+							}}
+						>
+							{moveUpLabel}
+							<DropdownMenuShortcut>Alt+Up</DropdownMenuShortcut>
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							disabled={index >= total - 1}
+							onSelect={() => {
+								onMove(index + 1);
+							}}
+						>
+							{moveDownLabel}
+							<DropdownMenuShortcut>Alt+Down</DropdownMenuShortcut>
+						</DropdownMenuItem>
+						{isUnsupported ? (
+							<>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem variant="destructive" onSelect={onRemove}>
+									Remove
+								</DropdownMenuItem>
+							</>
+						) : (
+							<>
+								<DropdownMenuItem onSelect={onDuplicate}>
+									Duplicate
+								</DropdownMenuItem>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem variant="destructive" onSelect={onRemove}>
+									Remove
+								</DropdownMenuItem>
+							</>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			) : null}
 		</li>
 	);
 }

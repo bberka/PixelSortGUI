@@ -12,9 +12,11 @@ import {ExactEntry} from './exact-entry.tsx';
 import {controlId} from './ids.ts';
 import {steppedValue} from './keyboard.ts';
 import {ParamRow} from './param-row.tsx';
+import {useParamsLayout} from './params-layout.ts';
 import {useTransientParam} from './use-drag-value.ts';
 import {Slider} from '@/components/ui/slider';
 import {useAppStore} from '@/app/runtime-context.tsx';
+import {cn} from '@/lib/utils';
 
 export type NumberControlProps = {
 	readonly instanceId: string;
@@ -41,6 +43,8 @@ export function NumberControl({
 	const cancelDrag = useAppStore((state) => state.cancelDrag);
 	const transient = useTransientParam(instanceId, paramKey);
 	const current = numberFrom(transient, value);
+	// Short panels put the field beside the slider instead of under it.
+	const inline = useParamsLayout().density !== 'regular';
 	const step = spec.kind === 'number' ? spec.step : 1;
 	const inputId = controlId(instanceId, paramKey);
 	const labelId = `${inputId}-label`;
@@ -77,44 +81,47 @@ export function NumberControl({
 			}}
 			valueText={formatNumericParam(spec, current)}
 		>
-			<Slider
-				defaultMark={spec.default}
-				max={spec.max}
-				min={spec.min}
-				step={step}
-				thumbLabels={[spec.label]}
-				value={[current]}
-				onKeyDownCapture={handleKeyDownCapture}
-				onPointerCancel={cancelDrag}
-				onValueChange={(values) => {
-					const next = values[0];
-					if (next !== undefined) {
-						dragParam(instanceId, paramKey, next);
-					}
-				}}
-				onValueCommit={(values) => {
-					const next = values[0];
-					if (next !== undefined) {
-						void commitParam(instanceId, paramKey, next);
-					}
-				}}
-			/>
-			<div className="flex justify-end">
-				<ExactEntry
-					className="w-24"
-					format={(next) => formatEntryValue(spec, next)}
-					id={inputId}
-					inputMode={spec.kind === 'number' ? 'decimal' : 'numeric'}
-					parse={(text) =>
-						spec.kind === 'number'
-							? parseNumberText(spec, text)
-							: parseNumericText(text)
-					}
-					value={current}
-					onCommit={(next) => {
-						void commitParam(instanceId, paramKey, next);
+			<div className={inline ? 'flex items-center gap-3' : 'contents'}>
+				<Slider
+					className={cn(inline && 'min-w-0 flex-1')}
+					defaultMark={spec.default}
+					max={spec.max}
+					min={spec.min}
+					step={step}
+					thumbLabels={[spec.label]}
+					value={[current]}
+					onKeyDownCapture={handleKeyDownCapture}
+					onPointerCancel={cancelDrag}
+					onValueChange={(values) => {
+						const next = values[0];
+						if (next !== undefined) {
+							dragParam(instanceId, paramKey, next);
+						}
+					}}
+					onValueCommit={(values) => {
+						const next = values[0];
+						if (next !== undefined) {
+							void commitParam(instanceId, paramKey, next);
+						}
 					}}
 				/>
+				<div className={cn('flex justify-end', inline && 'shrink-0')}>
+					<ExactEntry
+						className={inline ? 'w-20' : 'w-24'}
+						format={(next) => formatEntryValue(spec, next)}
+						id={inputId}
+						inputMode={spec.kind === 'number' ? 'decimal' : 'numeric'}
+						parse={(text) =>
+							spec.kind === 'number'
+								? parseNumberText(spec, text)
+								: parseNumericText(text)
+						}
+						value={current}
+						onCommit={(next) => {
+							void commitParam(instanceId, paramKey, next);
+						}}
+					/>
+				</div>
 			</div>
 		</ParamRow>
 	);

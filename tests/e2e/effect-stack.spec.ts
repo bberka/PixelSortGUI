@@ -454,6 +454,11 @@ for (const theme of THEMES) {
 		}) => {
 			const consoleErrors = collectConsoleErrors(page);
 			await openEditorInTheme(page, theme, viewport);
+			// A phone chip carries its switch only while selected.
+			await stackRows(page)
+				.nth(1)
+				.getByRole('button', {name: 'Channel shift', exact: true})
+				.click();
 			await page.getByRole('switch', {name: 'Channel shift'}).click();
 			await expect(
 				stackRows(page).nth(1).getByText('Off', {exact: true}),

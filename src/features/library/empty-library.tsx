@@ -1,4 +1,4 @@
-import {Fragment, type RefObject} from 'react';
+import type {RefObject} from 'react';
 import {ImageUpIcon} from 'lucide-react';
 import {EffectShowcase} from './effect-showcase.tsx';
 import {useSampleProject} from './use-sample-project.ts';
@@ -82,18 +82,7 @@ export function EmptyLibrary({headingRef}: EmptyLibraryProps) {
 						<span>{LANDING.privacy}</span> <span>{LANDING.offline}</span>
 					</p>
 					<p className="text-xs leading-5 text-muted-foreground">
-						{LANDING.formats} {LANDING.shortcutsLabel}
-						{LANDING.shortcuts.map((shortcut) => (
-							<Fragment key={shortcut.key}>
-								{' '}
-								<span className="whitespace-nowrap">
-									<kbd className="rounded-sm bg-secondary px-1.5 py-0.5 font-mono text-secondary-foreground">
-										{shortcut.key}
-									</kbd>{' '}
-									{shortcut.action}
-								</span>
-							</Fragment>
-						))}
+						{LANDING.formats}
 					</p>
 				</div>
 				{welcomeDismissed ? null : (

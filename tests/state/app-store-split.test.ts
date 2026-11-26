@@ -325,6 +325,19 @@ describe('app store — split sides', () => {
 		expect(stackRequests(coordinator)).toEqual([]);
 	});
 
+	it('leaves the preview on the stored stack after an overlapping undo and redo', async () => {
+		const context = await setupSplit();
+		const {store, coordinator} = context;
+		await store.getState().addEffect('pixelSort');
+		await store.getState().addEffect('channelShift');
+		await store.getState().undo();
+
+		await Promise.all([store.getState().undo(), store.getState().redo()]);
+
+		const sent = stackRequests(coordinator).at(-1)?.request.stack;
+		expect(sent).toEqual(active(context).stack);
+	});
+
 	it('re-sends side B when undo drops its drag but changes only side A', async () => {
 		const context = await setupSplit();
 		const {store, coordinator} = context;

@@ -888,7 +888,10 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		if (
 			wasDragging ||
 			nextDebugView !== currentDebug ||
-			canonicalStackJson(nextProject.stack) !== canonicalStackJson(active.stack)
+			// Compare with the stack in state now, not the one captured before the
+			// await: an overlapping undo may already have sent another stack.
+			canonicalStackJson(nextProject.stack) !==
+				canonicalStackJson((latest?.id === active.id ? latest : active).stack)
 		) {
 			dispatchStackToCoordinator(nextProject.stack, nextDebugView, false);
 		}

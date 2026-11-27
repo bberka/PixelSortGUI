@@ -1,0 +1,36 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 1,
+		"instances": [
+			{
+				"id": "psv20001",
+				"type": "pixelSort",
+				"version": 2,
+				"enabled": true,
+				"params": {
+					"angle": 0,
+					"intervalMode": "threshold",
+					"selectKey": "luma",
+					"threshold": [0.25, 0.8],
+					"edgeThreshold": 0.2,
+					"edgeBlur": 1,
+					"invert": false,
+					"maxLength": 0,
+					"lengthJitter": 0,
+					"skipChance": 0,
+					"channelMode": "rgb",
+					"sortKey": "luma",
+					"order": "ascending",
+					"discretize": 0,
+					"fill": "sort",
+					"intervalTransform": "none",
+					"seed": 0
+				},
+				"mix": 1,
+				"blend": "normal"
+			}
+		]
+	},
+	"scale": 1
+}

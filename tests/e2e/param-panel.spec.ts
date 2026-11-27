@@ -1157,6 +1157,50 @@ test('the panel shows no selection, an unsupported instance and a disabled one',
 	expect(await page.locator('input:not([type="file"])').count()).toBe(0);
 });
 
+test('AC-F6.7 & AC-F6.8: pixelSort Channels and Interval transform controls toggle visibility and render', async ({
+	page,
+}) => {
+	const consoleErrors = collectConsoleErrors(page);
+	await seedProject(page, ['pixelSort']);
+
+	const channels = page.getByRole('combobox', {name: 'Channels'});
+	const sortKey = page.getByRole('combobox', {name: 'Sort key'});
+	const intervalTransform = page.getByRole('combobox', {
+		name: 'Interval transform',
+	});
+
+	await expect(channels).toContainText('All (RGBA)');
+	await expect(sortKey).toBeVisible();
+	await expect(intervalTransform).toContainText('None');
+
+	// Switching Channels to RGB independent hides Sort key and updates the render.
+	await channels.click();
+	await page.getByRole('option', {name: 'RGB independent'}).click();
+	await expect
+		.poll(async () => (await readStack(page)).instances[0].params.channelMode)
+		.toBe('rgb');
+	await expect(sortKey).toHaveCount(0);
+
+	// Switching Interval transform to Mirror commits cleanly.
+	await intervalTransform.click();
+	await page.getByRole('option', {name: 'Mirror'}).click();
+	await expect
+		.poll(
+			async () => (await readStack(page)).instances[0].params.intervalTransform,
+		)
+		.toBe('mirror');
+
+	// Switching Fill to Average hides Interval transform and Discretize.
+	const fillGroup = page.getByRole('radiogroup', {name: 'Fill'});
+	await fillGroup.getByRole('radio', {name: 'Average'}).click();
+	await expect
+		.poll(async () => (await readStack(page)).instances[0].params.fill)
+		.toBe('average');
+	await expect(intervalTransform).toHaveCount(0);
+
+	expect(consoleErrors, 'Console errors').toEqual([]);
+});
+
 for (const theme of THEMES) {
 	for (const viewport of PROOF_VIEWPORTS) {
 		test(`the parameter panel follows the ${viewport.name} layout with no a11y violations in ${theme.name} @a11y`, async ({

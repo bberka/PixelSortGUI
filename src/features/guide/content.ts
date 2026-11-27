@@ -239,6 +239,20 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'Reset one control or “Reset all”. “Randomize” gives every control a random value so you can explore.',
 				],
 			},
+			{
+				kind: 'paragraph',
+				text: 'The “Image blend” effect mixes another picture into your photo. Effects above it change your photo only; effects below it change the blended result. Add it again to mix in a third picture.',
+			},
+			{
+				kind: 'list',
+				items: [
+					'Add “Image blend”, then “Choose image”. “From device” opens a file under the same rules as an import, without adding a project to the Library.',
+					'“From library” takes the original photo of another project, without its crop or effects. The picture is stored only once.',
+					'Set Blend mode and Opacity, then place the picture with Fit, Scale, Offset X, Offset Y and Rotation. Until you choose a picture, the effect changes nothing.',
+					'“Clear” removes the picture, and Undo brings it back. “Randomize” keeps it.',
+					'A project can use up to 8 extra pictures. Project files carry them along. A preset saves the settings but not the picture.',
+				],
+			},
 		],
 	},
 	{

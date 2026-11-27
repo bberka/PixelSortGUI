@@ -23,6 +23,7 @@ import {
 	ParamsLayoutContext,
 	type ParamsLayout,
 } from '@/features/params/params-layout.ts';
+import {ImagePickProvider} from '@/features/params/image-pick.tsx';
 import {SplitSideSwitcher} from '@/features/stack/split-side-switcher.tsx';
 import {Button} from '@/components/ui/button';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
@@ -134,13 +135,23 @@ function PanelHandle({
 	);
 }
 
+// The image picker sits above the frame, whose layouts remount the parameter
+// panel.
+export function EditorScreen() {
+	return (
+		<ImagePickProvider>
+			<EditorFrame />
+		</ImagePickProvider>
+	);
+}
+
 /**
  Responsive editor frame assembling the four slots across phone portrait,
  phone landscape, tablet, and desktop viewports (DESIGN.md section 6).
  Both the canvas column and the effects aside stay mounted in stable tree
  positions across viewport changes so resizing preserves worker and view state.
  */
-export function EditorScreen() {
+function EditorFrame() {
 	const viewportClass = useEditorViewportClass();
 	const isDesktop = viewportClass === 'desktop';
 	const isTablet = viewportClass === 'tablet';

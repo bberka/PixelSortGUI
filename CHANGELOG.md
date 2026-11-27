@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New effect: Image blend, which mixes a second picture into a project with blend modes, opacity and placement. Choose the picture from your device or from another project in the library; a project can use up to 8.
 - Backup and restore: export your Library, presets and settings to one ZIP file and import it on this or another device, merging or replacing. Find it in Settings under Storage, in the Library's top right menu and in the phone editor's menu, or drop the file on the window.
 - Fixed: on touch screens, buttons, switches, menu items and text fields are large enough to tap, and typing in a field no longer zooms the page.
 - Fixed: the preset, rename, delete and Transform controls no longer lose keyboard focus, and long names no longer push buttons or lists off the screen.

@@ -1,47 +1,37 @@
 import {useEffect, useRef, useState} from 'react';
 import {toast} from 'sonner';
-import {downscaleToPixelCap, type DownscaledSource} from './downscale.ts';
+import {downscaleToPixelCap} from './downscale.ts';
 import {
 	firstFrameNotice,
 	problemForArchive,
-	problemForCodecError,
 	problemForProjectFile,
-	problemForRefusedFormat,
 	problemForStorageError,
 	type ImportProblem,
 } from './import-problems.ts';
-import {isSvgFile, rasterizeSvg} from './rasterize-svg.ts';
+import {
+	readImageFile,
+	type ImportDownscale,
+	type ImportProbe,
+	type LargeImageChoice,
+	type LargeImagePrompt,
+} from './read-image-file.ts';
+import {useLargeImagePrompt} from './use-large-image-prompt.ts';
 import {isProjectFileName, isZipFileName} from './use-image-picker.ts';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
-import {
-	checkDimensionLimits,
-	checkFileSizeLimit,
-	inspectImageFormat,
-	probeImageDimensions,
-	type CodecResult,
-	type ImageDimensions,
-} from '@/codec/decode.ts';
+import {probeImageDimensions} from '@/codec/decode.ts';
 import type {ArchiveKind} from '@/storage/archive-kind.ts';
 import {
 	isQuotaExceededError,
 	type CreateProjectInput,
 } from '@/storage/types.ts';
 
-export type ImportProbe = (blob: Blob) => Promise<CodecResult<ImageDimensions>>;
-export type ImportDownscale = (
-	blob: Blob,
-	width: number,
-	height: number,
-) => Promise<CodecResult<DownscaledSource>>;
-
-export type LargeImageChoice = 'downscale' | 'keep' | 'cancel';
-
-export type LargeImagePrompt = {
-	readonly fileName: string;
-	readonly width: number;
-	readonly height: number;
-};
+export type {
+	ImportDownscale,
+	ImportProbe,
+	LargeImageChoice,
+	LargeImagePrompt,
+} from './read-image-file.ts';
 
 export type ImportProgress = {
 	readonly label: string;
@@ -122,12 +112,11 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const readKind = options.readKind ?? readKindInWorker;
 	const [progress, setProgress] = useState<ImportProgress | null>(null);
 	const [problems, setProblems] = useState<readonly ImportProblem[]>([]);
-	const [prompt, setPrompt] = useState<LargeImagePrompt | null>(null);
 	const [backup, setBackup] = useState<PendingBackup | null>(null);
+	const {prompt, ask, decide} = useLargeImagePrompt();
 	const busyRef = useRef(false);
 	const backupRef = useRef<PendingBackup | null>(null);
 	const aliveRef = useRef(true);
-	const decisionRef = useRef<((choice: LargeImageChoice) => void) | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
 
 	useEffect(() => {
@@ -135,8 +124,6 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		return () => {
 			aliveRef.current = false;
 			abortRef.current?.abort();
-			decisionRef.current?.('cancel');
-			decisionRef.current = null;
 		};
 	}, []);
 
@@ -146,124 +133,34 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		}
 	};
 
-	const askLargeImage = async (
-		next: LargeImagePrompt,
-	): Promise<LargeImageChoice> =>
-		new Promise<LargeImageChoice>((resolve) => {
-			decisionRef.current = resolve;
-			if (aliveRef.current) {
-				setPrompt(next);
-			}
-		});
-
-	const decide = (choice: LargeImageChoice) => {
-		const resolve = decisionRef.current;
-		decisionRef.current = null;
-		if (aliveRef.current) {
-			setPrompt(null);
-		}
-
-		resolve?.(choice);
-	};
-
-	// The raster is already within the size limits, so it needs no probe.
-	const readSvg = async (
-		file: File,
-	): Promise<AcceptedImage | ImportProblem> => {
-		const raster = await rasterizeSvg(file);
-		if (!raster.ok) {
-			return problemForCodecError(file.name, raster.error);
-		}
-
-		return {
-			input: {
-				name: file.name,
-				blob: raster.value.blob,
-				mimeType: raster.value.blob.type,
-				width: raster.value.width,
-				height: raster.value.height,
-				stripExtension: true,
-			},
-		};
-	};
-
 	const readOne = async (
 		file: File,
 		index: number,
 		total: number,
 	): Promise<AcceptedImage | ImportProblem | null> => {
-		const sizeError = checkFileSizeLimit(file.size);
-		if (sizeError) {
-			return problemForCodecError(file.name, sizeError);
-		}
-
-		update({
-			label: `Checking ${file.name} (${index + 1} of ${total})`,
-			fraction: (index + 0.5) / total,
-		});
-		const format = await inspectImageFormat(file, file.name);
-		if (format.refused) {
-			return problemForRefusedFormat(file.name, format.refused);
-		}
-
-		if (isSvgFile(file)) {
-			return readSvg(file);
-		}
-
-		const probed = await probe(file);
-		if (!probed.ok) {
-			return problemForCodecError(file.name, probed.error);
-		}
-
-		const {width, height} = probed.value;
-		const limits = checkDimensionLimits(width, height);
-		if (limits.hardError) {
-			return problemForCodecError(file.name, limits.hardError);
-		}
-
-		let blob: Blob = file;
-		let mimeType = file.type;
-		let sourceWidth = width;
-		let sourceHeight = height;
-
-		if (probed.value.exceedsGuaranteedArea) {
-			update(null);
-			const choice = await askLargeImage({
-				fileName: file.name,
-				width,
-				height,
-			});
-			if (choice === 'cancel') {
-				return null;
-			}
-
-			if (choice === 'downscale') {
-				update({
-					label: `Downscaling ${file.name} (${index + 1} of ${total})`,
-					fraction: (index + 0.5) / total,
-				});
-				const scaled = await downscale(file, width, height);
-				if (!scaled.ok) {
-					return problemForCodecError(file.name, scaled.error);
-				}
-
-				blob = scaled.value.blob;
-				mimeType = scaled.value.blob.type;
-				sourceWidth = scaled.value.width;
-				sourceHeight = scaled.value.height;
-			}
-		}
-
-		return {
-			input: {
-				name: file.name,
-				blob,
-				mimeType: mimeType || undefined,
-				width: sourceWidth,
-				height: sourceHeight,
-				stripExtension: true,
+		const result = await readImageFile(file, {
+			probe,
+			downscale,
+			askLargeImage: ask,
+			onStage(stage) {
+				update(
+					stage === undefined
+						? null
+						: {
+								label: `${stage} ${file.name} (${index + 1} of ${total})`,
+								fraction: (index + 0.5) / total,
+							},
+				);
 			},
-			animatedFileName: format.animated ? file.name : undefined,
+		});
+		if (result === null || 'kind' in result) {
+			return result;
+		}
+
+		const {animated, ...image} = result;
+		return {
+			input: {...image, name: file.name, stripExtension: true},
+			animatedFileName: animated ? file.name : undefined,
 		};
 	};
 

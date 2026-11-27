@@ -21,6 +21,7 @@ import {
 import {
 	addedSourceReferences,
 	missingSourceError,
+	newSourceRecord,
 	projectSourceHashes,
 	referencedSourceHashes,
 	stripSourceReferences,
@@ -269,6 +270,17 @@ async function requireSources(
 		if (count === 0) {
 			throw missingSourceError(sha256);
 		}
+	}
+}
+
+// Keeps a record that is already stored under the same hash.
+async function storeSourceOnce(
+	transaction: IDBTransaction,
+	record: SourceRecord,
+): Promise<void> {
+	const store = transaction.objectStore(STORE_NAMES.sources);
+	if ((await requestToPromise(store.count(record.sha256))) === 0) {
+		await requestToPromise(store.put(record));
 	}
 }
 
@@ -1108,6 +1120,14 @@ export class IndexedDbRepository implements StorageRepository {
 			validateStackForWrite(input.stackA);
 		}
 
+		const {newSource} = input;
+		if (newSource) {
+			validateImageDimensions(newSource.width, newSource.height);
+			if (!(await this.hasSource(newSource.sha256))) {
+				await this.#requireQuota(newSource.blob.size);
+			}
+		}
+
 		const now = this.#now();
 
 		return runTransaction(
@@ -1130,10 +1150,14 @@ export class IndexedDbRepository implements StorageRepository {
 				// Validated first, so a rejected commit leaves history alone.
 				const geometry = commitGeometry(existing, input.transform);
 				const stackA = input.stackA ?? existing.stackA;
-				await requireSources(
-					tx,
-					addedSourceReferences(existing, {stack: input.stack, stackA}),
-				);
+				const next = {stack: input.stack, stackA};
+				const added = addedSourceReferences(existing, next);
+				const record = newSource && newSourceRecord(newSource, next, now);
+				if (record) {
+					await storeSourceOnce(tx, record);
+				}
+
+				await requireSources(tx, added);
 				await requestToPromise(
 					historyStore.delete(
 						this.#keyRange.bound(

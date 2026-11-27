@@ -58,9 +58,7 @@ function groupSpecs(
 ): ParamGroup[] {
 	const groups = new Map<string, Array<{key: string; spec: ParamSpec}>>();
 	for (const [key, spec] of Object.entries<ParamSpec>(definition.params)) {
-		// `image` has no control yet (engine.md section 16.5), so it gets no row
-		// and cannot leave an empty group behind.
-		if (spec.kind === 'image' || !isParamVisible(spec, params)) {
+		if (!isParamVisible(spec, params)) {
 			continue;
 		}
 
@@ -234,7 +232,7 @@ export function ParameterPanel({
 	const randomize = () => {
 		void commitInstanceParams(
 			instance.id,
-			randomizeParams(definition.params, random),
+			randomizeParams(definition.params, random, params),
 			`Randomize ${definition.label}`,
 		).then(() => {
 			announce(`Randomized ${definition.label}`);

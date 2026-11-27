@@ -24,16 +24,22 @@ describe('guide effects reference (AC-F27.4)', () => {
 		}
 	});
 
-	it('leaves out unlisted effects, which nothing in the app can add yet', () => {
-		const html = renderToStaticMarkup(<Block block={{kind: 'effects'}} />);
-		const unlisted = effectRegistry
-			.list()
-			.filter((definition) => definition.unlisted);
+	it('lists Image blend with its image parameter', () => {
+		const entry = buildEffectsReference(effectRegistry).find(
+			(item) => item.type === 'imageBlend',
+		);
 
-		expect(unlisted.map((definition) => definition.type)).toEqual([
-			'imageBlend',
-		]);
-		expect(html).not.toContain('data-guide-effect="imageBlend"');
+		expect(entry?.params[0]).toMatchObject({
+			label: 'Blend image',
+			range: 'An image',
+			defaultValue: 'None',
+		});
+	});
+
+	it('leaves out unlisted effects', () => {
+		const hidden = {...effectRegistry.list()[0], unlisted: true};
+
+		expect(buildEffectsReference(createRegistry([hidden]))).toEqual([]);
 	});
 
 	it('is part of the guide', () => {

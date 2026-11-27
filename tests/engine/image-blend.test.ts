@@ -162,11 +162,11 @@ function box(x0: number, x1: number, y0: number, y1: number): string[] {
 }
 
 describe('imageBlend registration', () => {
-	it('is registered for the main thread and workers, unlisted, with the spec schema', async () => {
+	it('is registered for the main thread and workers, listed, with the spec schema', async () => {
 		const main = effectRegistry.get('imageBlend');
 		expect(main?.params).toBe(imageBlendEffect.params);
 		expect(runtimeEffectRegistry.get('imageBlend')).toBe(imageBlendEffect);
-		expect(main?.unlisted).toBe(true);
+		expect(main?.unlisted).toBeUndefined();
 		expect(imageBlendEffect.version).toBe(1);
 		expect(imageBlendEffect.category).toBe('color');
 		expect(defaultParams(imageBlendEffect.params)).toEqual(DEFAULTS);

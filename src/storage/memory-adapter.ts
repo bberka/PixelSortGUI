@@ -21,6 +21,7 @@ import {
 import {
 	addedSourceReferences,
 	missingSourceError,
+	newSourceRecord,
 	projectSourceHashes,
 	referencedSourceHashes,
 	stripSourceReferences,
@@ -642,13 +643,25 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${input.projectId}" not found`);
 		}
 
-		// Validated first, so a rejected commit leaves history alone.
+		const {newSource} = input;
+		if (newSource) {
+			validateImageDimensions(newSource.width, newSource.height);
+		}
+
+		// Everything that can refuse the commit comes before the first write, so a
+		// rejected one leaves history and sources alone.
 		const geometry = commitGeometry(existing, input.transform);
+		const stack = cloneRecord(input.stack);
 		const stackA = input.stackA ? cloneRecord(input.stackA) : existing.stackA;
-		this.#requireSources(
-			addedSourceReferences(existing, {stack: input.stack, stackA}),
-		);
+		const next = {stack, stackA};
 		const now = this.#now();
+		const added = addedSourceReferences(existing, next);
+		const record = newSource && newSourceRecord(newSource, next, now);
+		this.#requireSources(added.filter((sha256) => sha256 !== record?.sha256));
+		if (record && !this.#sources.has(record.sha256)) {
+			this.#sources.set(record.sha256, record);
+		}
+
 		let projectHistory = this.#history.get(input.projectId);
 		if (!projectHistory) {
 			projectHistory = new Map<number, HistoryEntryRecord>();
@@ -671,7 +684,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 				projectId: input.projectId,
 				seq: nextSeq,
 				label: input.label,
-				stack: cloneRecord(input.stack),
+				stack: cloneRecord(stack),
 				selectedInstanceId: input.selectedInstanceId,
 				transform: geometry.transform,
 				createdAt: now,
@@ -696,7 +709,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 			{
 				...existing,
 				...geometry,
-				stack: cloneRecord(input.stack),
+				stack,
 				selectedInstanceId: input.selectedInstanceId,
 				historyHeadSeq: nextSeq,
 				historyMinSeq: nextMinSeq,

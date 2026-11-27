@@ -1,7 +1,12 @@
 // Which sources a project uses (persistence.md section 8.5). Free of storage
 // and archive code, so both adapters and the archive worker share it.
 import type {EffectStack} from '../engine/types.ts';
-import {StorageValidationError, type ProjectRecord} from './types.ts';
+import {
+	StorageValidationError,
+	type NewSource,
+	type ProjectRecord,
+	type SourceRecord,
+} from './types.ts';
 
 export const MAX_EXTRA_SOURCES = 8;
 export const EXTRA_SOURCE_LIMIT_MESSAGE = `A project can use at most ${MAX_EXTRA_SOURCES} extra blend images.`;
@@ -95,6 +100,18 @@ export function addedSourceReferences(
 
 	const known = new Set(project.referencedSourceHashes);
 	return extras.filter((hash) => !known.has(hash));
+}
+
+// The record a commit stores for `newSource`: none when neither stack refers to
+// it, so a commit never leaves a blob nothing uses.
+export function newSourceRecord(
+	newSource: NewSource,
+	stacks: StackPair,
+	createdAt: number,
+): SourceRecord | undefined {
+	return addSourceReferences(stacks).has(newSource.sha256)
+		? {...newSource, byteLength: newSource.blob.size, createdAt}
+		: undefined;
 }
 
 export function missingSourceError(sha256: string): StorageValidationError {

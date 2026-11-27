@@ -598,7 +598,12 @@ type PreviewRequest =
 	| {type: 'setDragCap'; pixels: number}
 	| {type: 'unloadSource'; sourceKey: string}
 	| {type: 'loadExtraSource'; requestId: number; sha256: string; blob: Blob; sourceWidth: number; sourceHeight: number}
-	| {type: 'unloadExtraSource'; sha256: string};
+	| {type: 'unloadExtraSource'; sha256: string}
+	| ({type: 'loadMask'; requestId: number} & MaskFile)
+	| {type: 'unloadMask'; sha256: string}
+	| {type: 'renderMask'; jobId: number; sourceKey: string; mask: InstanceMask; width: number; height: number};
+
+type MaskFile = {sha256: string; width: number; height: number; blob: Blob}; // section 16.6
 
 type PreviewResponse =
 	| {type: 'sourceLoaded'; requestId: number; sourceKey: string; settle: {width: number; height: number}; drag: {width: number; height: number}; effective?: {width: number; height: number}; original: ImageBitmap}
@@ -606,13 +611,15 @@ type PreviewResponse =
 	| {type: 'rendered'; jobId: number; generation: number; level: 'drag' | 'settle'; width: number; height: number; bitmap: ImageBitmap; totalMs: number; perInstanceMs: number[]; warnings: PipelineResult['warnings']}
 	| {type: 'cancelled'; jobId: number}
 	| {type: 'extraSourceLoaded'; requestId: number; sha256: string}
+	| {type: 'maskLoaded'; requestId: number; sha256: string}
+	| {type: 'maskRendered'; jobId: number; data: Uint8Array}
 	| {type: 'error'; jobId?: number; requestId?: number; code: EngineErrorCode; message: string};
 
 type ExtraSourceFile = {sha256: string; blob: Blob; sourceWidth: number; sourceHeight: number};
 
 type ExportRequest =
-	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number; transform?: SourceTransform; extraSources?: readonly ExtraSourceFile[]} & StackRequest)
-	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number; transform?: SourceTransform; extraSources?: readonly ExtraSourceFile[]} & StackRequest);
+	| ({type: 'export'; jobId: number; blob: Blob; sourceWidth: number; sourceHeight: number; scale: number; format: 'png' | 'jpeg' | 'webp' | 'avif' | 'bmp' | 'tiff'; quality: number; transform?: SourceTransform; extraSources?: readonly ExtraSourceFile[]; masks?: readonly MaskFile[]} & StackRequest)
+	| ({type: 'renderFull'; jobId: number; generation: number; blob: Blob; sourceWidth: number; sourceHeight: number; transform?: SourceTransform; extraSources?: readonly ExtraSourceFile[]; masks?: readonly MaskFile[]} & StackRequest);
 
 type ExportResponse =
 	| {type: 'progress'; jobId: number; stage: 'decode' | 'render' | 'encode'; fraction: number}
@@ -747,8 +754,10 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
                        coords.ts, brush-types.ts, brush.ts, asset.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
-src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
-src/render/            coordinator.ts (main thread: generations, scheduling, crash restart), render-source.ts (a project's source and effective size)
+src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform),
+                       mask-decode.ts (painted mask assets)
+src/render/            coordinator.ts (main thread: generations, scheduling, crash restart), inputs.ts (extra sources and
+                       masks held per stack), references.ts, render-source.ts (a project's source and effective size)
 src/presets/           builtin.ts
 tests/engine/          unit and property tests
 tests/golden/          golden cases
@@ -1422,9 +1431,9 @@ A stroke that changes no byte makes no commit. **Fill** is every byte 255; **Cle
 - **Mask worker** (`src/worker/mask.worker.ts`), new, one while the brush is on. It holds the bitmap being edited, applies `mask/brush.ts`, and posts changed rectangles of the mask fitted to the overlay size, with invert applied and without feather. At stroke end it returns the new bitmap, its hash and its compressed canonical bytes. The main thread never stamps ([decisions.md D49](decisions.md#d49-brush-strokes-run-in-a-mask-worker-and-effects-render-when-a-stroke-ends-2026-11-27)). Its message types live in `src/worker/protocol.ts`:
   - to the worker: `maskOpen {requestId, asset: {sha256, width, height, blob} | null, invert, geometry, overlay: {width, height}}` (`null` is an empty grid), `strokeStart {stroke, sample}`, `strokeMove {samples}`, `strokeEnd {requestId}`, `strokeCancel {requestId}`, `maskFill {requestId}`;
   - from it: `overlayPatch {x, y, width, height, data}`, `maskOpened {requestId}`, `maskEdited {requestId, changed, asset?: {sha256, width, height, blob}}`, `error`.
-- **Preview worker:** `loadMask {requestId, sha256, width, height, blob}` (answered by `maskLoaded` or `error`), `unloadMask {sha256}`, and `renderMask {jobId, sourceKey, mask, width, height}` answered by `maskRendered {jobId, data}`: the final mask of the order above, for the overlay. Assets are decompressed with `DecompressionStream('deflate-raw')`, stopped at `12 + width * height` bytes, and checked against their hash. `render` passes `masks` and `geometry` to `renderStack`.
-- **Export worker:** `export` and `renderFull` gain `masks?: readonly {sha256: string; width: number; height: number; blob: Blob}[]` for the enabled instances.
-- **Coordinator:** loads, unloads and waits for painted masks as it does extra sources (section 8.3), including the `sourcesPending` flag. A mask image is one of the extra-source references.
+- **Preview worker:** `loadMask {requestId, sha256, width, height, blob}` (answered by `maskLoaded` or `error`), `unloadMask {sha256}`, and `renderMask {jobId, sourceKey, mask, width, height}` answered by `maskRendered {jobId, data}`: the final mask of the order above, for the overlay. It is computed from the `settle` proxy, box downscaled to `width × height`, which may not exceed the proxy; an unloaded source, a missing mask or a larger size is answered by `error` with the `jobId`. Loading a hash that is already loaded is answered without decoding, and `loadSource`, `setTransform` and `unloadSource` leave masks in place. Assets are decompressed with `DecompressionStream('deflate-raw')`, stopped at `12 + width * height` bytes, and checked against their hash; one that fails is answered by `error` with code `decode-failed`. `render` passes `masks` and `geometry` to `renderStack`; both workers build `geometry` from the stored source size and the transform they already receive, so the protocol has no field for it.
+- **Export worker:** `export` and `renderFull` gain `masks?: readonly {sha256: string; width: number; height: number; blob: Blob}[]` for the enabled instances. A mask that cannot be decoded fails the job.
+- **Coordinator:** loads, unloads and waits for painted masks as it does extra sources (section 8.3), including the `sourcesPending` flag, through a loader set with `setMaskLoader`. A mask image is one of the extra-source references. `renderMask(mask, width, height)` takes a mask of the current stack and resolves `undefined` while the source or the mask's file is not loaded, and when the source changes or the worker fails first; the caller asks again after the next frame.
 - **Proxies:** no separate mask proxies. The grid is at most 4 MP and every level fits it at render time. The stage cache needs no new key part.
 
 #### Tests

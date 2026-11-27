@@ -25,7 +25,7 @@ export class MaskAssetError extends Error {
 	override name = 'MaskAssetError';
 }
 
-function assertGridSize(width: number, height: number): void {
+export function assertGridSize(width: number, height: number): void {
 	if (
 		!Number.isSafeInteger(width) ||
 		!Number.isSafeInteger(height) ||
@@ -128,6 +128,21 @@ export async function decodeMaskAsset({
 >): Promise<MaskBitmap> {
 	assertGridSize(width, height);
 	const bytes = inflateExactly(compressed, MASK_HEADER_BYTES + width * height);
+	return checkedMaskBitmap(bytes, {sha256, width, height});
+}
+
+/**
+ The bitmap in decompressed canonical bytes. Rejects with `MaskAssetError`
+ unless their length, header and hash are the stated ones.
+ */
+export async function checkedMaskBitmap(
+	bytes: Uint8Array<ArrayBuffer>,
+	{sha256, width, height}: Readonly<Omit<MaskAsset, 'compressed'>>,
+): Promise<MaskBitmap> {
+	if (bytes.length !== MASK_HEADER_BYTES + width * height) {
+		throw new MaskAssetError(`Mask data has ${bytes.length} bytes`);
+	}
+
 	const view = new DataView(bytes.buffer);
 	if (
 		MAGIC.some((byte, index) => bytes[index] !== byte) ||

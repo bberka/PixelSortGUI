@@ -1,6 +1,8 @@
 import {decodeImage, isMemoryError, renderSize} from '../codec/decode.ts';
 import {encodeImage, type AvifEncoder} from '../codec/encode.ts';
 import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
+import {MaskAssetError} from '../engine/mask/asset.ts';
+import type {MaskBitmap} from '../engine/mask/types.ts';
 import {renderStack} from '../engine/pipeline.ts';
 import {
 	applyTransform,
@@ -10,6 +12,7 @@ import {
 } from '../engine/transform.ts';
 import type {ExtraSource, RgbaImage} from '../engine/types.ts';
 import {checkedDimensions, exportTransform, isIdentity} from './geometry.ts';
+import {decodeMaskFile} from './mask-decode.ts';
 import {
 	FULL_TILE_SIZE,
 	type EngineErrorCode,
@@ -18,6 +21,7 @@ import {
 	type ExportStage,
 	type ExtraSourceFile,
 	type FullTile,
+	type MaskFile,
 	type StackRequest,
 } from './protocol.ts';
 
@@ -50,6 +54,7 @@ type Job = {
 	scale: number;
 	transform?: SourceTransform;
 	extraSources?: readonly ExtraSourceFile[];
+	masks?: readonly MaskFile[];
 } & StackRequest;
 
 // Imported on first use: the AVIF encoder is a 3.4 MB Wasm file.
@@ -119,12 +124,29 @@ async function decodeExtras(job: Job): Promise<Map<string, ExtraSource>> {
 	return decoded;
 }
 
+// One at a time. A grid is at most 4 MP and is fitted to the export size by the render.
+async function decodeMasks(job: Job): Promise<Map<string, MaskBitmap>> {
+	const decoded = new Map<string, MaskBitmap>();
+	for (const file of job.masks ?? []) {
+		try {
+			decoded.set(file.sha256, await decodeMaskFile(file));
+		} catch (error) {
+			throw error instanceof MaskAssetError
+				? new JobError('decode-failed', error.message)
+				: error;
+		}
+	}
+
+	return decoded;
+}
+
 // This worker is cancelled by terminating it, so the render never yields.
 async function decodeAndRender(job: Job): Promise<RgbaImage> {
 	const {jobId} = job;
 	postProgress(jobId, 'decode', 0);
 	const {image, effective} = await decodeSource(job);
 	const extraSources = await decodeExtras(job);
+	const masks = await decodeMasks(job);
 	postProgress(jobId, 'decode', 1);
 	postProgress(jobId, 'render', 0);
 	let lastProgress = performance.now();
@@ -134,6 +156,12 @@ async function decodeAndRender(job: Job): Promise<RgbaImage> {
 		sourceHeight: effective.height,
 		debug: job.debug,
 		extraSources,
+		masks,
+		geometry: {
+			sourceWidth: job.sourceWidth,
+			sourceHeight: job.sourceHeight,
+			transform: job.transform ?? IDENTITY_TRANSFORM,
+		},
 		checkpoint: () => undefined,
 		onProgress(fraction) {
 			const now = performance.now();

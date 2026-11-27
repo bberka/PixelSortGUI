@@ -2,6 +2,7 @@ import {transformKey} from '../engine/transform.ts';
 import {canonicalStackJson} from '../engine/types.ts';
 import type {
 	ExtraSourceLoader,
+	MaskLoader,
 	RenderCoordinator,
 	RenderEvent,
 	RenderSource,
@@ -28,6 +29,8 @@ export type SideRendererOptions = {
 	createCoordinator?: () => RenderCoordinator;
 	// Given to each coordinator, so side A reads its own extra sources.
 	loadExtraSource: ExtraSourceLoader;
+	// Absent until storage holds painted masks (persistence.md section 8.6).
+	loadMask?: MaskLoader;
 	onEvent(event: RenderEvent): void;
 	// Called before the coordinator closes its bitmaps.
 	onClose(): void;
@@ -41,6 +44,7 @@ export type SideRendererOptions = {
 export function createSideRenderer({
 	createCoordinator,
 	loadExtraSource,
+	loadMask,
 	onEvent,
 	onClose,
 }: SideRendererOptions): SideRenderer {
@@ -75,6 +79,10 @@ export function createSideRenderer({
 			if (!coordinator) {
 				coordinator = createCoordinator();
 				coordinator.setExtraSourceLoader(loadExtraSource);
+				if (loadMask) {
+					coordinator.setMaskLoader(loadMask);
+				}
+
 				unsubscribe = coordinator.subscribe(onEvent);
 				coordinator.setViewScale(viewScale);
 			}

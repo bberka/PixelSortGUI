@@ -15,6 +15,7 @@ import {
 	startWorker,
 	type FakeBitmap,
 } from './harness.ts';
+import {paintedMask} from './mask-files.ts';
 
 type Done = Extract<
 	ExportResponse,
@@ -337,6 +338,126 @@ describe('export worker extra sources (engine.md section 16.5)', () => {
 	it('fails the job when it cannot be decoded', async () => {
 		const worker = await blendSetup('broken');
 		await expect(worker.run(stackOf('cover'), 1)).resolves.toMatchObject({
+			type: 'error',
+			code: 'decode-failed',
+		});
+		expect(worker.encoded).toEqual([]);
+	});
+});
+
+describe('export worker masks (engine.md section 16.6)', () => {
+	const IMAGE = 'a'.repeat(64);
+	const source = patternImage(40, 30);
+	const overlay = patternImage(24, 36);
+	const turned = transform({
+		rotation: 90,
+		crop: {x: 1, y: 2, width: 25, height: 33},
+	});
+
+	async function masked() {
+		const {bitmap, file} = await paintedMask(40, 30);
+		const worker = await setup(source);
+		const swap = {
+			type: 'channelSwap',
+			version: 1,
+			enabled: true,
+			params: {order: 'bgr'},
+			mix: 1,
+			blend: 'normal',
+		} as const;
+		const stack: EffectStack = {
+			schemaVersion: 2,
+			instances: [
+				{
+					...swap,
+					id: 'painted0',
+					mask: {kind: 'paint', asset: file.sha256, invert: false, feather: 2},
+				},
+				{
+					...swap,
+					id: 'imaged00',
+					mask: {
+						kind: 'image',
+						source: IMAGE,
+						fit: 'cover',
+						invert: false,
+						feather: 0,
+					},
+				},
+			],
+		};
+		const job = {
+			...worker.job,
+			stack,
+			transform: turned,
+			masks: [file],
+			extraSources: [
+				{
+					sha256: IMAGE,
+					blob: worker.addFile(overlay),
+					sourceWidth: 24,
+					sourceHeight: 36,
+				},
+			],
+		};
+		// The engine at full size, given the same inputs.
+		const result = await renderStack(
+			applyTransform(source, turned),
+			stack,
+			runtimeEffectRegistry,
+			{
+				level: 'full',
+				sourceWidth: 25,
+				sourceHeight: 33,
+				masks: new Map([[file.sha256, bitmap]]),
+				geometry: {sourceWidth: 40, sourceHeight: 30, transform: turned},
+				extraSources: new Map([
+					[IMAGE, {...overlay, sourceWidth: 24, sourceHeight: 36}],
+				]),
+				checkpoint: () => undefined,
+			},
+		);
+		expect(result.warnings).toEqual([]);
+		expect(sameImage(result.image, applyTransform(source, turned))).toBe(false);
+		return {...worker, job, full: result.image};
+	}
+
+	it('exports the pixels of a full-size engine render with masks', async () => {
+		const worker = await masked();
+		worker.send({
+			...worker.job,
+			type: 'export',
+			scale: 1,
+			format: 'png',
+			quality: 92,
+		});
+		await expect(worker.next(isDone)).resolves.toMatchObject({
+			type: 'exported',
+		});
+		expect(sameImage(worker.encoded[0], worker.full)).toBe(true);
+	});
+
+	it('masks a full render the same way', async () => {
+		const worker = await masked();
+		worker.send({...worker.job, type: 'renderFull', generation: 1});
+		const done = await worker.next(isDone);
+		const [tile] = (done as Extract<Done, {type: 'fullRendered'}>).tiles;
+		expect(sameImage(tile.bitmap as unknown as FakeBitmap, worker.full)).toBe(
+			true,
+		);
+	});
+
+	it('fails the job on a damaged mask', async () => {
+		const worker = await masked();
+		worker.send({
+			...worker.job,
+			masks: [{...worker.job.masks[0], blob: new Blob(['damaged'])}],
+			type: 'export',
+			scale: 1,
+			format: 'png',
+			quality: 92,
+		});
+		await expect(worker.next(isDone)).resolves.toMatchObject({
 			type: 'error',
 			code: 'decode-failed',
 		});

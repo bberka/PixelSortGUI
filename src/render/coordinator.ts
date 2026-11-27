@@ -1,4 +1,5 @@
 import type {ExportFormat} from '../codec/encode.ts';
+import type {InstanceMask} from '../engine/mask/types.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
 import {
 	IDENTITY_TRANSFORM,
@@ -6,7 +7,6 @@ import {
 	type SourceTransform,
 } from '../engine/transform.ts';
 import type {EffectStack, RenderLevel} from '../engine/types.ts';
-import {addSourceReferences} from '../storage/extra-sources.ts';
 import {
 	DRAG_PIXEL_CAP_MAX,
 	DRAG_PIXEL_CAP_MIN,
@@ -17,12 +17,19 @@ import {
 	type ExportStage,
 	type ExtraSourceFile,
 	type FullTile,
+	type MaskFile,
 	type PreviewLevel,
 	type PreviewRequest,
 	type PreviewResponse,
 	type ProxySize,
 	type StackRequest,
 } from '../worker/protocol.ts';
+import {createRenderInputs} from './inputs.ts';
+import {
+	enabledReferences,
+	stackReferences,
+	type StackReferences,
+} from './references.ts';
 
 // The main-thread scheduler of engine.md sections 8.3, 8.4 and 11. Apart from
 // comparing transforms it imports only types from the engine and the codec, so
@@ -77,6 +84,14 @@ export type ExtraSourceLoader = (
 	sha256: string,
 ) => Promise<ExtraSourceRecord | undefined>;
 
+// A painted mask asset (engine.md section 16.6) as storage holds it.
+export type MaskAssetRecord = {blob: Blob; width: number; height: number};
+
+// Resolves `undefined` when storage does not hold the mask hash.
+export type MaskLoader = (
+	sha256: string,
+) => Promise<MaskAssetRecord | undefined>;
+
 export type SourceInfo = {
 	key: string;
 	// The effective size: the image after its transform.
@@ -98,7 +113,7 @@ export type Frame = {
 	totalMs: number;
 	perInstanceMs: number[];
 	warnings: PipelineWarning[];
-	// Rendered while an extra source was still on its way, so it may lack it.
+	// Rendered while an extra source or a painted mask was still on its way, so it may lack it.
 	sourcesPending?: boolean;
 };
 
@@ -166,8 +181,10 @@ export type ExportTask = {
 };
 
 export type RenderCoordinator = {
-	// How the images that `image` parameters name are read. Without it they stay missing.
+	// How the images that `image` parameters and image masks name are read. Without it they stay missing.
 	setExtraSourceLoader(loader: ExtraSourceLoader): void;
+	// How painted masks are read. Without it they stay missing.
+	setMaskLoader(loader: MaskLoader): void;
 	/**
 	 Loads the image into the preview worker, replacing the previous one. With the
 	 current key, a changed `transform` re-renders the new geometry and anything
@@ -175,8 +192,8 @@ export type RenderCoordinator = {
 	 */
 	setSource(source: RenderSource | undefined): void;
 	/**
-	 Renders a new effective stack, and loads and unloads the extra sources it
-	 references (engine.md section 8.3). With `dragging`, the value is an intermediate
+	 Renders a new effective stack, and loads and unloads the extra sources and
+	 painted masks it references (engine.md section 8.3). With `dragging`, the value is an intermediate
 	 one from a control being moved: `drag` renders are coalesced to the newest
 	 and a `settle` render follows 150 ms after the last change. Without it, the
 	 `settle` render starts at once.
@@ -188,6 +205,18 @@ export type RenderCoordinator = {
 	setViewScale(devicePixelsPerSourcePixel: number): void;
 	subscribe(listener: (event: RenderEvent) => void): () => void;
 	exportImage(options: ExportOptions): ExportTask;
+	/**
+	 The final mask of an instance of the current stack at `width x height`, at
+	 most the `settle` proxy size, for the overlay: one byte per pixel. Resolves
+	 `undefined` while the source or the mask's file is not loaded (ask again after
+	 the next `frame`), and when the source changes or the worker fails first.
+	 Never rejects.
+	 */
+	renderMask(
+		mask: InstanceMask,
+		width: number,
+		height: number,
+	): Promise<Uint8Array | undefined>;
 	// Stops preview and full renders in flight. The displayed frame stays; the next `setStack` renders again.
 	cancel(): void;
 	// Leaves the failed state and reloads the source.
@@ -270,36 +299,14 @@ type Job = {
 	sourcesPending: boolean;
 };
 
-// One extra source the current stack references.
-type Extra = {
-	status: 'reading' | 'decoding' | 'loaded' | 'missing' | 'broken';
-	// A storage read is in flight. `missing` ones are read again.
-	reading: boolean;
-	// What storage returned, kept to load a restarted worker.
-	file?: ExtraSourceFile;
-	// Of the `loadExtraSource` sent to the current worker.
-	requestId?: number;
-};
-
 type FullJob = {jobId: number; worker: WorkerPort<ExportRequest>};
+
+type ExportFiles = {extraSources: ExtraSourceFile[]; masks: MaskFile[]};
 
 const PREVIEW_LEVELS: readonly PreviewLevel[] = ['drag', 'settle'];
 
-function extraFile(
-	sha256: string,
-	{blob, width, height}: ExtraSourceRecord,
-): ExtraSourceFile {
-	return {sha256, blob, sourceWidth: width, sourceHeight: height};
-}
-
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-// The extra sources an export or a `full` render needs.
-function enabledReferences(stack: EffectStack): string[] {
-	const instances = stack.instances.filter((instance) => instance.enabled);
-	return [...addSourceReferences({stack: {...stack, instances}})];
 }
 
 export function createRenderCoordinator(
@@ -337,8 +344,8 @@ export function createRenderCoordinator(
 	let full: FullFrame | undefined;
 	let fullFailedGeneration = -1;
 
-	let loadExtra: ExtraSourceLoader | undefined;
-	const extras = new Map<string, Extra>();
+	// By the request id of a `renderMask` the worker has not answered.
+	const maskJobs = new Map<number, (data: Uint8Array | undefined) => void>();
 	// Set by `cancel()`: nothing renders again until the next `setStack`.
 	let halted = false;
 
@@ -400,10 +407,15 @@ export function createRenderCoordinator(
 		closeTiles(discarded.tiles);
 	};
 
-	const extrasPending = () =>
-		[...extras.values()].some(
-			({status}) => status === 'reading' || status === 'decoding',
-		);
+	const inputsPending = () => extras.isPending() || masks.isPending();
+
+	const endMaskJobs = () => {
+		for (const resolve of maskJobs.values()) {
+			resolve(undefined);
+		}
+
+		maskJobs.clear();
+	};
 
 	const send = (level: PreviewLevel) => {
 		if (!preview || !source || !request) {
@@ -416,7 +428,7 @@ export function createRenderCoordinator(
 			jobId,
 			generation,
 			discard: false,
-			sourcesPending: extrasPending(),
+			sourcesPending: inputsPending(),
 			timeout: env.setTimeout(() => {
 				crash('The preview worker did not answer within 30 seconds.');
 			}, RENDER_TIMEOUT_MS),
@@ -483,18 +495,7 @@ export function createRenderCoordinator(
 		pump();
 	};
 
-	const sendExtra = (extra: Extra) => {
-		if (!preview || !extra.file) {
-			return;
-		}
-
-		nextId++;
-		extra.status = 'decoding';
-		extra.requestId = nextId;
-		preview.post({type: 'loadExtraSource', requestId: nextId, ...extra.file});
-	};
-
-	// Renders the unchanged stack again, because an extra source has settled.
+	// Renders the unchanged stack again, because an extra source or a mask has settled.
 	const renderAgain = () => {
 		if (!request || halted) {
 			return;
@@ -512,72 +513,56 @@ export function createRenderCoordinator(
 		pump();
 	};
 
-	const readExtra = async (sha256: string, extra: Extra) => {
-		if (!loadExtra || extra.reading) {
-			return;
-		}
-
-		extra.reading = true;
-		let record: ExtraSourceRecord | undefined;
-		let failure: RenderError | undefined;
-		try {
-			record = await loadExtra(sha256);
-		} catch (error) {
-			failure = {code: 'internal', message: errorMessage(error)};
-		}
-
-		extra.reading = false;
-		// Unloaded, or the coordinator is gone, while storage was answering.
-		if (disposed || extras.get(sha256) !== extra) {
-			return;
-		}
-
-		if (record) {
-			extra.file = extraFile(sha256, record);
-			// Without a worker it is sent when the next one starts.
-			extra.status = 'decoding';
-			sendExtra(extra);
-			return;
-		}
-
-		const wasPending = extra.status === 'reading';
-		extra.status = 'missing';
-		if (failure) {
-			emit({type: 'error', error: failure, failed: false});
-		}
-
-		if (wasPending) {
-			renderAgain();
-		}
+	const readFailed = (error: unknown) => {
+		emit({
+			type: 'error',
+			error: {code: 'internal', message: errorMessage(error)},
+			failed: false,
+		});
 	};
 
-	// Matches the loaded extra sources to the references of the current stack.
-	const syncExtras = (retryMissing: boolean) => {
-		const wanted = request
-			? addSourceReferences({stack: request.stack})
-			: new Set<string>();
-		for (const [sha256, extra] of extras) {
-			if (wanted.has(sha256)) {
-				continue;
-			}
-
-			extras.delete(sha256);
-			if (extra.requestId !== undefined) {
-				preview?.post({type: 'unloadExtraSource', sha256});
-			}
+	// Posts a load to the worker, if there is one, and returns its request id.
+	const postLoad = (
+		message: (requestId: number) => PreviewRequest,
+	): number | undefined => {
+		if (!preview) {
+			return undefined;
 		}
 
-		for (const sha256 of wanted) {
-			let extra = extras.get(sha256);
-			if (!extra) {
-				extra = {status: loadExtra ? 'reading' : 'missing', reading: false};
-				extras.set(sha256, extra);
-			} else if (!(retryMissing && extra.status === 'missing')) {
-				continue;
-			}
+		nextId++;
+		preview.post(message(nextId));
+		return nextId;
+	};
 
-			void readExtra(sha256, extra);
-		}
+	const extras = createRenderInputs<ExtraSourceFile>({
+		load: (file) =>
+			postLoad((requestId) => ({
+				type: 'loadExtraSource',
+				requestId,
+				...file,
+			})),
+		unload(sha256) {
+			preview?.post({type: 'unloadExtraSource', sha256});
+		},
+		readFailed,
+		settled: renderAgain,
+	});
+
+	const masks = createRenderInputs<MaskFile>({
+		load: (file) =>
+			postLoad((requestId) => ({type: 'loadMask', requestId, ...file})),
+		unload(sha256) {
+			preview?.post({type: 'unloadMask', sha256});
+		},
+		readFailed,
+		settled: renderAgain,
+	});
+
+	// Matches the loaded files to what the current stack references.
+	const syncInputs = (retryMissing: boolean) => {
+		const wanted = request && stackReferences(request.stack);
+		extras.sync(wanted?.sources ?? new Set(), retryMissing);
+		masks.sync(wanted?.masks ?? new Set(), retryMissing);
 	};
 
 	const loadSource = () => {
@@ -601,11 +586,12 @@ export function createRenderCoordinator(
 			transform: source.transform,
 		});
 		// A new worker holds nothing yet.
-		if (restarted) {
-			for (const extra of extras.values()) {
-				sendExtra(extra);
-			}
+		if (!restarted) {
+			return;
 		}
+
+		extras.sendAll();
+		masks.sendAll();
 	};
 
 	// A terminated worker can still deliver a queued message or error. Handlers
@@ -648,6 +634,8 @@ export function createRenderCoordinator(
 			finishJob(level);
 		}
 
+		endMaskJobs();
+
 		const now = env.now();
 		const repeated =
 			lastCrashAt !== undefined && now - lastCrashAt <= CRASH_WINDOW_MS;
@@ -688,7 +676,7 @@ export function createRenderCoordinator(
 		frame?.level === 'settle' &&
 		frame.generation === generation &&
 		fullFailedGeneration !== generation &&
-		!extrasPending() &&
+		!inputsPending() &&
 		sourceInfo.settle.width < sourceInfo.width &&
 		(viewScale * sourceInfo.width) / sourceInfo.settle.width >
 			FULL_ZOOM_THRESHOLD;
@@ -713,6 +701,7 @@ export function createRenderCoordinator(
 
 		nextId++;
 		const jobId = nextId;
+		const references = enabledReferences(request.stack);
 		const worker = env.createExportWorker({
 			message(response) {
 				if (fullJob?.jobId !== response.jobId) {
@@ -770,11 +759,9 @@ export function createRenderCoordinator(
 			sourceHeight: source.height,
 			transform: source.transform,
 			...request,
-			// A source the preview could not decode has already raised its error.
-			extraSources: enabledReferences(request.stack).flatMap((sha256) => {
-				const extra = extras.get(sha256);
-				return extra?.file && extra.status !== 'broken' ? [extra.file] : [];
-			}),
+			// A file the preview could not decode has already raised its error.
+			extraSources: extras.held([...references.sources]),
+			masks: masks.held([...references.masks]),
 		});
 	};
 
@@ -884,23 +871,25 @@ export function createRenderCoordinator(
 			}
 
 			case 'extraSourceLoaded': {
-				const extra = extras.get(response.sha256);
-				if (extra?.requestId === response.requestId) {
-					extra.status = 'loaded';
-					renderAgain();
-				}
+				extras.loaded(response.sha256, response.requestId);
+				break;
+			}
 
+			case 'maskLoaded': {
+				masks.loaded(response.sha256, response.requestId);
+				break;
+			}
+
+			case 'maskRendered': {
+				maskJobs.get(response.jobId)?.(response.data);
+				maskJobs.delete(response.jobId);
 				break;
 			}
 
 			case 'error': {
 				const {code, message, jobId, requestId} = response;
 				if (requestId !== undefined && requestId !== loadRequestId) {
-					const extra = [...extras.values()].find(
-						(item) => item.requestId === requestId,
-					);
-					if (extra) {
-						extra.status = 'broken';
+					if (extras.broken(requestId) || masks.broken(requestId)) {
 						emit({type: 'error', error: {code, message}, failed: false});
 						renderAgain();
 					}
@@ -909,12 +898,16 @@ export function createRenderCoordinator(
 				}
 
 				if (jobId !== undefined) {
+					const maskJob = maskJobs.get(jobId);
 					const level = levelOfJob(jobId);
-					if (!level) {
+					if (maskJob) {
+						maskJobs.delete(jobId);
+						maskJob(undefined);
+					} else if (level) {
+						finishJob(level);
+					} else {
 						return;
 					}
-
-					finishJob(level);
 				}
 
 				emit({type: 'error', error: {code, message}, failed: false});
@@ -943,7 +936,7 @@ export function createRenderCoordinator(
 	const startExport = (
 		from: RenderSource,
 		options: ExportOptions,
-		extraSources: ExtraSourceFile[],
+		files: ExportFiles,
 		resolve: (outcome: ExportOutcome) => void,
 	): (() => void) => {
 		nextId++;
@@ -1027,32 +1020,17 @@ export function createRenderCoordinator(
 			maxFileSizeKb: options.maxFileSizeKb ?? null,
 			transform: from.transform,
 			stack: options.stack,
-			extraSources,
+			...files,
 		});
 		return cancel;
 	};
 
-	const exportFiles = async (hashes: string[]): Promise<ExtraSourceFile[]> => {
-		const files = await Promise.all(
-			hashes.map(async (sha256) => {
-				const held = extras.get(sha256)?.file;
-				if (held) {
-					return held;
-				}
-
-				const record = await loadExtra?.(sha256);
-				return record && extraFile(sha256, record);
-			}),
-		);
-		return files.filter((file) => file !== undefined);
-	};
-
-	// An export that first reads its extra sources. The stack need not be the
+	// An export that first reads its extra sources and masks. The stack need not be the
 	// previewed one: side A is exported through the main coordinator.
-	const startExportWithExtras = (
+	const startExportWithInputs = (
 		from: RenderSource,
 		options: ExportOptions,
-		hashes: string[],
+		references: StackReferences,
 		resolve: (outcome: ExportOutcome) => void,
 	): (() => void) => {
 		let done = false;
@@ -1074,7 +1052,11 @@ export function createRenderCoordinator(
 		cancelExports.add(cancel);
 		const read = async () => {
 			try {
-				const files = await exportFiles(hashes);
+				const [extraSources, maskFiles] = await Promise.all([
+					extras.collect([...references.sources]),
+					masks.collect([...references.masks]),
+				]);
+				const files = {extraSources, masks: maskFiles};
 				if (!done) {
 					cancelExports.delete(cancel);
 					cancelStarted = startExport(from, options, files, resolve);
@@ -1104,6 +1086,7 @@ export function createRenderCoordinator(
 	// Everything rendered from the loaded image is out of date.
 	const discardSource = () => {
 		invalidate();
+		endMaskJobs();
 		halted = false;
 		for (const level of PREVIEW_LEVELS) {
 			const job = inFlight[level];
@@ -1138,7 +1121,32 @@ export function createRenderCoordinator(
 
 	return {
 		setExtraSourceLoader(loader) {
-			loadExtra = loader;
+			extras.setReader(async (sha256) => {
+				const record = await loader(sha256);
+				return (
+					record && {
+						sha256,
+						blob: record.blob,
+						sourceWidth: record.width,
+						sourceHeight: record.height,
+					}
+				);
+			});
+		},
+
+		setMaskLoader(loader) {
+			masks.setReader(async (sha256) => {
+				const record = await loader(sha256);
+				// A storage record carries more than the worker is sent.
+				return (
+					record && {
+						sha256,
+						blob: record.blob,
+						width: record.width,
+						height: record.height,
+					}
+				);
+			});
 		},
 
 		setSource(next) {
@@ -1171,9 +1179,9 @@ export function createRenderCoordinator(
 				preview?.post({type: 'unloadSource', sourceKey: previousKey});
 			}
 
-			// The stack belonged to the closed image, and its extra sources with it.
+			// The stack belonged to the closed image, and its files with it.
 			request = undefined;
-			syncExtras(false);
+			syncInputs(false);
 		},
 
 		setStack(next, options = {}) {
@@ -1184,7 +1192,7 @@ export function createRenderCoordinator(
 			invalidate();
 			request = next;
 			halted = false;
-			syncExtras(!options.dragging);
+			syncInputs(!options.dragging);
 			if (options.dragging) {
 				dragWanted = true;
 				settleTimer = env.setTimeout(requestSettle, SETTLE_DELAY_MS);
@@ -1229,11 +1237,16 @@ export function createRenderCoordinator(
 
 			let cancel = () => {};
 			const result = new Promise<ExportOutcome>((resolve) => {
-				const hashes = enabledReferences(options.stack);
+				const references = enabledReferences(options.stack);
 				cancel =
-					hashes.length === 0
-						? startExport(current, options, [], resolve)
-						: startExportWithExtras(current, options, hashes, resolve);
+					references.sources.size + references.masks.size === 0
+						? startExport(
+								current,
+								options,
+								{extraSources: [], masks: []},
+								resolve,
+							)
+						: startExportWithInputs(current, options, references, resolve);
 			});
 			return {
 				result,
@@ -1259,6 +1272,33 @@ export function createRenderCoordinator(
 			}
 
 			cancelBelow(generation);
+		},
+
+		async renderMask(mask, width, height) {
+			const loaded =
+				mask.kind === 'paint'
+					? mask.asset === '' || masks.isLoaded(mask.asset)
+					: mask.kind !== 'image' ||
+						mask.source === '' ||
+						extras.isLoaded(mask.source);
+			if (disposed || !ready || !preview || !source || !loaded) {
+				return undefined;
+			}
+
+			nextId++;
+			const jobId = nextId;
+			const result = new Promise<Uint8Array | undefined>((resolve) => {
+				maskJobs.set(jobId, resolve);
+			});
+			preview.post({
+				type: 'renderMask',
+				jobId,
+				sourceKey: source.key,
+				mask,
+				width,
+				height,
+			});
+			return result;
 		},
 
 		retry() {
@@ -1291,6 +1331,7 @@ export function createRenderCoordinator(
 			}
 
 			discardFull();
+			endMaskJobs();
 			for (const cancel of cancelExports) {
 				cancel();
 			}
@@ -1301,6 +1342,7 @@ export function createRenderCoordinator(
 			disposed = true;
 			source = undefined;
 			extras.clear();
+			masks.clear();
 			listeners.clear();
 			sourceInfo?.original.close();
 			frame?.bitmap.close();

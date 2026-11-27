@@ -320,7 +320,9 @@ describe('app store commitImageParam (product.md F26)', () => {
 			store
 				.getState()
 				.commitImageParam(projectId, ninth, 'image', deviceImage('ninth')),
-		).rejects.toThrow('A project can use at most 8 extra blend images.');
+		).rejects.toThrow(
+			'A project can use at most 8 extra blend and mask images.',
+		);
 
 		expect(head()).toBe(before);
 		expect(await repository.getSourceSizes()).toStrictEqual(sizes);

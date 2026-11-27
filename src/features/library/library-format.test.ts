@@ -19,6 +19,7 @@ function project(
 		name: id,
 		sourceHash: `hash-${id}`,
 		referencedSourceHashes: [`hash-${id}`],
+		referencedMaskHashes: [],
 		sourceWidth: 320,
 		sourceHeight: 240,
 		transform: IDENTITY_TRANSFORM,

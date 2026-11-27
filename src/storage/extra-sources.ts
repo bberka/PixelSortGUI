@@ -9,7 +9,7 @@ import {
 } from './types.ts';
 
 export const MAX_EXTRA_SOURCES = 8;
-export const EXTRA_SOURCE_LIMIT_MESSAGE = `A project can use at most ${MAX_EXTRA_SOURCES} extra blend images.`;
+export const EXTRA_SOURCE_LIMIT_MESSAGE = `A project can use at most ${MAX_EXTRA_SOURCES} extra blend and mask images.`;
 
 const SOURCE_HASH = /^[\da-f]{64}$/;
 
@@ -20,6 +20,12 @@ export type StackPair = {stack: EffectStack; stackA?: EffectStack};
 // keeps its images. Only `image` parameters store such a string.
 function isReference(value: unknown): value is string {
 	return typeof value === 'string' && SOURCE_HASH.test(value);
+}
+
+// The image of an image mask (section 8.6).
+function maskSource(mask: unknown): unknown {
+	const {kind, source} = (mask ?? {}) as {kind?: unknown; source?: unknown};
+	return kind === 'image' ? source : undefined;
 }
 
 // Adds the references of both stacks to `into`. A damaged stack adds nothing, so
@@ -34,7 +40,10 @@ export function addSourceReferences(
 		}
 
 		for (const instance of current.instances) {
-			for (const value of Object.values(instance?.params ?? {})) {
+			for (const value of [
+				...Object.values(instance?.params ?? {}),
+				maskSource(instance?.mask),
+			]) {
 				if (isReference(value)) {
 					into.add(value);
 				}

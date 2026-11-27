@@ -1,6 +1,7 @@
 import {IDENTITY_TRANSFORM} from '../engine/transform.ts';
 import {addSourceReferences, referencedSourceHashes} from './extra-sources.ts';
 import {resolveStoredGeometry} from './geometry.ts';
+import {addMaskReferences, referencedMaskHashes} from './masks.ts';
 import {
 	DB_NAME,
 	DB_VERSION,
@@ -53,6 +54,51 @@ function updateEach<T>(
 		(cursor) => {
 			cursor.update(update(cursor.value as T));
 		},
+		done,
+	);
+}
+
+// Sets one reference list on every project: what `ofProject` finds in its
+// current stacks, and what `addEntry` finds in each entry of its history.
+function backfillReferences(
+	transaction: IDBTransaction,
+	field: 'referencedSourceHashes' | 'referencedMaskHashes',
+	ofProject: (project: ProjectRecord) => string[],
+	addEntry: (entry: HistoryEntryRecord, into?: Set<string>) => Set<string>,
+	done: () => void,
+): void {
+	// By project id, what its history uses.
+	const inHistory = new Map<string, Set<string>>();
+	const collect = (cursor: IDBCursorWithValue) => {
+		const entry = cursor.value as HistoryEntryRecord;
+		inHistory.set(
+			entry.projectId,
+			addEntry(entry, inHistory.get(entry.projectId)),
+		);
+	};
+
+	forEachRecord(transaction, STORE_NAMES.history, collect, () => {
+		updateEach<ProjectRecord>(
+			transaction,
+			STORE_NAMES.projects,
+			(project) => {
+				const earlier = inHistory.get(project.id) ?? [];
+				return {
+					...project,
+					[field]: [...new Set([...ofProject(project), ...earlier])].toSorted(),
+				};
+			},
+			done,
+		);
+	});
+}
+
+function backfillSources(transaction: IDBTransaction, done: () => void): void {
+	backfillReferences(
+		transaction,
+		'referencedSourceHashes',
+		(project) => referencedSourceHashes(project, []),
+		addSourceReferences,
 		done,
 	);
 }
@@ -139,33 +185,31 @@ export const dbMigrations: Readonly<Record<number, DbMigration>> = {
 			});
 
 		return (done) => {
-			// By project id, the sources its history uses.
-			const inHistory = new Map<string, Set<string>>();
-			const collect = (cursor: IDBCursorWithValue) => {
-				const entry = cursor.value as HistoryEntryRecord;
-				inHistory.set(
-					entry.projectId,
-					addSourceReferences(entry, inHistory.get(entry.projectId)),
-				);
-			};
-
-			forEachRecord(transaction, STORE_NAMES.history, collect, () => {
-				updateEach<ProjectRecord>(
-					transaction,
-					STORE_NAMES.projects,
-					(project) => {
-						const used = referencedSourceHashes(project, []);
-						const earlier = inHistory.get(project.id) ?? [];
-						return {
-							...project,
-							referencedSourceHashes: [
-								...new Set([...used, ...earlier]),
-							].toSorted(),
-						};
-					},
-					done,
-				);
+			backfillSources(transaction, done);
+		};
+	},
+	// Painted masks (persistence.md section 8.6).
+	3(database, transaction) {
+		database
+			.createObjectStore(STORE_NAMES.masks, {keyPath: 'sha256'})
+			.createIndex('byCreatedAt', 'createdAt');
+		transaction
+			.objectStore(STORE_NAMES.projects)
+			.createIndex('byReferencedMaskHash', 'referencedMaskHashes', {
+				multiEntry: true,
 			});
+
+		return (done) => {
+			backfillReferences(
+				transaction,
+				'referencedMaskHashes',
+				(project) => referencedMaskHashes(project, []),
+				addMaskReferences,
+				() => {
+					// Version 3 did not count the images of image masks as sources.
+					backfillSources(transaction, done);
+				},
+			);
 		};
 	},
 };

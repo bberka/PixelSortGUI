@@ -248,7 +248,7 @@ test('keeps a multi-megabyte version 1 project through the upgrade on reload in 
 
 	expect(verified).toEqual({
 		found: true,
-		version: 3,
+		version: 4,
 		effectiveSize: [2048, 1536],
 		projectName: 'Large E2E Blob',
 		byteLength: written.byteLength,
@@ -565,8 +565,9 @@ test('upgrades a version 2 database on reload and keeps every image in use until
 	const after = await readDrift(page);
 
 	const {orphan, ...used} = hashes;
-	expect(after.version).toBe(3);
+	expect(after.version).toBe(4);
 	expect(after.indexes).toContain('byReferencedSourceHash');
+	expect(after.indexes).toContain('byReferencedMaskHash');
 	expect(after.sources).toEqual(Object.values(used).toSorted());
 	expect(after.history).toEqual(before.history);
 	expect(after.thumbnails).toEqual(before.thumbnails);
@@ -585,6 +586,7 @@ test('upgrades a version 2 database on reload and keeps every image in use until
 		before.projects.map((record) => ({
 			...record,
 			referencedSourceHashes: references[record.id as string],
+			referencedMaskHashes: [],
 		})),
 	);
 

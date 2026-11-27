@@ -29,7 +29,7 @@ import {PROOF_VIEWPORTS} from './viewports.ts';
 
 type RuntimeGlobal = {__psgRuntime?: AppRuntime};
 
-const CAP_MESSAGE = 'A project can use at most 8 extra blend images.';
+const CAP_MESSAGE = 'A project can use at most 8 extra blend and mask images.';
 type Colour = readonly [number, number, number];
 const BASE_COLOUR: Colour = [200, 100, 50];
 const RED: Colour = [50, 60, 70];

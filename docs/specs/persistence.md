@@ -237,7 +237,7 @@ If a `sources` record has no referencing project (an interrupted run, or an extr
 
 Three independent version numbers govern stored data:
 
-1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `3`, `4` with section 8.6):**
+1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `4` since section 8.6):**
    - Managed inside `IDBOpenDBRequest.onupgradeneeded`.
    - Each bump from `v` to `v + 1` runs a sequential upgrade function `dbMigrations[v]` inside the versionchange transaction, updating `meta.schemaInfo` at the end. A migration that rewrites records returns a step, and the next migration starts only when that step has finished, so two migrations never rewrite a record at once.
    - An upgrade is all or nothing: when any request or migration fails, the transaction aborts, the database stays at its old version with its old data, and the app falls back as in section 5.1.
@@ -792,8 +792,8 @@ type NewMask = Omit<MaskRecord, 'byteLength' | 'createdAt'>;
 1. Create the `masks` store with the `byCreatedAt` index.
 2. `ProjectRecord` adds `referencedMaskHashes: string[]`: sorted, without repeats, holding every non-empty painted `asset` of `stack`, `stackA` and all retained history entries.
 3. Create the `multiEntry` index `byReferencedMaskHash` on `projects`.
-4. Backfill every project from its stacks and history inside the versionchange transaction (a version 3 build can hold a stack with a mask from a hand-made file). A damaged stack is skipped, never fatal.
-5. Update `meta.schemaInfo` to `dbVersion: 4`. Other stores are untouched. `MemoryStorageAdapter` writes the same data.
+4. Backfill every project from its stacks and history inside the versionchange transaction (a version 3 build can hold a stack with a mask from a hand-made file). A damaged stack is skipped, never fatal. The same pass adds the `source` of every image mask to `referencedSourceHashes` (section 8.5), which a version 3 build did not collect, so cleanup cannot delete such an image.
+5. Update `meta.schemaInfo` to `dbVersion: 4`. Other stores and all history rows are untouched. `MemoryStorageAdapter` writes the same data.
 
 The upgrade is one-way: a version 3 build cannot open a version 4 database (section 6). Starting step 3 of section 9 opens `DB_VERSION` 4.
 
@@ -837,7 +837,7 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
 
 1. **Step 0 (Synchronous HTML boot, before first paint):** Inline `<script>` in `index.html` reads `localStorage.getItem('drift:theme')` inside a `try/catch`, validates `'system' | 'light' | 'dark'` (fallback `'system'`), and sets `document.documentElement.dataset.theme`. Prevents theme flash (AC-F14.2).
 2. **Step 1 (Secure context gate):** Check `window.isSecureContext`. If `false`, render the secure-context error screen (DESIGN.md section 9) and stop (product.md section 4).
-3. **Step 2 (Open database):** Open IndexedDB `drift` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` for `v0.3.0` per section 8.5), running `onupgradeneeded` migrations if upgrading from an older version.
+3. **Step 2 (Open database):** Open IndexedDB `drift` at the app's current `DB_VERSION` (`1` in `v0.1.0`, `2` in `v0.2.0` per section 8.1, `3` for `v0.3.0` per section 8.5, `4` with masks per section 8.6), running `onupgradeneeded` migrations if upgrading from an older version.
    - If `VersionError` (stored DB is newer than app): render the blocking reload/update screen and stop.
    - If any other error: instantiate `MemoryStorageAdapter`, set `storageUnavailable = true`, and continue (AC-F16.4).
 4. **Step 3 (Fast metadata read):** Run one `readonly` transaction across `['meta', 'projects', 'presets']` to load:
@@ -891,6 +891,8 @@ tests/storage/
   repository.test.ts   CRUD, SHA-256 dedup, ref-counted delete, 201-entry history cap, atomicity
   migrations.test.ts   DB version upgrades, EffectStack and EffectInstance write-back, unknown effects
   db-v3-upgrade.test.ts  Version 2 to 3 upgrade, backfill and rollback (section 8.5)
+  db-v4-upgrade.test.ts  Version 3 to 4 upgrade, backfill and rollback (section 8.6)
+  masks.test.ts        Mask commits, reference counting, cleanup and preset stripping against both adapters (section 8.6)
   extra-sources.test.ts  AC-F26.3, F26.4, F26.6 and F26.7 and archive round trips against both adapters
   restore.test.ts      Route resolution, deleted-project hash, fallback to MemoryStorageAdapter
   project-file.test.ts  .glproj round trip, errors, caps, progress and cancel

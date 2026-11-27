@@ -269,7 +269,7 @@ async function upgrade(idb: IDBFactory) {
 	return {database, repository};
 }
 
-describe('database upgrade from version 2 to 3 (persistence.md section 8.5)', () => {
+describe('database upgrade from version 2 (persistence.md section 8.5)', () => {
 	it('adds references to every project and keeps all other data', async () => {
 		const idb = new IDBFactory();
 		await createV2Database(idb);
@@ -278,8 +278,7 @@ describe('database upgrade from version 2 to 3 (persistence.md section 8.5)', ()
 
 		const {database, repository} = await upgrade(idb);
 
-		expect(DB_VERSION).toBe(3);
-		expect(database.version).toBe(3);
+		expect(database.version).toBe(DB_VERSION);
 		const after = await dump(database);
 		for (const name of ['sources', 'history', 'thumbnails', 'presets']) {
 			expect(after[name]).toStrictEqual(before.stores[name]);
@@ -289,9 +288,12 @@ describe('database upgrade from version 2 to 3 (persistence.md section 8.5)', ()
 			(before.stores.projects as ProjectRecord[]).map((record) => ({
 				...record,
 				referencedSourceHashes: references[record.id],
+				referencedMaskHashes: [],
 			})),
 		);
-		expect(await repository.getSchemaInfo()).toMatchObject({dbVersion: 3});
+		expect(await repository.getSchemaInfo()).toMatchObject({
+			dbVersion: DB_VERSION,
+		});
 		expect(await repository.getAppState()).toStrictEqual(appState);
 
 		const index = database
@@ -384,7 +386,7 @@ describe('database upgrade from version 2 to 3 (persistence.md section 8.5)', ()
 		expect(await dumpV2(idb)).toStrictEqual(before);
 
 		const {database, repository} = await upgrade(idb);
-		expect(database.version).toBe(3);
+		expect(database.version).toBe(DB_VERSION);
 		expect(
 			(await repository.getProject('blended'))?.referencedSourceHashes,
 		).toStrictEqual(references.blended);
@@ -404,7 +406,7 @@ describe('database upgrade from version 2 to 3 (persistence.md section 8.5)', ()
 
 		const {database, repository} = await upgrade(idb);
 
-		expect(database.version).toBe(3);
+		expect(database.version).toBe(DB_VERSION);
 		const [project] = await allRecords<ProjectRecord>(database, 'projects');
 		expect(project.referencedSourceHashes).toStrictEqual([FIRST]);
 		const entries = await allRecords<HistoryEntryRecord>(database, 'history');

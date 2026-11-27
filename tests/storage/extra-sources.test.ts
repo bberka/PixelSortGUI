@@ -28,7 +28,7 @@ import {
 import {SOURCE_SIZE} from './project-transfer-fixtures.ts';
 import {allRecords} from './idb-helpers.ts';
 
-const LIMIT = 'A project can use at most 8 extra blend images.';
+const LIMIT = 'A project can use at most 8 extra blend and mask images.';
 const FILE = 'blend.glproj';
 
 function blend(image: string, id = `blend-${image.slice(0, 6)}`) {

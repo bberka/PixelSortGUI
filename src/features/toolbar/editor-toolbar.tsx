@@ -211,6 +211,20 @@ export function EditorToolbar() {
 				return;
 			}
 
+			if (event.key === 'm' || event.key === 'M') {
+				if (event.repeat) {
+					return;
+				}
+
+				const visible = bundle.store.getState().toggleMaskOverlay();
+				if (visible !== null) {
+					event.preventDefault();
+					announce(visible ? 'Mask shown' : 'Mask hidden');
+				}
+
+				return;
+			}
+
 			if (event.key === '\\') {
 				event.preventDefault();
 				if (event.repeat) {

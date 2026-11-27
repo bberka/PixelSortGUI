@@ -15,6 +15,8 @@ import {
 	formatNumberParam,
 	type NumberSpec,
 } from '../features/params/format.ts';
+import type {MaskKind} from '../engine/mask/types.ts';
+import type {MaskPatch} from './mask-edits.ts';
 
 const MIN_LABEL_DECIMALS = 2;
 
@@ -87,6 +89,63 @@ export function formatParamCommitLabel(
 
 export function formatMixCommitLabel(mix: number): string {
 	return `Mix ${Math.round(mix * 100)}%`;
+}
+
+function formatMaskPercent(value: number): string {
+	return `${Number((value * 100).toFixed(1))}%`;
+}
+
+const FIT_LABELS = {
+	cover: 'Cover',
+	contain: 'Contain',
+	stretch: 'Stretch',
+} as const;
+
+const MASK_KIND_LABELS: Readonly<Record<MaskKind, string>> = {
+	paint: 'Paint',
+	luma: 'Brightness',
+	image: 'Image',
+};
+
+// Adding, replacing or removing a mask (persistence.md section 8.2).
+export function formatMaskKindCommitLabel(
+	before: MaskKind | undefined,
+	after: MaskKind | null,
+): string {
+	if (after === null) {
+		return 'Remove mask';
+	}
+
+	const name = MASK_KIND_LABELS[after];
+	return before === undefined
+		? `Add ${name.toLowerCase()} mask`
+		: `Mask type ${name}`;
+}
+
+// A mask setting, named for the first field the patch holds.
+export function formatMaskCommitLabel(patch: MaskPatch): string {
+	if (patch.invert !== undefined) {
+		return `Invert mask ${patch.invert ? 'on' : 'off'}`;
+	}
+
+	if (patch.feather !== undefined) {
+		return `Mask feather ${patch.feather} px`;
+	}
+
+	if (patch.range !== undefined) {
+		const [low, high] = patch.range;
+		return `Mask range ${formatMaskPercent(low)} to ${formatMaskPercent(high)}`;
+	}
+
+	if (patch.softness !== undefined) {
+		return `Mask softness ${formatMaskPercent(patch.softness)}`;
+	}
+
+	if (patch.source !== undefined) {
+		return `Mask image ${patch.source === '' ? 'cleared' : 'chosen'}`;
+	}
+
+	return patch.fit === undefined ? 'Mask' : `Mask fit ${FIT_LABELS[patch.fit]}`;
 }
 
 export function formatBlendCommitLabel(blend: BlendMode): string {

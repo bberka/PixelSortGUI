@@ -472,7 +472,13 @@ describe('schema-driven controls', () => {
 			[...container!.querySelectorAll('h3')].map(
 				(heading) => heading.textContent,
 			),
-		).toEqual(['First group', 'Second group', 'Third group', 'Blend & Mix']);
+		).toEqual([
+			'First group',
+			'Second group',
+			'Third group',
+			'Blend & Mix',
+			'Mask',
+		]);
 
 		const ratioInput = paramInput(instanceId, 'ratio');
 		expect(ratioInput.value).toBe('0.5');

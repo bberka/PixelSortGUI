@@ -7,6 +7,8 @@ import {
 } from '../../src/engine/transform.ts';
 import type {ParamSpec, ParamValue} from '../../src/engine/types.ts';
 import {
+	formatMaskCommitLabel,
+	formatMaskKindCommitLabel,
 	formatParamCommitLabel,
 	formatTransformCommitLabel,
 } from '../../src/state/commit-labels.ts';
@@ -49,6 +51,33 @@ describe('formatParamCommitLabel', () => {
 		[picture, '', 'Blend image cleared'],
 	])('labels %o set to %o', (spec, value, expected) => {
 		expect(formatParamCommitLabel(spec, value)).toBe(expected);
+	});
+});
+
+describe('mask commit labels (persistence.md section 8.2)', () => {
+	it.each<[Parameters<typeof formatMaskCommitLabel>[0], string]>([
+		[{invert: true}, 'Invert mask on'],
+		[{invert: false}, 'Invert mask off'],
+		[{feather: 32}, 'Mask feather 32 px'],
+		[{range: [0.5, 1]}, 'Mask range 50% to 100%'],
+		[{range: [0.125, 0.57]}, 'Mask range 12.5% to 57%'],
+		[{softness: 0.1}, 'Mask softness 10%'],
+		[{source: 'a'.repeat(64)}, 'Mask image chosen'],
+		[{source: ''}, 'Mask image cleared'],
+		[{fit: 'contain'}, 'Mask fit Contain'],
+	])('labels %o', (patch, expected) => {
+		expect(formatMaskCommitLabel(patch)).toBe(expected);
+	});
+
+	it('names adding, replacing and removing a mask', () => {
+		expect(formatMaskKindCommitLabel(undefined, 'paint')).toBe(
+			'Add paint mask',
+		);
+		expect(formatMaskKindCommitLabel(undefined, 'luma')).toBe(
+			'Add brightness mask',
+		);
+		expect(formatMaskKindCommitLabel('paint', 'image')).toBe('Mask type Image');
+		expect(formatMaskKindCommitLabel('luma', null)).toBe('Remove mask');
 	});
 });
 

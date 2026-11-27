@@ -2,6 +2,8 @@ import {ChevronsUpIcon, ScanEyeIcon} from 'lucide-react';
 import {BlendControl, MixControl} from './instance-controls.tsx';
 import {ParamControl} from './param-control.tsx';
 import {RandomizeButton} from './randomize-button.tsx';
+import {useAppStore} from '@/app/runtime-context.tsx';
+import {maskTabs} from '@/features/masks/mask-tabs.tsx';
 import {Button} from '@/components/ui/button';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
@@ -49,10 +51,13 @@ export function FocusedParams({
 	onRandomize,
 	onShowAll,
 }: FocusedParamsProps) {
+	const showMask = useAppStore((state) => state.maskOverlay.visible);
+	const masks = maskTabs(instance, showMask);
 	const tabs = [
 		...entries.map(({key, spec}) => ({key, label: spec.label})),
 		{key: MIX_TAB, label: 'Mix'},
 		{key: BLEND_TAB, label: 'Blend'},
+		...masks,
 	];
 	// A parameter that has just been hidden falls back to the first one.
 	const active = tabs.find((tab) => tab.key === activeKey)?.key ?? tabs[0].key;
@@ -131,6 +136,8 @@ export function FocusedParams({
 							<MixControl instanceId={instance.id} mix={instance.mix} />
 						) : tab.key === BLEND_TAB ? (
 							<BlendControl blend={instance.blend} instanceId={instance.id} />
+						) : tab.key.startsWith('$') ? (
+							masks.find((mask) => mask.key === tab.key)?.content
 						) : (
 							entries
 								.filter((entry) => entry.key === tab.key)

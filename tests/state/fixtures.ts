@@ -3,6 +3,7 @@ import type {
 	ExportTask,
 	ExtraSourceLoader,
 	Frame,
+	MaskLoader,
 	RenderCoordinator,
 	RenderEvent,
 	RenderSource,
@@ -35,6 +36,7 @@ export type FakeCoordinator = RenderCoordinator & {
 	calls: FakeCoordinatorCall[];
 	emit(event: RenderEvent): void;
 	readonly extraSourceLoader: ExtraSourceLoader | undefined;
+	readonly maskLoader: MaskLoader | undefined;
 };
 
 export function createFakeCoordinator(): FakeCoordinator {
@@ -43,6 +45,7 @@ export function createFakeCoordinator(): FakeCoordinator {
 	let generation = 0;
 	let frame: Frame | undefined;
 	let extraSourceLoader: ExtraSourceLoader | undefined;
+	let maskLoader: MaskLoader | undefined;
 
 	return {
 		calls,
@@ -61,7 +64,12 @@ export function createFakeCoordinator(): FakeCoordinator {
 		get extraSourceLoader() {
 			return extraSourceLoader;
 		},
-		setMaskLoader() {},
+		setMaskLoader(loader) {
+			maskLoader = loader;
+		},
+		get maskLoader() {
+			return maskLoader;
+		},
 		async renderMask() {
 			return undefined;
 		},

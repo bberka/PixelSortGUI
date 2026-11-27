@@ -1,11 +1,13 @@
 import {createStore, type StoreApi} from 'zustand/vanilla';
 import type {EffectStack, ParamValue} from '../engine/types.ts';
 import {CLOSED_GEOMETRY, type GeometryState} from './geometry.ts';
+import {patchMask, type MaskPatch} from './mask-edits.ts';
 
 export type TransientDragOverlay = {
 	instanceId: string;
 	params: Readonly<Record<string, ParamValue>>;
 	mix?: number;
+	mask?: MaskPatch;
 };
 
 /**
@@ -71,6 +73,8 @@ export function applyTransientDragToStack(
 				...drag.params,
 			},
 			mix: drag.mix === undefined ? instance.mix : drag.mix,
+			...(instance.mask &&
+				drag.mask && {mask: patchMask(instance.mask, drag.mask)}),
 		};
 	});
 

@@ -17,6 +17,8 @@ export type ImageControlProps = {
 	readonly paramKey: string;
 	readonly spec: ImageSpec;
 	readonly value: string;
+	// Stores a choice somewhere other than the parameter, such as an image mask.
+	readonly commit?: ImageTarget['commit'];
 };
 
 function Thumbnail({preview}: {readonly preview: SourcePreview}) {
@@ -46,6 +48,7 @@ export function ImageControl({
 	paramKey,
 	spec,
 	value,
+	commit,
 }: ImageControlProps) {
 	const projectId = useAppStore((state) => state.activeProjectId);
 	const revision = useAppStore((state) => state.activeProject?.updatedAt);
@@ -62,6 +65,7 @@ export function ImageControl({
 		paramKey,
 		label: spec.label,
 		triggerId,
+		commit,
 	};
 	const failed =
 		failure?.target.projectId === target.projectId &&

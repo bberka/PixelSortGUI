@@ -8,6 +8,7 @@ import {useParamsLayout} from './params-layout.ts';
 import {RandomizeButton} from './randomize-button.tsx';
 import {cryptoRandom, randomizeParams, type RandomSource} from './randomize.ts';
 import {isParamVisible} from './visibility.ts';
+import {MaskSetup} from '@/features/masks/mask-controls.tsx';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
@@ -307,6 +308,19 @@ export function ParameterPanel({
 						</h3>
 						<MixControl instanceId={instance.id} mix={instance.mix} />
 						<BlendControl blend={instance.blend} instanceId={instance.id} />
+					</section>
+					<Separator className="my-1" />
+					<section
+						aria-labelledby={controlId(instance.id, 'mask', 'heading')}
+						className="flex flex-col"
+					>
+						<h3
+							className={GROUP_HEADING_CLASS}
+							id={controlId(instance.id, 'mask', 'heading')}
+						>
+							Mask
+						</h3>
+						<MaskSetup key={instance.id} instance={instance} />
 					</section>
 				</div>
 			</ScrollArea>

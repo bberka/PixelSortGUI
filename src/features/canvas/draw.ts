@@ -12,6 +12,7 @@ import {
  */
 export type CanvasSurface = {
 	imageSmoothingEnabled: boolean;
+	globalAlpha: number;
 	fillStyle: CanvasRenderingContext2D['fillStyle'];
 	setTransform(
 		a: number,
@@ -83,9 +84,18 @@ export type DrawInput = {
 	// Split side A. Without a frame, side A shows `original`.
 	readonly sideA?: RenderedSide | null;
 	readonly compare?: CompareDraw;
+	// The mask overlay, over the side it belongs to. Never over the original.
+	readonly overlay?: MaskOverlayImage | null;
 	// Backdrop for transparent pixels; null leaves the area cleared.
 	readonly checker: CanvasPattern | null;
 	readonly dpr: number;
+};
+
+// A tinted mask covering the whole edited image.
+export type MaskOverlayImage = FrameImage & {
+	readonly side: 'a' | 'b';
+	// 0..1.
+	readonly opacity: number;
 };
 
 export type Region = {
@@ -188,6 +198,17 @@ export function drawCanvas(input: DrawInput): void {
 		}
 	};
 
+	const drawOverlay = (side: 'a' | 'b') => {
+		const {overlay} = input;
+		if (overlay?.side !== side) {
+			return;
+		}
+
+		surface.globalAlpha = overlay.opacity;
+		drawRegion(surface, overlay, fullRegion, view, viewport);
+		surface.globalAlpha = 1;
+	};
+
 	const {compare} = input;
 	if (compare?.mode === 'original') {
 		if (compare.useSideA && input.sideA?.frame) {
@@ -228,12 +249,15 @@ export function drawCanvas(input: DrawInput): void {
 				} else if (input.original) {
 					drawRegion(surface, input.original, fullRegion, view, viewport);
 				}
+
+				drawOverlay('a');
 			});
 		}
 
 		if (split < extent) {
 			clipped(split, extent - split, () => {
 				drawEdited(input);
+				drawOverlay('b');
 			});
 		}
 
@@ -241,6 +265,7 @@ export function drawCanvas(input: DrawInput): void {
 	}
 
 	drawEdited(input);
+	drawOverlay('b');
 }
 
 /**

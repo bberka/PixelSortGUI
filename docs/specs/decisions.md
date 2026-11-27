@@ -457,7 +457,7 @@ Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains ope
 
 ### Q27. Release timing
 
-- **Question:** After Milestone 8 (backup in `v0.4.0`, automatic sync in `v0.5.0`), or ahead of project files and image blending (it still needs F17)?
+- **Question:** After Milestone 8 (backup in `v0.5.0`, automatic sync in `v0.6.0`), or ahead of project files and image blending (it still needs F17)?
 - **Recommended default:** After Milestone 8.
 
 ### Q28. Mask detail

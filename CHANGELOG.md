@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.4.0
+
+Adds masks with an on-canvas brush, pasting pictures from the clipboard, comparing against any history step, and more pixel sort options.
+
+### Masks and the brush
+
+- Masks: limit any effect to part of the photo with a painted, brightness or image mask. Each mask can be inverted and feathered, "Show mask" tints the masked area, and masked effects are marked in the stack.
+- Mask brush: paint and erase on the photo with a mouse, pen, touch or the keyboard, with size, hardness, strength and pen pressure. One stroke is one undo step, two fingers zoom and move the photo, and paint stays in place through crop, rotate, flip and resize.
+- Project files and backups carry masks. A file that holds a mask cannot be opened by an older version of Drift. Your saved projects are upgraded the first time you open this version.
+- Presets keep brightness masks and leave out painted and image masks.
+
+### Import
+
+- Paste a picture from the clipboard with Ctrl+V (⌘V) in the Library or the editor, or choose "Paste image" in the Library's menu or on the start screen.
+
+### History
+
+- "Compare with this" on any step in the History panel compares that step with your current edit, in split view or with Compare, without changing your history.
+
+### Pixel sort
+
+- New "Channels" choice: sort red, green and blue independently, or only one of them.
+- New "Interval transform" choice: reverse, mirror, splice or fold each sorted interval. Projects saved before this version look the same.
+
 ## v0.3.0
 
 Adds project files, backup and restore, blending a second image, six more effects, a new start screen and a new editor on phones.

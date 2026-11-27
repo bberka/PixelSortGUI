@@ -410,6 +410,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					'On a touch screen, one finger paints. A second finger drops that stroke, and two fingers zoom and move the photo.',
 					'“Show mask” tints the painted area. It always shows while you draw, and never in exports.',
 					'Paint stays on the same part of the photo when you crop, rotate, flip or resize.',
+					'Every mask has “Invert mask” and “Mask feather”, which softens its edge. An image mask also has “Fit”. “Remove mask” brings the effect back to the whole photo.',
 					'In split view the brush paints the side you are editing. Compare and crop mode pause it.',
 					'“Brightness” selects by how light the photo is, and “Image” by how light another picture is. Presets keep brightness masks only.',
 				],

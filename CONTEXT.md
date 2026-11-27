@@ -44,7 +44,7 @@ A downscaled copy of the source image that the pipeline runs on while the user a
 
 ## Project
 
-One saved editing session: a source image, a stack for split side B (main) and A (optional), history, view state, and export settings. Masks are later work. It reopens as it was left.
+One saved editing session: a source image, a stack for split side B (main) and A (optional), history, view state, and export settings. It reopens as it was left.
 
 ## Library
 

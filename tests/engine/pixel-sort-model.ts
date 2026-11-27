@@ -187,6 +187,46 @@ function modelEdgeSelection(
 	return selected;
 }
 
+function modelTransformIndex(
+	mode: PixelSortParams['intervalTransform'],
+	index: number,
+	length: number,
+): number {
+	switch (mode) {
+		case 'none': {
+			return index;
+		}
+
+		case 'reverse': {
+			return length - 1 - index;
+		}
+
+		case 'mirror': {
+			const mid = floorDiv(length + 1, 2);
+			return index < mid ? 2 * index : 2 * (length - 1 - index) + 1;
+		}
+
+		case 'splice': {
+			const shift = floorDiv(length, 2);
+			return (index + shift) % length;
+		}
+
+		case 'fold': {
+			const left = floorDiv(length, 2);
+			return index < left ? 2 * (left - 1 - index) + 1 : 2 * (index - left);
+		}
+	}
+}
+
+const MODEL_CHANNELS: Readonly<
+	Record<Exclude<PixelSortParams['channelMode'], 'rgba'>, readonly number[]>
+> = {
+	rgb: [0, 1, 2],
+	r: [0],
+	g: [1],
+	b: [2],
+};
+
 /**
  Engine.md section 5 written the slow, obvious way: whole-image selection
  first, `Array.prototype.sort` for order, `unit` and `intIn` from random.ts.
@@ -295,50 +335,116 @@ export function model(
 				const pixels = offsets.map((offset) => [
 					...data.subarray(4 * offset, 4 * offset + 4),
 				]);
-				let ordered: number[][];
-				if (params.order === 'shuffle') {
-					ordered = [...pixels];
-					for (let s = size - 1; s >= 1; s--) {
-						const t = intIn(0, s, params.seed, 4, lineId, first, s);
-						[ordered[s], ordered[t]] = [ordered[t], ordered[s]];
-					}
-				} else {
-					const comparison = offsets.map((offset) => {
-						let c = key(params.sortKey, offset);
-						if (params.discretize > 0) {
-							c = Math.floor(c / (params.discretize * 257));
+
+				if (params.channelMode === 'rgba') {
+					let ordered: number[][];
+					if (params.order === 'shuffle') {
+						ordered = [...pixels];
+						for (let s = size - 1; s >= 1; s--) {
+							const t = intIn(0, s, params.seed, 4, lineId, first, s);
+							[ordered[s], ordered[t]] = [ordered[t], ordered[s]];
 						}
-
-						return descending ? 65_535 - c : c;
-					});
-					ordered = pixels
-						.map((pixel, index) => ({pixel, c: comparison[index]}))
-						.toSorted((a, b) => a.c - b.c)
-						.map((entry) => entry.pixel);
-				}
-
-				for (let s = 0; s < size; s++) {
-					for (let c = 0; c < 4; c++) {
-						let value: number;
-						if (params.fill === 'sort') {
-							value = ordered[s][c];
-						} else if (params.fill === 'average') {
-							let sum = 0;
-							for (const pixel of pixels) {
-								sum += pixel[c];
+					} else {
+						const comparison = offsets.map((offset) => {
+							let c = key(params.sortKey, offset);
+							if (params.discretize > 0) {
+								c = Math.floor(c / (params.discretize * 257));
 							}
 
-							value = floorDiv(2 * sum + size, 2 * size);
+							return descending ? 65_535 - c : c;
+						});
+						ordered = pixels
+							.map((pixel, index) => ({pixel, c: comparison[index]}))
+							.toSorted((a, b) => a.c - b.c)
+							.map((entry) => entry.pixel);
+					}
+
+					for (let s = 0; s < size; s++) {
+						const k = modelTransformIndex(params.intervalTransform, s, size);
+						for (let c = 0; c < 4; c++) {
+							let value: number;
+							if (params.fill === 'sort') {
+								value = ordered[k][c];
+							} else if (params.fill === 'average') {
+								let sum = 0;
+								for (const pixel of pixels) {
+									sum += pixel[c];
+								}
+
+								value = floorDiv(2 * sum + size, 2 * size);
+							} else {
+								value = floorDiv(
+									2 *
+										(ordered[0][c] * (size - 1 - k) +
+											ordered[size - 1][c] * k) +
+										(size - 1),
+									2 * (size - 1),
+								);
+							}
+
+							output.data[4 * offsets[s] + c] = value;
+						}
+					}
+				} else {
+					for (const channel of MODEL_CHANNELS[params.channelMode]) {
+						const values = pixels.map((pixel) => pixel[channel]);
+						let ordered: number[];
+						if (params.order === 'shuffle') {
+							ordered = [...values];
+							for (let s = size - 1; s >= 1; s--) {
+								const t = intIn(
+									0,
+									s,
+									params.seed,
+									6,
+									lineId,
+									first,
+									channel,
+									s,
+								);
+								[ordered[s], ordered[t]] = [ordered[t], ordered[s]];
+							}
 						} else {
-							value = floorDiv(
-								2 *
-									(ordered[0][c] * (size - 1 - s) + ordered[size - 1][c] * s) +
-									(size - 1),
-								2 * (size - 1),
-							);
+							const channelDescending =
+								params.order === 'descending' ||
+								(params.order === 'random' &&
+									unit(params.seed, 5, lineId, first, channel) >= 0.5);
+							const comparison = values.map((v) => {
+								let c = v * 257;
+								if (params.discretize > 0) {
+									c = Math.floor(c / (params.discretize * 257));
+								}
+
+								return channelDescending ? 65_535 - c : c;
+							});
+							ordered = values
+								.map((value, index) => ({value, c: comparison[index]}))
+								.toSorted((a, b) => a.c - b.c)
+								.map((entry) => entry.value);
 						}
 
-						output.data[4 * offsets[s] + c] = value;
+						for (let s = 0; s < size; s++) {
+							const k = modelTransformIndex(params.intervalTransform, s, size);
+							let value: number;
+							if (params.fill === 'sort') {
+								value = ordered[k];
+							} else if (params.fill === 'average') {
+								let sum = 0;
+								for (const v of values) {
+									sum += v;
+								}
+
+								value = floorDiv(2 * sum + size, 2 * size);
+							} else {
+								value = floorDiv(
+									2 * (ordered[0] * (size - 1 - k) + ordered[size - 1] * k) +
+										(size - 1),
+									2 * (size - 1),
+								);
+							}
+
+							output.data[4 * offsets[s] + channel] = value;
+						}
 					}
 				}
 			}
@@ -500,10 +606,18 @@ export const paramsArb: fc.Arbitrary<PixelSortParams> = fc.record({
 	),
 	lengthJitter: fc.oneof(fc.constant(0), ratio(100)),
 	skipChance: fc.oneof(fc.constant(0), ratio(100)),
+	channelMode: fc.constantFrom('rgba', 'rgb', 'r', 'g', 'b'),
 	sortKey: keyArb,
 	order: fc.constantFrom('ascending', 'descending', 'shuffle', 'random'),
 	discretize: fc.oneof(fc.constant(0), fc.integer({min: 0, max: 64})),
 	fill: fc.constantFrom('sort', 'average', 'gradient'),
+	intervalTransform: fc.constantFrom(
+		'none',
+		'reverse',
+		'mirror',
+		'splice',
+		'fold',
+	),
 	seed: fc.integer({min: 0, max: 0xff_ff_ff_ff}),
 });
 

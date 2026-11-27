@@ -1,5 +1,10 @@
 import {describe, expect, it} from 'vite-plus/test';
-import {drawCanvas, type CanvasSurface, type FrameImage} from './draw.ts';
+import {
+	containRegion,
+	drawCanvas,
+	type CanvasSurface,
+	type FrameImage,
+} from './draw.ts';
 import type {CanvasView} from './view.ts';
 
 type DrawCall = {
@@ -345,5 +350,63 @@ describe('canvas drawing', () => {
 		});
 
 		expect(recorder.draws[0]?.bitmap).toBe(original.bitmap);
+	});
+
+	it('contain-fits sideA centered without stretching when its effective size differs (F31)', () => {
+		expect(
+			containRegion({width: 400, height: 300}, {width: 300, height: 400}),
+		).toEqual({x: 87.5, y: 0, width: 225, height: 300});
+
+		const recorder = record();
+		const historyFrame = image(300, 400);
+		const currentFrame = image(400, 300);
+		drawCanvas({
+			surface: recorder.surface,
+			viewport: {width: 400, height: 300},
+			view: view(1, 200, 150),
+			source: {width: 400, height: 300},
+			frame: currentFrame,
+			tiles: null,
+			sideA: {
+				frame: historyFrame,
+				tiles: null,
+				size: {width: 300, height: 400},
+			},
+			compare: {mode: 'split', position: 0.5},
+			checker: null,
+			dpr: 1,
+		});
+
+		expect(recorder.draws[0]?.bitmap).toBe(historyFrame.bitmap);
+		expect(recorder.draws[0]?.destination).toEqual([87.5, 0, 225, 300]);
+		expect(recorder.draws[1]?.bitmap).toBe(currentFrame.bitmap);
+		expect(recorder.draws[1]?.destination).toEqual([0, 0, 400, 300]);
+	});
+
+	it('draws sideA in toggle compare mode when useSideA is set (F31)', () => {
+		const recorder = record();
+		const original = image(400, 300);
+		const historyFrame = image(300, 400);
+		drawCanvas({
+			surface: recorder.surface,
+			viewport: {width: 400, height: 300},
+			view: view(1, 200, 150),
+			source: {width: 400, height: 300},
+			original,
+			frame: image(400, 300),
+			tiles: null,
+			sideA: {
+				frame: historyFrame,
+				tiles: null,
+				size: {width: 300, height: 400},
+			},
+			compare: {mode: 'original', useSideA: true},
+			checker: null,
+			dpr: 1,
+		});
+
+		expect(recorder.draws).toHaveLength(1);
+		expect(recorder.draws[0]?.bitmap).toBe(historyFrame.bitmap);
+		expect(recorder.draws[0]?.destination).toEqual([87.5, 0, 225, 300]);
 	});
 });

@@ -42,6 +42,7 @@ import type {UserPresetRecord} from '@/storage/types.ts';
 import {
 	selectEditingSide,
 	selectEditingStack,
+	selectSplitChosen,
 	sideLetter,
 } from '@/state/split-sides.ts';
 
@@ -242,9 +243,7 @@ export function PresetsControl() {
 	);
 	// Named in the confirmation only while the split view shows two stacks.
 	const sideName = useAppStore((state) =>
-		state.compareMode === 'split'
-			? sideLetter(selectEditingSide(state))
-			: undefined,
+		selectSplitChosen(state) ? sideLetter(selectEditingSide(state)) : undefined,
 	);
 	const applyPreset = useAppStore((state) => state.applyPreset);
 	const addPresetToStack = useAppStore((state) => state.addPresetToStack);

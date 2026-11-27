@@ -36,6 +36,7 @@ import {cn} from '@/lib/utils';
 import {
 	selectCanRedo,
 	selectCanUndo,
+	selectCompareHistoryEntry,
 	selectRedoLabel,
 	selectUndoLabel,
 } from '@/state/app-store.ts';
@@ -54,6 +55,9 @@ export function EditorToolbar() {
 	const undoLabel = useAppStore(selectUndoLabel);
 	const redoLabel = useAppStore(selectRedoLabel);
 	const compareMode = useAppStore((state) => state.compareMode);
+	const comparingHistory = useAppStore(
+		(state) => state.compareHistorySeq !== null,
+	);
 	const showingOriginal = useTransientStore(selectShowingOriginal);
 	const orientation = useAppStore(selectSplitOrientation);
 	// Crop mode suspends Compare and the split view (DESIGN.md section 7.2).
@@ -79,9 +83,15 @@ export function EditorToolbar() {
 						void bundle.store.getState().setCompareMode('toggle');
 					}
 
-					if (latched !== previous) {
-						announce(latched ? 'Showing original' : 'Showing edited result');
+					if (latched === previous) {
+						return;
 					}
+
+					const pinned = selectCompareHistoryEntry(bundle.store.getState());
+					const reference = pinned
+						? `Step #${pinned.seq}: ${pinned.label}`
+						: 'original';
+					announce(latched ? `Showing ${reference}` : 'Showing edited result');
 				},
 			}),
 		[bundle],
@@ -188,6 +198,16 @@ export function EditorToolbar() {
 				event.altKey ||
 				bundle.transientStore.getState().geometry.cropping
 			) {
+				return;
+			}
+
+			if (
+				event.key === 'Escape' &&
+				bundle.store.getState().compareHistorySeq !== null
+			) {
+				event.preventDefault();
+				bundle.store.getState().clearCompareHistory();
+				announce('Stopped comparing history step');
 				return;
 			}
 
@@ -408,7 +428,11 @@ export function EditorToolbar() {
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>
-						{hint('Compare original', '\\', 'hold to peek')}
+						{hint(
+							comparingHistory ? 'Compare pinned step' : 'Compare original',
+							'\\',
+							'hold to peek',
+						)}
 					</TooltipContent>
 				</Tooltip>
 				<Tooltip>

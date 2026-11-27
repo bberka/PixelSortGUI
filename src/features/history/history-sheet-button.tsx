@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import {HistoryIcon} from 'lucide-react';
 import {HistoryPanel} from './history-panel.tsx';
 import {Button} from '@/components/ui/button';
@@ -13,10 +14,11 @@ import {useEditorViewportClass} from '@/lib/use-phone-layout.ts';
 import {cn} from '@/lib/utils';
 
 export function HistorySheetButton() {
+	const [open, setOpen] = useState(false);
 	const landscape = useEditorViewportClass() === 'phone-landscape';
 
 	return (
-		<Sheet>
+		<Sheet open={open} onOpenChange={setOpen}>
 			<SheetTrigger asChild>
 				<Button
 					type="button"
@@ -40,7 +42,11 @@ export function HistorySheetButton() {
 					<SheetTitle>History</SheetTitle>
 				</SheetHeader>
 				<div className="min-h-0 flex-1">
-					<HistoryPanel />
+					<HistoryPanel
+						onCompareStart={() => {
+							setOpen(false);
+						}}
+					/>
 				</div>
 			</SheetContent>
 		</Sheet>

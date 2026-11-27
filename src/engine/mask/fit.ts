@@ -5,6 +5,7 @@ import {
 	orientedDimensions,
 	orientedMapping,
 } from '../transform.ts';
+import type {MaskRect} from './brush-types.ts';
 import type {MaskBitmap, MaskGeometry} from './types.ts';
 
 // Which grid pixels each destination index reads along one axis, and their weights.
@@ -75,7 +76,8 @@ function axisTaps(
 /**
  The painted base mask: `grid` rotated, flipped and cropped like the source, then
  fitted onto `target`, a `width x height` render of the effective image. The
- resize filter is not used. `grid` is only read.
+ resize filter is not used. `grid` is only read. `rect`, in target pixels, limits
+ which pixels are computed and written.
  */
 export async function fitPaintedMask(
 	grid: MaskBitmap,
@@ -84,6 +86,7 @@ export async function fitPaintedMask(
 	height: number,
 	target: Uint8Array,
 	pace: Pace,
+	rect: MaskRect = {x: 0, y: 0, width, height},
 ): Promise<void> {
 	// Throws for a transform that does not fit the source.
 	effectiveDimensions(sourceWidth, sourceHeight, transform);
@@ -100,24 +103,25 @@ export async function fitPaintedMask(
 	const ys = axisTaps(mask.height, source.height, crop.y, crop.height, height);
 	const {data} = grid;
 
+	const right = rect.x + rect.width;
 	// The two most recent horizontally filtered grid rows, kept by row parity.
 	const rows = [new Int32Array(width), new Int32Array(width)];
 	const held = [-1, -1];
 	const sums = new Float64Array(width);
-	for (let dy = 0; dy < height; dy++) {
+	for (let dy = rect.y; dy < rect.y + rect.height; dy++) {
 		sums.fill(0);
 		for (let ty = ys.start[dy]; ty < ys.start[dy + 1]; ty++) {
 			const v = ys.index[ty];
 			const slot = v % 2;
 			const row = rows[slot];
 			if (held[slot] !== v) {
-				const pending = pace(Math.max(width, mask.width));
+				const pending = pace(Math.max(rect.width, mask.width));
 				if (pending) {
 					await pending;
 				}
 
 				const base = origin + v * stepV;
-				for (let dx = 0; dx < width; dx++) {
+				for (let dx = rect.x; dx < right; dx++) {
 					let sum = 0;
 					for (let tx = xs.start[dx]; tx < xs.start[dx + 1]; tx++) {
 						sum += xs.weight[tx] * data[base + xs.index[tx] * stepU];
@@ -130,13 +134,13 @@ export async function fitPaintedMask(
 			}
 
 			const wy = ys.weight[ty];
-			for (let dx = 0; dx < width; dx++) {
+			for (let dx = rect.x; dx < right; dx++) {
 				sums[dx] += wy * row[dx];
 			}
 		}
 
 		const out = dy * width;
-		for (let dx = 0; dx < width; dx++) {
+		for (let dx = rect.x; dx < right; dx++) {
 			const total = xs.total[dx] * ys.total[dy];
 			target[out + dx] = floorDiv(2 * sums[dx] + total, 2 * total);
 		}

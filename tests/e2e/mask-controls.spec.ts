@@ -1,187 +1,42 @@
 // The Mask group, its overlay and the stack badge (product.md F29, DESIGN.md
 // section 7.4).
-import {Buffer} from 'node:buffer';
-import {mkdir, readFile} from 'node:fs/promises';
+import {mkdir} from 'node:fs/promises';
 import {expect, test, type Page} from '@playwright/test';
-import {decode as decodePng, encode as encodePng} from 'fast-png';
-import type {RgbaImage} from '../../src/engine/types.ts';
-import type {AppRuntime} from '../../src/state/index.ts';
 import {assertNoA11yViolations} from './axe.ts';
-import {chooseImages, readImportState, type ChosenFixture} from './import.ts';
+import {chooseImages, readImportState} from './import.ts';
+import {
+	addEffect,
+	addMask,
+	expectPreview,
+	exportPng,
+	filled,
+	openBase,
+	panel,
+	pngFixture,
+	previewData,
+	readEditor,
+	setField,
+	trackProblems,
+	type RuntimeGlobal,
+} from './mask-helpers.ts';
 import {syntheticImage} from './render-fixtures.ts';
 import {waitForSettleRender} from './settle.ts';
 import {PROOF_VIEWPORTS} from './viewports.ts';
-
-type RuntimeGlobal = {__psgRuntime?: AppRuntime};
 
 const WIDTH = 160;
 const HEIGHT = 120;
 // The centre of the canvas fixture below, well away from its overlays.
 const GREY = [100, 100, 100, 255];
 
-function pngFixture(name: string, image: RgbaImage): ChosenFixture {
-	return {
-		name,
-		mimeType: 'image/png',
-		buffer: Buffer.from(
-			encodePng({
-				width: image.width,
-				height: image.height,
-				data: new Uint8Array(image.data),
-				channels: 4,
-			}),
-		),
-	};
-}
-
-function filled(
-	width: number,
-	height: number,
-	colour: (x: number, y: number) => readonly number[],
-): RgbaImage {
-	const data = new Uint8ClampedArray(width * height * 4);
-	for (let y = 0; y < height; y++) {
-		for (let x = 0; x < width; x++) {
-			data.set(colour(x, y), (y * width + x) * 4);
-		}
-	}
-
-	return {width, height, data};
-}
-
 const base = syntheticImage(WIDTH, HEIGHT);
-
-function trackProblems(page: Page): string[] {
-	const problems: string[] = [];
-	page.on('pageerror', (error) => {
-		problems.push(error.message);
-	});
-	page.on('console', (message) => {
-		if (message.type() === 'error') {
-			problems.push(message.text());
-		}
-	});
-	return problems;
-}
-
-async function openBase(
-	page: Page,
-	fixture = pngFixture('base.png', base),
-): Promise<void> {
-	// See image-control.spec.ts: a listener must exist before the picker opens.
-	page.on('filechooser', () => {});
-	await page.goto('/');
-	await chooseImages(page, [fixture]);
-	await waitForSettleRender(page);
-}
-
-async function addEffect(page: Page, name: string): Promise<void> {
-	await page.getByRole('button', {name: 'Add effect'}).click();
-	await page
-		.getByRole('dialog', {name: 'Add effect'})
-		.getByRole('button', {name: new RegExp(`^${name}`)})
-		.click();
-	await expect(
-		page.getByRole('button', {name: `${name} actions`}).last(),
-	).toBeVisible();
-}
-
-const panel = (page: Page) => page.locator('[data-slot="parameter-panel"]');
 const showMask = (page: Page) =>
 	panel(page).getByRole('switch', {name: 'Show mask'});
 
-async function readEditor(page: Page) {
-	return page.evaluate(async () => {
-		const booted = await (globalThis as unknown as RuntimeGlobal).__psgRuntime!
-			.ready;
-		if (booted.status !== 'ready') {
-			throw new Error(booted.status);
-		}
-
-		const {activeProject, history} = booted.bundle.store.getState();
-		return {
-			head: activeProject!.historyHeadSeq,
-			label: history.find((item) => item.seq === activeProject!.historyHeadSeq)
-				?.label,
-			masks: activeProject!.stack.instances.map((instance) => instance.mask),
-		};
-	});
-}
-
-async function addMask(
-	page: Page,
-	kind: 'Paint' | 'Brightness' | 'Image',
-): Promise<void> {
-	await panel(page).getByRole('button', {name: 'Add mask'}).click();
-	await page.getByRole('menuitem', {name: kind}).click();
-	await expect(
-		panel(page).getByRole('radio', {name: kind, exact: true}),
-	).toBeFocused();
-}
-
-async function setField(
-	page: Page,
-	name: string,
-	value: string,
-): Promise<void> {
-	const field = panel(page).getByRole('textbox', {name, exact: true});
-	await field.fill(value);
-	await field.press('Enter');
-}
-
-// The pixels of the newest settle frame that has every input.
-async function previewData(page: Page): Promise<number[] | null> {
-	return page.evaluate(async () => {
-		const booted = await (globalThis as unknown as RuntimeGlobal).__psgRuntime!
-			.ready;
-		if (booted.status !== 'ready') {
-			throw new Error(booted.status);
-		}
-
-		const {frame, busy} = booted.bundle.store.getState().render;
-		if (
-			frame?.level !== 'settle' ||
-			frame.sourcesPending ||
-			frame.warnings.length > 0 ||
-			busy.settle ||
-			busy.drag
-		) {
-			return null;
-		}
-
-		const canvas = new globalThis.OffscreenCanvas(frame.width, frame.height);
-		const context = canvas.getContext('2d', {willReadFrequently: true})!;
-		context.drawImage(frame.bitmap, 0, 0);
-		return [...context.getImageData(0, 0, frame.width, frame.height).data];
-	});
-}
-
-async function expectPreview(
-	page: Page,
-	pixels: readonly number[],
-): Promise<void> {
-	await expect
-		.poll(async () => {
-			const data = await previewData(page);
-			return (
-				data?.length === pixels.length &&
-				data.every((value, index) => value === pixels[index])
-			);
-		})
-		.toBe(true);
-}
-
-async function exportPng(page: Page): Promise<number[]> {
-	await page.getByRole('button', {name: 'Export'}).click();
-	const dialog = page.getByRole('dialog', {name: 'Export'});
-	await dialog.getByRole('radio', {name: 'PNG', exact: true}).click();
-	const pending = page.waitForEvent('download');
-	await dialog.getByRole('button', {name: 'Download'}).click();
-	const download = await pending;
-	const png = decodePng(await readFile(await download.path()));
-	await page.keyboard.press('Escape');
-	await expect(dialog).toBeHidden();
-	return [...png.data];
+async function brushOff(page: Page): Promise<void> {
+	const edit = panel(page).getByRole('button', {name: 'Edit with brush'});
+	await expect(edit).toHaveAttribute('aria-pressed', 'true');
+	await edit.click();
+	await expect(edit).toHaveAttribute('aria-pressed', 'false');
 }
 
 /**
@@ -274,7 +129,7 @@ test('AC-F29.1: a new painted mask hides the effect, Fill and Remove mask restor
 	page,
 }) => {
 	const problems = trackProblems(page);
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	await addEffect(page, 'Pixel sort');
 	await waitForSettleRender(page);
 	const sorted = await exportPng(page);
@@ -288,6 +143,9 @@ test('AC-F29.1: a new painted mask hides the effect, Fill and Remove mask restor
 
 	const start = (await readEditor(page)).head;
 	await addMask(page, 'Paint');
+	// "Paint" turns the brush on, and the note waits until it is off.
+	await expect(panel(page)).not.toContainText('Nothing is painted yet.');
+	await brushOff(page);
 	await expect(panel(page)).toContainText('Nothing is painted yet.');
 	await expectPreview(page, off);
 	expect(await exportPng(page)).toEqual(off);
@@ -340,7 +198,7 @@ test('AC-F29.1: a new painted mask hides the effect, Fill and Remove mask restor
 test('AC-F29.3: Invert mask keeps the painted area and affects the rest', async ({
 	page,
 }) => {
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	await addSwap(page);
 	await waitForSettleRender(page);
 	const swapped = await exportPng(page);
@@ -364,7 +222,7 @@ test('AC-F29.3: Invert mask keeps the painted area and affects the rest', async 
 test('AC-F29.10: a brightness mask selects by the photo, whatever runs above it', async ({
 	page,
 }) => {
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	await addSwap(page);
 	await addMask(page, 'Brightness');
 	await expect(
@@ -426,7 +284,7 @@ test('AC-F29.10: a brightness mask selects by the photo, whatever runs above it'
 test('AC-F29.11: an image mask limits the effect, is stored once and outlives its project', async ({
 	page,
 }) => {
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	const stencil = filled(WIDTH, HEIGHT, (x) =>
 		x < WIDTH / 2 ? [255, 255, 255, 255] : [0, 0, 0, 255],
 	);
@@ -478,7 +336,7 @@ test('AC-F29.11: an image mask limits the effect, is stored once and outlives it
 test('AC-F29.12: no pixel sort run crosses a zero area, and Show selection darkens it', async ({
 	page,
 }) => {
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	await addEffect(page, 'Pixel sort');
 	await waitForSettleRender(page);
 	// Columns 100 onwards stay zero; the sort runs along the rows.
@@ -519,7 +377,7 @@ test('AC-F29.12: no pixel sort run crosses a zero area, and Show selection darke
 test('AC-F29.15: a saved preset keeps only the brightness mask', async ({
 	page,
 }) => {
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	await addSwap(page);
 	await addMask(page, 'Paint');
 	await panel(page).getByRole('button', {name: 'Fill', exact: true}).click();
@@ -720,9 +578,10 @@ test('Show mask: the overlay follows the switch, M, opacity, compare and split, 
 test('a painted mask that storage lost shows Missing mask and skips the effect', async ({
 	page,
 }) => {
-	await openBase(page);
+	await openBase(page, pngFixture('base.png', base));
 	await addSwap(page);
 	await addMask(page, 'Paint');
+	await brushOff(page);
 	await panel(page).getByRole('button', {name: 'Fill', exact: true}).click();
 	await expect(panel(page)).not.toContainText('Nothing is painted yet.');
 	await page.evaluate(
@@ -836,6 +695,8 @@ for (const theme of THEMES) {
 				if (kind === 'Paint') {
 					await maskButton.click();
 					await page.getByRole('menuitem', {name: kind}).click();
+					// The brush turns on, which moves a phone to its "Size" tab.
+					await tab('Mask');
 				} else {
 					await tab('Mask');
 					await panel(page)

@@ -226,6 +226,7 @@ export async function restoreStartup(
 		theme: appState.theme,
 		compareMode: appState.compareMode,
 		welcomeDismissed: appState.welcomeDismissed === true,
+		brush: appState.brush,
 		storageUnavailable,
 		route: targetRoute,
 		notice,

@@ -10,6 +10,7 @@ Updated with masks and the on-canvas brush (F29) by Claude Sonnet 5.5 (apx, medi
 Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
 Updated `F6` with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 Updated with paste image from clipboard (F30) by Claude Sonnet 5.5 (apx, thought level medium), implementation subagent.
+Updated with the mask brush behaviour (`T10.7`) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift product spec
 
@@ -632,7 +633,7 @@ Any effect instance can have one mask that limits where it applies. Pixels where
 - The effect preview updates when a stroke ends. During a stroke only the overlay follows the pointer.
 - **Mouse:** drag with the primary button paints. Middle-button drag or `Space` + drag pans, and wheel zoom works as always. A brush outline follows the pointer.
 - **Pen:** pressure scales the brush size when the setting is on.
-- **Touch:** one finger paints. A second finger cancels the stroke, leaving the mask unchanged, and the two fingers pan and zoom until both are lifted. While a pen is in use, touches are ignored. Contact width and height are not used for brush size.
+- **Touch:** one finger paints. A second finger cancels the stroke, leaving the mask unchanged, and the two fingers pan and zoom until both are lifted. While a pen is in use (touching the canvas, or hovering over it), touches are ignored. Contact width and height are not used for brush size.
 - **Keyboard:** with the brush on and the canvas focused, arrow keys move the brush cursor by a quarter of the brush size (`Shift`: one full size), `Enter` starts and ends a stroke, `Escape` cancels a stroke, and otherwise turns the brush off. `B` turns the brush on or off, `X` switches Paint and Erase, `[` and `]` change the size, `Shift+[` and `Shift+]` the hardness, and `M` shows or hides the mask.
 
 **Brightness masks** select by the brightness of the photo itself (after crop, rotation and resize, before any effect): a "Mask range" of two values (default 50% to 100%) and "Softness" (0 to 100%, default 10%) for a gradual edge. They store no pixels and work on any photo.
@@ -648,7 +649,7 @@ Any effect instance can have one mask that limits where it applies. Pixels where
 - **Presets (F10):** saving a preset removes painted and image masks and keeps brightness masks. Applying a preset replaces the instances, and with them their masks, in one undoable step.
 - **Undo and history (F9, F23):** every mask change is one commit and survives a reload.
 - **Project files and backups (F25, F17, F28):** masks travel with the project, including the history's masks when history is included. A file that holds a mask cannot be opened by an older app version, which says so.
-- **Missing mask:** if a painted mask or mask image cannot be read, the effect is skipped (not applied everywhere), and the panel says "Missing mask".
+- **Missing mask:** if a painted mask or mask image cannot be read, the effect is skipped (not applied everywhere), and the panel says "Missing mask". The brush does not paint on a missing painted mask; "Fill" or "Clear" replaces it.
 
 Acceptance criteria:
 

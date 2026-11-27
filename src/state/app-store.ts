@@ -84,6 +84,8 @@ import {
 	type UserPresetRecord,
 	type ViewState,
 	type HistoryStepResult,
+	type BrushSettings,
+	type NewMask,
 } from '../storage/types.ts';
 import {
 	formatBlendCommitLabel,
@@ -123,6 +125,14 @@ import {
 	type MaskOverlaySettings,
 	type MaskPatch,
 } from './mask-edits.ts';
+import {
+	BRUSH_SAVE_DEBOUNCE_MS,
+	DEFAULT_BRUSH_SETTINGS,
+	normalizeBrushSettings,
+	type ActiveBrush,
+	type BrushOptions,
+	type BrushTool,
+} from './brush.ts';
 import {createSideRenderer} from './side-renderer.ts';
 import {
 	EMPTY_STACK,
@@ -149,6 +159,7 @@ import {
 import {
 	applyTransientDragToStack,
 	createTransientStore,
+	selectShowingOriginal,
 	type TransientStore,
 } from './transient.ts';
 
@@ -235,6 +246,11 @@ export type ImageChoice =
 export type AppState = {
 	// How the mask overlay is drawn. Changing it makes no commit.
 	maskOverlay: MaskOverlaySettings;
+	// The mask brush, `null` while it is off.
+	activeBrush: ActiveBrush | null;
+	brushSettings: BrushOptions;
+	// Rises when something must drop the stroke being drawn: undo, redo, a jump.
+	brushInterrupt: number;
 	bootStatus: BootStatus;
 	route: AppRoute;
 	notice: string | null;
@@ -276,6 +292,7 @@ export type AppState = {
 		theme: ThemePreference;
 		compareMode: CompareMode;
 		welcomeDismissed?: boolean;
+		brush?: BrushSettings;
 		storageUnavailable: boolean;
 		route: AppRoute;
 		notice: string | null;
@@ -407,6 +424,19 @@ export type AppState = {
 		width: number,
 		height: number,
 	): Promise<Uint8Array | undefined>;
+
+	// Turns the brush on for the selected effect's painted mask, or off with
+	// `null`. Without such a mask it stays off.
+	setBrush(instanceId: string | null): void;
+	setBrushTool(tool: BrushTool): void;
+	setBrushSettings(patch: Partial<BrushOptions>): void;
+	// One finished stroke as one history entry. `asset` resolves `null` when the
+	// stroke changed nothing; the edit waits for it, so later undos follow it.
+	commitStroke(
+		instanceId: string,
+		mode: BrushTool,
+		asset: Promise<NewMask | null>,
+	): Promise<boolean>;
 
 	flushPendingCommit(): Promise<void>;
 
@@ -704,6 +734,17 @@ function withStackVersion(stack: EffectStack): EffectStack {
 		: {...stack, schemaVersion: stackSchemaVersion(stack.instances)};
 }
 
+// Whether the brush can be on for `instanceId`: the editor shows it, selected,
+// with a painted mask.
+function brushFits(state: AppState, instanceId: string): boolean {
+	return (
+		state.route.screen === 'editor' &&
+		selectEditingSelectedId(state) === instanceId &&
+		selectEditingStack(state)?.instances.find((item) => item.id === instanceId)
+			?.mask?.kind === 'paint'
+	);
+}
+
 export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	const {repository, coordinator} = deps;
 	const registry = deps.registry ?? effectRegistry;
@@ -721,6 +762,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 	let viewStateTimer: unknown;
 	let viewStateDirty = false;
+	let brushTimer: unknown;
 	let pendingKeyboard: PendingKeyboardCommit | null = null;
 	let persistenceRequested = false;
 	let lastThumbnailKey: string | null = null;
@@ -921,6 +963,46 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 		timerEnv.clearTimeout(viewStateTimer);
 		viewStateTimer = undefined;
+	};
+
+	const clearBrushTimer = () => {
+		if (brushTimer === undefined) {
+			return;
+		}
+
+		timerEnv.clearTimeout(brushTimer);
+		brushTimer = undefined;
+	};
+
+	const flushBrushSettings = async (): Promise<void> => {
+		if (brushTimer === undefined) {
+			return;
+		}
+
+		clearBrushTimer();
+		const {brushSettings, maskOverlay} = store.getState();
+		try {
+			await repository.updateAppState({
+				brush: {
+					...brushSettings,
+					showMask: maskOverlay.visible,
+					overlayOpacity: maskOverlay.opacity,
+				},
+			});
+		} catch (error) {
+			handleQuotaError(error);
+		}
+	};
+
+	const scheduleBrushSave = () => {
+		clearBrushTimer();
+		brushTimer = timerEnv.setTimeout(() => {
+			void flushBrushSettings();
+		}, BRUSH_SAVE_DEBOUNCE_MS);
+	};
+
+	const interruptStroke = () => {
+		store.setState((state) => ({brushInterrupt: state.brushInterrupt + 1}));
 	};
 
 	const clearKeyboardTimer = () => {
@@ -1224,6 +1306,24 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			result.project.selectedInstanceIdA,
 		);
 
+		// A history step keeps the brush on, and so its effect selected, while
+		// that effect still has a painted mask.
+		const brush = store.getState().activeBrush;
+		const brushSide = brush && findInstanceSide(nextProject, brush.instanceId);
+		if (
+			brush &&
+			brushSide &&
+			sideStack(nextProject, brushSide).instances.some(
+				(item) => item.id === brush.instanceId && item.mask?.kind === 'paint',
+			)
+		) {
+			if (brushSide === 'a') {
+				nextProject.selectedInstanceIdA = brush.instanceId;
+			} else {
+				nextProject.selectedInstanceId = brush.instanceId;
+			}
+		}
+
 		const currentDebug = store.getState().debugView;
 		const nextDebugView = keepDebugView(currentDebug, nextProject);
 		const wasDragging = transientStore.getState().activeDrag !== null;
@@ -1501,6 +1601,9 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			versionErrorMessage: null,
 		},
 		maskOverlay: DEFAULT_MASK_OVERLAY,
+		activeBrush: null,
+		brushSettings: DEFAULT_BRUSH_SETTINGS,
+		brushInterrupt: 0,
 		render: createDefaultRenderStatus(),
 		renderA: createDefaultRenderStatus(),
 		cropSource: undefined,
@@ -1512,8 +1615,20 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				: null;
 			const activeProject = resolved?.project ?? null;
 
+			const brush = normalizeBrushSettings(payload.brush);
+
 			set((state) => ({
 				bootStatus: 'ready',
+				brushSettings: {
+					size: brush.size,
+					hardness: brush.hardness,
+					strength: brush.strength,
+					penPressure: brush.penPressure,
+				},
+				maskOverlay: {
+					visible: brush.showMask,
+					opacity: brush.overlayOpacity,
+				},
 				projects: sortProjectsByOpenedAt(payload.projects),
 				presets: sortPresetsByName(payload.presets),
 				theme: payload.theme,
@@ -2588,6 +2703,10 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					found.selectedId,
 					formatMaskKindCommitLabel(before, kind),
 				);
+				// Choosing "Paint" turns the brush on.
+				if (kind === 'paint') {
+					get().setBrush(instanceId);
+				}
 			});
 		},
 
@@ -2808,6 +2927,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						: DEFAULT_MASK_OVERLAY.opacity,
 				},
 			});
+			scheduleBrushSave();
 		},
 
 		toggleMaskOverlay() {
@@ -2831,9 +2951,66 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				: coordinator.renderMask(mask, width, height);
 		},
 
+		setBrush(instanceId) {
+			if (instanceId === null) {
+				set({activeBrush: null});
+				return;
+			}
+
+			if (
+				get().activeBrush?.instanceId !== instanceId &&
+				brushFits(get(), instanceId)
+			) {
+				set({activeBrush: {instanceId, tool: 'paint'}});
+			}
+		},
+
+		setBrushTool(tool) {
+			const {activeBrush} = get();
+			if (activeBrush && activeBrush.tool !== tool) {
+				set({activeBrush: {...activeBrush, tool}});
+			}
+		},
+
+		setBrushSettings(patch) {
+			const {size, hardness, strength, penPressure} = normalizeBrushSettings({
+				...get().brushSettings,
+				...patch,
+			});
+			set({brushSettings: {size, hardness, strength, penPressure}});
+			scheduleBrushSave();
+		},
+
+		async commitStroke(instanceId, mode, asset) {
+			const projectId = get().activeProject?.id;
+			return editInOrder(async () => {
+				const stored = await asset;
+				const active = get().activeProject;
+				if (!stored || !active || active.id !== projectId) {
+					return false;
+				}
+
+				const found = locateInstance(active, instanceId);
+				const mask = found?.target.mask;
+				if (!found || mask?.kind !== 'paint') {
+					return false;
+				}
+
+				await commitNextStack(
+					found.side,
+					withMask(found.stack, instanceId, {...mask, asset: stored.sha256}),
+					found.selectedId,
+					mode === 'paint' ? 'Paint mask' : 'Erase mask',
+					{newMasks: [stored]},
+				);
+				return true;
+			});
+		},
+
 		flushPendingCommit: flushPendingCommitImpl,
 
 		async undo() {
+			interruptStroke();
 			return editInOrder(async () => {
 				const active = get().activeProject;
 				return active
@@ -2843,6 +3020,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async redo() {
+			interruptStroke();
 			return editInOrder(async () => {
 				const active = get().activeProject;
 				return active
@@ -2852,6 +3030,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 
 		async jumpToHistory(projectId, seq) {
+			interruptStroke();
 			return editInOrder(async () => {
 				const active = get().activeProject;
 				if (active?.id !== projectId) {
@@ -3236,6 +3415,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			detachLifecycle = timerEnv.addLifecycleListeners(() => {
 				void commitHeldKeys();
 				void flushViewStateImpl();
+				void flushBrushSettings();
 			});
 
 			return () => {
@@ -3255,6 +3435,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 			disposed = true;
 			clearViewStateTimer();
+			clearBrushTimer();
 			clearKeyboardTimer();
 			unsubscribeSideA?.();
 			unsubscribeSideA = null;
@@ -3269,6 +3450,23 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 	}));
 
+	// Another selection, a changed or removed mask and leaving the editor turn
+	// the brush off. Compare only suspends it, so nothing is judged until it ends.
+	const syncBrush = () => {
+		const state = store.getState();
+		const {activeBrush} = state;
+		if (
+			activeBrush &&
+			state.compareHistorySeq === null &&
+			!selectShowingOriginal(transientStore.getState()) &&
+			!brushFits(state, activeBrush.instanceId)
+		) {
+			store.setState({activeBrush: null});
+		}
+	};
+
+	const unsubscribeBrush = store.subscribe(syncBrush);
+	const unsubscribeBrushCompare = transientStore.subscribe(syncBrush);
 	const unsubscribeStore = store.subscribe(syncSideA);
 	const unsubscribeDrag = transientStore.subscribe(syncSideA);
 	const unsubscribeProject = store.subscribe((state, previous) => {
@@ -3285,6 +3483,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		unsubscribeDrag();
 		unsubscribeProject();
 		unsubscribeCropMode();
+		unsubscribeBrush();
+		unsubscribeBrushCompare();
 	};
 
 	return {

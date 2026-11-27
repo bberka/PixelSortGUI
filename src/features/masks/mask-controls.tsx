@@ -32,6 +32,7 @@ import {
 	DEFAULT_MASK_OVERLAY,
 	type MaskPatch,
 } from '@/state/mask-edits.ts';
+import {BRUSH_LIMITS, DEFAULT_BRUSH_SETTINGS} from '@/state/brush.ts';
 
 const MASK_KINDS: ReadonlyArray<{
 	kind: MaskKind;
@@ -222,46 +223,199 @@ export function MaskFeatherControl({instanceId, mask}: MaskProps) {
 	);
 }
 
-export function PaintMaskActions({instanceId, mask}: MaskProps<'paint'>) {
-	const fillMask = useAppStore((state) => state.fillMask);
-	const clearMask = useAppStore((state) => state.clearMask);
+// A brush setting: no commit, so a drag and a release store the same thing.
+function BrushSlider({
+	instanceId,
+	setting,
+	label,
+	unit,
+}: {
+	readonly instanceId: string;
+	readonly setting: keyof typeof BRUSH_LIMITS;
+	readonly label: string;
+	readonly unit: '%' | ' px';
+}) {
+	const value = useAppStore((state) => state.brushSettings[setting]);
+	const setBrushSettings = useAppStore((state) => state.setBrushSettings);
+	const set = (next: number) => {
+		setBrushSettings({[setting]: next});
+	};
 
 	return (
-		<div className="flex flex-col gap-1 px-2 py-1.5" data-param-row="">
-			<div className="flex gap-2">
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					className="flex-1 pointer-coarse:min-h-11"
-					onClick={() => {
-						void fillMask(instanceId).then(() => {
-							announce('Mask filled');
-						});
+		<MaskSlider
+			{...BRUSH_LIMITS[setting]}
+			defaultValue={DEFAULT_BRUSH_SETTINGS[setting]}
+			id={controlId(instanceId, 'brush', setting)}
+			label={label}
+			unit={unit}
+			value={value}
+			onCancel={() => {}}
+			onCommit={set}
+			onDrag={set}
+			onNudge={set}
+		/>
+	);
+}
+
+function PenPressureControl({instanceId}: {readonly instanceId: string}) {
+	const penPressure = useAppStore((state) => state.brushSettings.penPressure);
+	const setBrushSettings = useAppStore((state) => state.setBrushSettings);
+	const id = controlId(instanceId, 'brush', 'pressure');
+
+	return (
+		<ParamRow
+			htmlFor={id}
+			inline={
+				<Switch
+					checked={penPressure}
+					id={id}
+					onCheckedChange={(checked) => {
+						setBrushSettings({penPressure: checked});
 					}}
-				>
-					Fill
-				</Button>
-				<Button
-					type="button"
-					variant="outline"
-					size="sm"
-					className="flex-1 pointer-coarse:min-h-11"
-					onClick={() => {
-						void clearMask(instanceId).then(() => {
-							announce('Mask cleared');
-						});
-					}}
-				>
-					Clear
-				</Button>
-			</div>
-			{mask.asset === '' ? (
-				<p className="text-xs leading-4 text-muted-foreground">
-					Nothing is painted yet.
-				</p>
-			) : null}
+				/>
+			}
+			label="Pen pressure sets size"
+			labelId={`${id}-label`}
+		/>
+	);
+}
+
+export function BrushSizeControl({instanceId}: {readonly instanceId: string}) {
+	return (
+		<BrushSlider
+			instanceId={instanceId}
+			label="Brush size"
+			setting="size"
+			unit=" px"
+		/>
+	);
+}
+
+export function BrushHardnessControl({
+	instanceId,
+}: {
+	readonly instanceId: string;
+}) {
+	return (
+		<BrushSlider
+			instanceId={instanceId}
+			label="Hardness"
+			setting="hardness"
+			unit="%"
+		/>
+	);
+}
+
+export function BrushStrengthControl({
+	instanceId,
+}: {
+	readonly instanceId: string;
+}) {
+	return (
+		<BrushSlider
+			instanceId={instanceId}
+			label="Strength"
+			setting="strength"
+			unit="%"
+		/>
+	);
+}
+
+// The phone's "Size" tab also holds the pen switch.
+export function BrushSizeTab({instanceId}: {readonly instanceId: string}) {
+	return (
+		<>
+			<BrushSizeControl instanceId={instanceId} />
+			<PenPressureControl instanceId={instanceId} />
+		</>
+	);
+}
+
+// The settings under "Edit with brush" while the brush is on.
+function BrushSettingsGroup({instanceId}: {readonly instanceId: string}) {
+	const ref = useRef<HTMLDivElement>(null);
+
+	// Turning the brush on brings its settings into view.
+	useEffect(() => {
+		ref.current?.scrollIntoView({block: 'nearest'});
+	}, []);
+
+	return (
+		<div ref={ref} data-slot="brush-settings">
+			<BrushSizeControl instanceId={instanceId} />
+			<BrushHardnessControl instanceId={instanceId} />
+			<BrushStrengthControl instanceId={instanceId} />
+			<PenPressureControl instanceId={instanceId} />
 		</div>
+	);
+}
+
+export function PaintMaskActions({
+	instanceId,
+	mask,
+	compact,
+}: MaskProps<'paint'> & {readonly compact: boolean}) {
+	const fillMask = useAppStore((state) => state.fillMask);
+	const clearMask = useAppStore((state) => state.clearMask);
+	const brushing = useAppStore(
+		(state) => state.activeBrush?.instanceId === instanceId,
+	);
+	const setBrush = useAppStore((state) => state.setBrush);
+
+	return (
+		<>
+			<div className="flex flex-col gap-1 px-2 py-1.5" data-param-row="">
+				<Button
+					type="button"
+					variant={brushing ? 'default' : 'outline'}
+					size="sm"
+					aria-pressed={brushing}
+					className="w-full pointer-coarse:min-h-11"
+					onClick={() => {
+						setBrush(brushing ? null : instanceId);
+					}}
+				>
+					<BrushIcon aria-hidden="true" />
+					Edit with brush
+				</Button>
+				<div className="flex gap-2">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="flex-1 pointer-coarse:min-h-11"
+						onClick={() => {
+							void fillMask(instanceId).then(() => {
+								announce('Mask filled');
+							});
+						}}
+					>
+						Fill
+					</Button>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						className="flex-1 pointer-coarse:min-h-11"
+						onClick={() => {
+							void clearMask(instanceId).then(() => {
+								announce('Mask cleared');
+							});
+						}}
+					>
+						Clear
+					</Button>
+				</div>
+				{mask.asset === '' && !brushing ? (
+					<p className="text-xs leading-4 text-muted-foreground">
+						Nothing is painted yet.
+					</p>
+				) : null}
+			</div>
+			{brushing && !compact ? (
+				<BrushSettingsGroup instanceId={instanceId} />
+			) : null}
+		</>
 	);
 }
 
@@ -394,7 +548,8 @@ export function MaskSetup({
 	const add = (next: MaskKind) => {
 		setFocusNext('type');
 		void setMaskKind(instanceId, next).then(() => {
-			announce('Mask added');
+			// A new painted mask turns the brush on.
+			announce(next === 'paint' ? 'Mask added. Brush on' : 'Mask added');
 		});
 	};
 
@@ -429,7 +584,11 @@ export function MaskSetup({
 								<MaskFeatherControl instanceId={instanceId} mask={mask} />
 							)}
 							{mask.kind === 'paint' ? (
-								<PaintMaskActions instanceId={instanceId} mask={mask} />
+								<PaintMaskActions
+									compact={compact}
+									instanceId={instanceId}
+									mask={mask}
+								/>
 							) : null}
 							{compact ? null : mask.kind === 'luma' ? (
 								<>

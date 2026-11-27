@@ -166,6 +166,22 @@ export type AppStateRecord = {
 	compareMode: CompareMode;
 	// Absent in records written before the first-launch introduction existed.
 	welcomeDismissed?: boolean;
+	// F29, this device only, never in files or backups. Absent means the defaults.
+	brush?: BrushSettings;
+};
+
+export type BrushSettings = {
+	// Diameter in effective-image px, integer 1..2000.
+	size: number;
+	// Integer 0..100.
+	hardness: number;
+	// Integer 1..100.
+	strength: number;
+	penPressure: boolean;
+	// The mask overlay.
+	showMask: boolean;
+	// Integer 10..100.
+	overlayOpacity: number;
 };
 
 export type SchemaInfoRecord = {

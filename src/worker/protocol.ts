@@ -3,7 +3,8 @@ import type {CodecErrorCode} from '../codec/decode.ts';
 import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
 import type {SourceTransform} from '../engine/transform.ts';
-import type {InstanceMask} from '../engine/mask/types.ts';
+import type {BrushSample, BrushStroke} from '../engine/mask/brush-types.ts';
+import type {InstanceMask, MaskGeometry} from '../engine/mask/types.ts';
 import type {EffectStack} from '../engine/types.ts';
 import type {BackupErrorCode} from '../storage/backup-error.ts';
 import type {
@@ -200,6 +201,52 @@ export type ExportResponse =
 			tiles: FullTile[];
 	  }
 	| {type: 'error'; jobId: number; code: EngineErrorCode; message: string};
+
+// The mask worker holds the painted mask the brush edits (engine.md section
+// 16.6). It handles requests in the order they arrive.
+export type MaskWorkerRequest =
+	| {
+			// Answered by `maskOpened` and a patch of the whole overlay, or `error`.
+			type: 'maskOpen';
+			requestId: number;
+			// `null` is an empty grid.
+			asset: MaskFile | null;
+			invert: boolean;
+			geometry: MaskGeometry;
+			// The size of the overlay the patches are cut from.
+			overlay: ProxySize;
+	  }
+	| {type: 'strokeStart'; stroke: BrushStroke; sample: BrushSample}
+	| {type: 'strokeMove'; samples: readonly BrushSample[]}
+	// Answered by `maskEdited`, or `error`.
+	| {type: 'strokeEnd'; requestId: number}
+	| {type: 'strokeCancel'};
+
+export type MaskWorkerResponse =
+	// A changed rectangle of the overlay: one byte per pixel, row-major, with
+	// invert applied and without feather.
+	| {
+			type: 'overlayPatch';
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+			data: Uint8Array;
+	  }
+	| {type: 'maskOpened'; requestId: number}
+	// `changed` is false for a stroke that altered no byte; then there is no asset.
+	| {
+			type: 'maskEdited';
+			requestId: number;
+			changed: boolean;
+			asset?: MaskFile;
+	  }
+	| {
+			type: 'error';
+			requestId?: number;
+			code: EngineErrorCode;
+			message: string;
+	  };
 
 // The archive worker runs one job and is then terminated, which is also how a
 // job is cancelled (persistence.md section 8.3.4).

@@ -9,6 +9,7 @@ Updated with export field validation and focus after screen changes by Claude So
 Updated with masks and the brush (F29, section 7.4) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
 Updated with the phone mask overlay tab (section 7.4) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
+Updated with the mask brush behaviour (`T10.7`) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift design system
 
@@ -450,15 +451,15 @@ Guide screen:
 - A missing mask shows `"Missing mask"` in destructive text under the type control.
 - The effect stack row and the phone chip of a masked instance show a `14 px` `VenetianMask` icon with the accessible text `"Has mask"`.
 
-**Brush toolbar** (the section 7.1 tool strip, `src/features/canvas/tools/`), shown only while the brush is on: `"Paint"` and `"Erase"` as a two-item `ToggleGroup`, a separator, `"Show mask"` (`Eye`, `aria-pressed`), `"Done"` (`Check`). Icon buttons with tooltips, `36 px` on a fine pointer and `44 × 44 px` on a coarse pointer, on `--card` with a `1 px` `--border`. It is a `role="toolbar"` named `"Mask brush"` with arrow-key movement between its buttons.
+**Brush toolbar** (the section 7.1 tool strip, `src/features/canvas/tools/`), shown only while the brush is on: `"Paint"` and `"Erase"` as a two-item `ToggleGroup`, a separator, `"Show mask"` (`Eye`, `aria-pressed`), `"Done"` (`Check`). Icon buttons with tooltips, `36 px` on a fine pointer and `44 × 44 px` on a coarse pointer, on `--card` with a `1 px` `--border`. It is a `role="toolbar"` named `"Mask brush"` with arrow-key movement between its buttons. Crop mode hides it.
 
-**Overlay and cursor.** The overlay sits between the photo and the pointer layer, under the same zoom and pan transform. The brush cursor is a circle of the brush's on-screen size (an ellipse under an unlocked resize), a `1 px` white ring with `1 px` black casing, an inner dashed ring at the hardness radius, and a `+` or `-` at the centre for Paint or Erase. It follows hover, the active stroke and keyboard movement, and hides for touch hover. No animation. The canvas has `touch-action: none` and an accessible description of the keys. Turning the brush on or off, switching tool, size and hardness changes, and `"Stroke added"` are announced politely.
+**Overlay and cursor.** The overlay sits between the photo and the pointer layer, under the same zoom and pan transform. The brush cursor is a circle of the brush's on-screen size (an ellipse only where the half-mask-pixel minimum dab radius widens one axis), a `1 px` white ring with `1 px` black casing, an inner dashed ring at the hardness radius, and a `+` or `-` at the centre for Paint or Erase. It follows hover, the active stroke and keyboard movement, and hides for touch hover. No animation. The canvas has `touch-action: none` and an accessible description of the keys. Turning the brush on or off, switching tool, size and hardness changes, and `"Stroke added"` are announced politely.
 
 **Layouts:**
 
 - **Desktop (`1440 × 900`):** the toolbar is a vertical strip at the top left of the canvas, `12 px` in and below the compare and split pills. The Mask group scrolls with the parameter panel; turning the brush on scrolls the brush settings into view.
 - **Tablet (`820 × 1180`):** the same vertical strip in the canvas; the Mask group is in the docked panel's right column. All targets are `44 px` on a coarse pointer.
-- **Phone (`390 × 844`):** nothing is laid over the canvas. While the brush is on, the toolbar replaces the effect strip as a `52 px` row of four labelled `44 px` buttons. In the one-control panel the tabs `"Mask"` (type, Show mask, Invert, Remove), then for a mask `"Feather"` and, by type, `"Overlay"` (while Show mask is on), then `"Size"`, `"Hardness"`, `"Strength"` (Paint), `"Range"`, `"Softness"` (Brightness) or `"Mask image"`, `"Fit"` (Image) follow `Blend`. Each fits the `144 px` area. The `"Mask"` tab holds `"Edit with brush"`, `"Fill"` and `"Clear"`; its content scrolls inside the area. Turning the brush on selects `"Size"`.
+- **Phone (`390 × 844`):** nothing is laid over the canvas. While the brush is on, the toolbar replaces the effect strip as a `52 px` row of four labelled `44 px` buttons. In the one-control panel the tabs `"Mask"` (type, Show mask, Invert, Remove), then for a mask `"Feather"` and, by type, `"Overlay"` (while Show mask is on), then `"Size"`, `"Hardness"`, `"Strength"` (Paint), `"Range"`, `"Softness"` (Brightness) or `"Mask image"`, `"Fit"` (Image) follow `Blend`. Each fits the `144 px` area. The `"Mask"` tab holds `"Edit with brush"`, `"Fill"` and `"Clear"`; its content scrolls inside the area. Turning the brush on selects `"Size"`. `"Pen pressure sets size"` sits under the size slider in the `"Size"` tab.
 - **Phone landscape:** the toolbar row takes the effect strip's place in the right drawer.
 
 ### 7.5 Paste image from clipboard (F30)

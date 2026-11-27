@@ -2,6 +2,7 @@ import {createRenderCoordinator} from '../render/coordinator.ts';
 import {restoreStartup, type RestoreResult} from '../storage/restore.ts';
 
 export * from './app-store.ts';
+export * from './brush.ts';
 export * from './effect-utils.ts';
 export * from './geometry.ts';
 export * from './pwa.ts';

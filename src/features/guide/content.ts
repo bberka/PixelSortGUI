@@ -72,6 +72,11 @@ export const LANDING = {
 
 export const SHORTCUTS: readonly Shortcut[] = [
 	{keys: ['?'], where: 'Anywhere', action: 'Open this guide'},
+	{
+		keys: ['Ctrl+V', '⌘V'],
+		where: 'Library and editor',
+		action: 'Import the picture on the clipboard as a new project',
+	},
 	{keys: ['Ctrl+Z', '⌘Z'], where: 'Editor', action: 'Undo'},
 	{keys: ['Ctrl+Shift+Z', '⇧⌘Z', 'Ctrl+Y'], where: 'Editor', action: 'Redo'},
 	{
@@ -207,7 +212,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			{
 				kind: 'steps',
 				items: [
-					'Import: choose “Import images” or drag files onto the window. Each photo becomes a project in the Library. With no projects yet, “Try a sample” makes one from a built-in picture.',
+					'Import: choose “Import images” or drag files onto the window. Each photo becomes a project in the Library. To use a picture you copied, choose “Paste image” in the menu at the top right of the Library, or on the start screen. With no projects yet, “Try a sample” makes one from a built-in picture.',
 					'Add effects: choose “Add effect” in the editor, or apply a preset from the toolbar.',
 					'Tweak: select an effect and move its controls. The preview updates as you drag and sharpens when you stop. A phone held upright shows one control at a time: pick it in the row above, or choose “Show all controls”.',
 					'Compare: use Compare to see the original, or split view to put two looks beside each other.',

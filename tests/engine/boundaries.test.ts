@@ -19,6 +19,11 @@ describe('src/engine stays self-contained (engine.md section 1)', () => {
 			);
 			for (const specifier of specifiers) {
 				const resolved = path.resolve(engineDir, path.dirname(name), specifier);
+				// The mask asset compresses with `fflate` (engine.md section 16.6).
+				if (name === path.join('mask', 'asset.ts') && specifier === 'fflate') {
+					continue;
+				}
+
 				expect(
 					specifier.startsWith('.') &&
 						resolved.startsWith(engineDir + path.sep),
@@ -30,7 +35,7 @@ describe('src/engine stays self-contained (engine.md section 1)', () => {
 
 	it('uses no unseeded randomness, wall clock or DOM globals', () => {
 		const banned =
-			/Math\.random|Date\.now|new Date|\bdocument\.|\bwindow\.|\bcrypto\.|localStorage|indexedDB/;
+			/Math\.random|Date\.now|new Date|\bdocument\.|\bwindow\.|\bcrypto\.(?!subtle\.digest\b)|localStorage|indexedDB/;
 		for (const {name, text} of files) {
 			expect(banned.test(text), `${name} uses a banned global`).toBe(false);
 		}

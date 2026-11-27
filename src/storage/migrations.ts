@@ -1,5 +1,6 @@
 import {resolveInstance} from '../engine/params.ts';
 import {
+	MASKED_STACK_SCHEMA_VERSION,
 	STACK_SCHEMA_VERSION,
 	type EffectInstance,
 	type EffectRegistry,
@@ -27,11 +28,12 @@ export function migrateStackEnvelope(
 	> = stackEnvelopeMigrations,
 ): EnvelopeMigrationResult {
 	const rawVersion = (stack as {schemaVersion: number}).schemaVersion;
-	if (rawVersion > STACK_SCHEMA_VERSION) {
+	if (rawVersion > MASKED_STACK_SCHEMA_VERSION) {
 		return {stack, status: 'newer-version', migrated: false};
 	}
 
-	if (rawVersion === STACK_SCHEMA_VERSION) {
+	// A masked stack differs only in the optional `mask` of its instances.
+	if (rawVersion >= STACK_SCHEMA_VERSION) {
 		return {stack, status: 'ok', migrated: false};
 	}
 

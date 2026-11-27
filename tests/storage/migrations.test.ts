@@ -200,6 +200,18 @@ describe('EffectStack and EffectInstance migration on load', () => {
 		expect(resolved.stack.instances[2]).toBe(newerVersionInstance);
 	});
 
+	it('reads a masked stack (schemaVersion 2) like any current one', () => {
+		const registry = createRegistry([makeTestEffectV2()]);
+		const masked: EffectStack = {schemaVersion: 2, instances: []};
+
+		expect(resolveStoredStack(masked, registry)).toEqual({
+			stack: masked,
+			envelopeStatus: 'ok',
+			needsWriteBack: false,
+			unsupportedInstances: [],
+		});
+	});
+
 	it('preserves stacks with a newer schemaVersion untouched', () => {
 		const registry = createRegistry([makeTestEffectV2()]);
 		const newerStack = {

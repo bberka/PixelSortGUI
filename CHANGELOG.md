@@ -6,6 +6,8 @@
 - Backup and restore: export your Library, presets and settings to one ZIP file and import it on this or another device, merging or replacing. Find it in Settings under Storage, in the Library's top right menu and in the phone editor's menu, or drop the file on the window.
 - Fixed: on touch screens, buttons, switches, menu items and text fields are large enough to tap, and typing in a field no longer zooms the page.
 - Fixed: the preset, rename, delete and Transform controls no longer lose keyboard focus, and long names no longer push buttons or lists off the screen.
+- Fixed: clearing a number in the export dialog no longer turns it into a 1 px (or other) value. The dialog says which range it accepts, holds the download until then, and restores the last value when you leave the field.
+- Fixed: the keyboard focus stays on a sensible control after leaving the Guide or the editor and after dismissing an import error, and the whole "Include undo history" row toggles its checkbox.
 - Project files: save a project, with or without its undo history, as one `.glproj` file from the Library or the editor, and open it again with the import picker or by dropping it on the window. Nothing is uploaded.
 - New effect: Mirror fold, which mirrors or folds the image left to right, top to bottom, four ways or as a kaleidoscope.
 - New effect: Bayer dither.

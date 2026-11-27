@@ -329,7 +329,7 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					},
 					{
 						term: 'Interval transform',
-						text: 'Rearranges each ordered interval: reverse flips it end to end, mirror peaks in the centre, splice swaps the two halves, and fold puts the smallest values in the centre.',
+						text: 'Rearranges each ordered interval: reverse flips it end to end, mirror places the first ordered values at the edges and the last in the centre, splice swaps the two halves, and fold puts the first ordered values in the centre.',
 					},
 					{
 						term: 'Mask',

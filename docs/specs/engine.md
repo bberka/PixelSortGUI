@@ -392,7 +392,7 @@ For an interval of length `n >= 2` and output position `i` in `0..n-1`, `transfo
 | `splice` | let `shift = floorDiv(n, 2)`; `(i + shift) % n` | `[2, 3, 4, 0, 1]` |
 | `fold` | let `left = floorDiv(n, 2)`; `2 * (left - 1 - i) + 1` if `i < left`, else `2 * (i - left)` | `[3, 1, 0, 2, 4]` |
 
-Every mode is a bijection on `{0, ..., n - 1}` for all `n >= 2`. `mirror` places the smallest ordered values at both edges and peaks in the centre; `fold` places the smallest ordered value in the centre and climbs outward toward both edges; `splice` rotates the ordered interval by half its length so the high-to-low seam sits in the centre.
+Every mode is a bijection on `{0, ..., n - 1}` for all `n >= 2`. `mirror` places the first ordered values at both edges and the last in the centre; `fold` places the first ordered value in the centre and moves outward toward both edges; `splice` rotates the ordered interval by half its length so the end-to-start seam sits in the centre.
 
 **Fill.**
 
@@ -695,8 +695,8 @@ Run with `vp test run` in Node. Required per module:
 With `fast-check`, at least 200 runs each, on random images up to 64 × 64 and random valid parameters:
 
 1. Lines: every pixel appears in exactly one line; consecutive pixels are 8-connected; line length ≤ `max(W, H)`.
-2. `pixelSort` with `fill = sort`: each line's multiset of RGBA values is unchanged; unselected pixels are unchanged; within every non-skipped interval with `order` ascending or descending, comparison keys are monotonic in the stated direction.
-3. `pixelSort` with angle `θ` and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct and `maxLength` is 0, `skipChance` is 0, and `discretize` is 0.
+2. `pixelSort` with `fill = sort`: for `channelMode = rgba`, each line's multiset of RGBA values is unchanged; for `channelMode` in `rgb`, `r`, `g`, `b`, each active channel's multiset per line is unchanged, unselected channels and alpha are bit-identical to input, and `rgb` equals the channel-wise composition of `r`, `g`, and `b` with input alpha. Unselected pixels are unchanged; within every non-skipped interval with `intervalTransform = none` and `order` ascending or descending, comparison keys are monotonic in the stated direction.
+3. `pixelSort` with `intervalTransform = none`, angle `θ`, and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct and `maxLength` is 0, `skipChance` is 0, and `discretize` is 0.
 4. Every effect: output size equals input size; input buffer is unchanged after `render`; rendering twice gives identical bytes; `mix = 0` returns the input exactly.
 5. `channelShift` with all offsets 0 is the identity.
 6. Stack: `JSON.parse(JSON.stringify(stack))` renders identically; `validateParams` is idempotent; migrations of every version produce parameters that pass validation.

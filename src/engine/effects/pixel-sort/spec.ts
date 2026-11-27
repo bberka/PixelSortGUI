@@ -211,7 +211,7 @@ export const pixelSortParamSpecs: ParamSpecs<PixelSortParams> = {
 		kind: 'enum',
 		label: 'Interval transform',
 		group: 'Output',
-		help: 'Rearranges each ordered interval: reverse flips it end to end, mirror peaks in the centre, splice swaps the two halves, and fold puts the smallest values in the centre.',
+		help: 'Rearranges each ordered interval: reverse flips it end to end, mirror places the first ordered values at the edges and the last in the centre, splice swaps the two halves, and fold puts the first ordered values in the centre.',
 		options: [
 			{value: 'none', label: 'None'},
 			{value: 'reverse', label: 'Reverse'},

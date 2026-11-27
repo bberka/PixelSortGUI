@@ -5,9 +5,10 @@ import {
 	pixelSortEffect,
 	type PixelSortParams,
 } from '../../src/engine/effects/pixel-sort/index.ts';
+import {transformIndex} from '../../src/engine/effects/pixel-sort/fill.ts';
 import {fillKeys} from '../../src/engine/effects/pixel-sort/select.ts';
 import {computeKey16, SORT_KEYS} from '../../src/engine/keys.ts';
-import {validateParams} from '../../src/engine/params.ts';
+import {resolveInstance, validateParams} from '../../src/engine/params.ts';
 import {renderStack} from '../../src/engine/pipeline.ts';
 import {hash32, intIn, unit} from '../../src/engine/random.ts';
 import {
@@ -49,7 +50,7 @@ function redTags(img: RgbaImage): number[][] {
 describe('pixelSort definition (engine.md section 5.1)', () => {
 	it('declares the type, version, label, description, category and debug view', () => {
 		expect(pixelSortEffect.type).toBe('pixelSort');
-		expect(pixelSortEffect.version).toBe(1);
+		expect(pixelSortEffect.version).toBe(2);
 		expect(pixelSortEffect.label).toBe('Pixel sort');
 		expect(pixelSortEffect.description).toBe(
 			'Sort runs of pixels along a direction by brightness, hue or a channel.',
@@ -65,7 +66,7 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 		);
 	});
 
-	it('declares the 15 parameters in table order with their groups', () => {
+	it('declares the 17 parameters in table order with their groups', () => {
 		const groups = Object.entries(pixelSortEffect.params).map(
 			([name, spec]) => [name, spec.kind, spec.group],
 		);
@@ -80,10 +81,12 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 			['maxLength', 'integer', 'Length'],
 			['lengthJitter', 'number', 'Length'],
 			['skipChance', 'number', 'Length'],
+			['channelMode', 'enum', 'Order'],
 			['sortKey', 'enum', 'Order'],
 			['order', 'enum', 'Order'],
 			['discretize', 'integer', 'Order'],
 			['fill', 'enum', 'Output'],
+			['intervalTransform', 'enum', 'Output'],
 			['seed', 'seed', 'Seed'],
 		]);
 	});
@@ -159,6 +162,13 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 			['edges', 'Edges'],
 			['whole', 'Whole line'],
 		]);
+		expect(optionsOf(params.channelMode)).toEqual([
+			['rgba', 'All (RGBA)'],
+			['rgb', 'RGB independent'],
+			['r', 'Red only'],
+			['g', 'Green only'],
+			['b', 'Blue only'],
+		]);
 		expect(optionsOf(params.selectKey)).toEqual(keys);
 		expect(optionsOf(params.sortKey)).toEqual(keys);
 		expect(optionsOf(params.order)).toEqual([
@@ -172,12 +182,21 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 			['average', 'Average'],
 			['gradient', 'Gradient'],
 		]);
+		expect(optionsOf(params.intervalTransform)).toEqual([
+			['none', 'None'],
+			['reverse', 'Reverse'],
+			['mirror', 'Mirror'],
+			['splice', 'Splice'],
+			['fold', 'Fold'],
+		]);
 		expect(defaults).toMatchObject({
 			intervalMode: 'threshold',
 			selectKey: 'luma',
+			channelMode: 'rgba',
 			sortKey: 'luma',
 			order: 'ascending',
 			fill: 'sort',
+			intervalTransform: 'none',
 			seed: 0,
 		});
 	});
@@ -195,7 +214,9 @@ describe('pixelSort definition (engine.md section 5.1)', () => {
 			edgeBlur: {param: 'intervalMode', equals: ['edges']},
 			invert: {param: 'intervalMode', notEquals: ['whole']},
 			lengthJitter: {param: 'maxLength', notEquals: [0]},
+			sortKey: {param: 'channelMode', equals: ['rgba']},
 			discretize: {param: 'fill', notEquals: ['average']},
+			intervalTransform: {param: 'fill', notEquals: ['average']},
 		});
 	});
 
@@ -1262,5 +1283,271 @@ describe('pixelSort cancellation and progress', () => {
 		);
 		expect(overlapped).toBe(false);
 		expect([...output.data]).toEqual([...(await run(input)).data]);
+	});
+});
+
+describe('pixelSort v2 per-channel sorting (engine.md section 5.5)', () => {
+	it('sorts R, G and B independently in rgb mode while keeping alpha intact', async () => {
+		const input = rgba(4, 1, [
+			[200, 10, 150, 255],
+			[50, 220, 20, 180],
+			[120, 80, 240, 90],
+			[10, 140, 60, 200],
+		]);
+		const output = await run(input, {...whole, channelMode: 'rgb'});
+		expect(pixelsOf(output)).toEqual([
+			[10, 10, 20, 255],
+			[50, 80, 60, 180],
+			[120, 140, 150, 90],
+			[200, 220, 240, 200],
+		]);
+	});
+
+	it('sorts only the selected single channel in r, g and b modes', async () => {
+		const input = rgba(3, 1, [
+			[200, 90, 40, 255],
+			[50, 240, 180, 128],
+			[120, 10, 100, 64],
+		]);
+		expect(pixelsOf(await run(input, {...whole, channelMode: 'r'}))).toEqual([
+			[50, 90, 40, 255],
+			[120, 240, 180, 128],
+			[200, 10, 100, 64],
+		]);
+		expect(pixelsOf(await run(input, {...whole, channelMode: 'g'}))).toEqual([
+			[200, 10, 40, 255],
+			[50, 90, 180, 128],
+			[120, 240, 100, 64],
+		]);
+		expect(pixelsOf(await run(input, {...whole, channelMode: 'b'}))).toEqual([
+			[200, 90, 40, 255],
+			[50, 240, 100, 128],
+			[120, 10, 180, 64],
+		]);
+	});
+
+	it('respects discretize stability within each independent channel', async () => {
+		// Values 11, 8, 10, 9 all fall in bucket floor(v / 4) = 2 and keep original order.
+		const input = rgba(4, 1, [
+			[11, 200, 0, 255],
+			[8, 100, 0, 255],
+			[10, 50, 0, 255],
+			[9, 10, 0, 255],
+		]);
+		const output = await run(input, {
+			...whole,
+			channelMode: 'rgb',
+			discretize: 4,
+		});
+		expect(pixelsOf(output)).toEqual([
+			[11, 10, 0, 255],
+			[8, 50, 0, 255],
+			[10, 100, 0, 255],
+			[9, 200, 0, 255],
+		]);
+	});
+
+	it('applies average and gradient fills per channel without touching other channels or alpha', async () => {
+		const input = rgba(3, 1, [
+			[10, 90, 200, 255],
+			[40, 30, 100, 150],
+			[70, 60, 50, 50],
+		]);
+		// Average of R = (10+40+70)/3 = 40; G, B, A untouched.
+		expect(
+			pixelsOf(await run(input, {...whole, channelMode: 'r', fill: 'average'})),
+		).toEqual([
+			[40, 90, 200, 255],
+			[40, 30, 100, 150],
+			[40, 60, 50, 50],
+		]);
+		// Gradient of G descending: 90 -> 60 -> 30; R, B, A untouched.
+		expect(
+			pixelsOf(
+				await run(input, {
+					...whole,
+					channelMode: 'g',
+					order: 'descending',
+					fill: 'gradient',
+				}),
+			),
+		).toEqual([
+			[10, 90, 200, 255],
+			[40, 60, 100, 150],
+			[70, 30, 50, 50],
+		]);
+	});
+
+	it('uses independent seeded random directions and shuffles per channel', async () => {
+		const input = makeImage(24, 6, 42, 'noise', false);
+		const randomRgb = await run(input, {
+			...whole,
+			channelMode: 'rgb',
+			order: 'random',
+			seed: 7,
+		});
+		const randomR = await run(input, {
+			...whole,
+			channelMode: 'r',
+			order: 'random',
+			seed: 7,
+		});
+		const shuffleRgb = await run(input, {
+			...whole,
+			channelMode: 'rgb',
+			order: 'shuffle',
+			seed: 7,
+		});
+		const shuffleB = await run(input, {
+			...whole,
+			channelMode: 'b',
+			order: 'shuffle',
+			seed: 7,
+		});
+		// R channel of rgb matches r, B channel of rgb matches b.
+		for (let i = 0; i < input.data.length; i += 4) {
+			expect(randomRgb.data[i]).toBe(randomR.data[i]);
+			expect(shuffleRgb.data[i + 2]).toBe(shuffleB.data[i + 2]);
+		}
+	});
+});
+
+describe('pixelSort v2 interval transforms (engine.md section 5.5)', () => {
+	it('produces the exact bijective index permutations on odd and even lengths', () => {
+		const mapAll = (
+			mode: PixelSortParams['intervalTransform'],
+			length: number,
+		) => Array.from({length}, (_, i) => transformIndex(mode, i, length));
+
+		expect(mapAll('none', 5)).toEqual([0, 1, 2, 3, 4]);
+		expect(mapAll('reverse', 5)).toEqual([4, 3, 2, 1, 0]);
+		expect(mapAll('mirror', 5)).toEqual([0, 2, 4, 3, 1]);
+		expect(mapAll('splice', 5)).toEqual([2, 3, 4, 0, 1]);
+		expect(mapAll('fold', 5)).toEqual([3, 1, 0, 2, 4]);
+
+		expect(mapAll('none', 6)).toEqual([0, 1, 2, 3, 4, 5]);
+		expect(mapAll('reverse', 6)).toEqual([5, 4, 3, 2, 1, 0]);
+		expect(mapAll('mirror', 6)).toEqual([0, 2, 4, 5, 3, 1]);
+		expect(mapAll('splice', 6)).toEqual([3, 4, 5, 0, 1, 2]);
+		expect(mapAll('fold', 6)).toEqual([5, 3, 1, 0, 2, 4]);
+
+		// Every mode is a bijection for lengths 2..32.
+		for (const mode of [
+			'none',
+			'reverse',
+			'mirror',
+			'splice',
+			'fold',
+		] as const) {
+			for (let n = 2; n <= 32; n++) {
+				const mapped = mapAll(mode, n).toSorted((a, b) => a - b);
+				expect(mapped, `${mode} n=${n}`).toEqual(
+					Array.from({length: n}, (_, i) => i),
+				);
+			}
+		}
+	});
+
+	it('applies each interval transform to sorted intervals', async () => {
+		const input = greys(5, 1, [40, 10, 50, 20, 30]);
+		expect(
+			greyValues(await run(input, {...whole, intervalTransform: 'none'})),
+		).toEqual([10, 20, 30, 40, 50]);
+		expect(
+			greyValues(await run(input, {...whole, intervalTransform: 'reverse'})),
+		).toEqual([50, 40, 30, 20, 10]);
+		expect(
+			greyValues(await run(input, {...whole, intervalTransform: 'mirror'})),
+		).toEqual([10, 30, 50, 40, 20]);
+		expect(
+			greyValues(await run(input, {...whole, intervalTransform: 'splice'})),
+		).toEqual([30, 40, 50, 10, 20]);
+		expect(
+			greyValues(await run(input, {...whole, intervalTransform: 'fold'})),
+		).toEqual([40, 20, 10, 30, 50]);
+	});
+
+	it('applies interval transforms to gradient fills', async () => {
+		// Linear ramp [0, 25, 50, 75, 100] -> mirror gives [0, 50, 100, 75, 25].
+		const input = greys(5, 1, [100, 33, 0, 77, 11]);
+		expect(
+			greyValues(
+				await run(input, {
+					...whole,
+					fill: 'gradient',
+					intervalTransform: 'mirror',
+				}),
+			),
+		).toEqual([0, 50, 100, 75, 25]);
+		expect(
+			greyValues(
+				await run(input, {
+					...whole,
+					fill: 'gradient',
+					intervalTransform: 'fold',
+				}),
+			),
+		).toEqual([75, 25, 0, 50, 100]);
+	});
+});
+
+describe('pixelSort v1 to v2 migration and backward compatibility (AC-F6.9)', () => {
+	it('migrates v1 instances without params-fixed warning and renders byte-identically to v2 defaults', async () => {
+		const v1Params: Record<string, ParamValue> = {
+			angle: 45,
+			intervalMode: 'threshold',
+			selectKey: 'luma',
+			threshold: [0.25, 0.8],
+			edgeThreshold: 0.2,
+			edgeBlur: 1,
+			invert: false,
+			maxLength: 16,
+			lengthJitter: 0.25,
+			skipChance: 0.1,
+			sortKey: 'hue',
+			order: 'random',
+			discretize: 2,
+			fill: 'sort',
+			seed: 99,
+		};
+		const v1Instance = instance('pixelSort', {version: 1, params: v1Params});
+		const resolved = resolveInstance(v1Instance, effectRegistry);
+		expect(resolved.status).toBe('ok');
+		if (resolved.status !== 'ok') {
+			return;
+		}
+
+		expect(resolved.migrated).toBe(true);
+		expect(resolved.fixed).toBe(false);
+		expect(resolved.params).toEqual({
+			...v1Params,
+			channelMode: 'rgba',
+			intervalTransform: 'none',
+		});
+
+		const v2Instance = instance('pixelSort', {
+			version: 2,
+			params: {
+				...v1Params,
+				channelMode: 'rgba',
+				intervalTransform: 'none',
+			},
+		});
+		const input = makeImage(32, 24, 17, 'noise', true);
+		const r1 = await renderStack(
+			input,
+			stack(v1Instance),
+			effectRegistry,
+			options(input),
+		);
+		const r2 = await renderStack(
+			input,
+			stack(v2Instance),
+			effectRegistry,
+			options(input),
+		);
+		expect(r1.warnings).toEqual([]);
+		expect(r2.warnings).toEqual([]);
+		expect([...r1.image.data]).toEqual([...r2.image.data]);
 	});
 });

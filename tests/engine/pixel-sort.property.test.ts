@@ -62,6 +62,16 @@ function sortedWords(img: RgbaImage, offsets: readonly number[]): number[] {
 		.toSorted((a, b) => a - b);
 }
 
+function sortedChannel(
+	img: RgbaImage,
+	offsets: readonly number[],
+	channel: number,
+): number[] {
+	return offsets
+		.map((offset) => img.data[4 * offset + channel])
+		.toSorted((a, b) => a - b);
+}
+
 const caseArb = fc.record({
 	input: imageArb,
 	params: paramsArb,
@@ -81,7 +91,7 @@ describe('pixelSort properties (engine.md section 14.3)', () => {
 		);
 	});
 
-	it('with fill sort keeps the multiset of pixels in every interval, line and the whole image', async () => {
+	it('with fill sort keeps the multiset of pixels in rgba and per-channel multisets in every channelMode', async () => {
 		await fc.assert(
 			fc.asyncProperty(caseArb, async ({input, params, factor}) => {
 				const sortParams = {...params, fill: 'sort' as const};
@@ -92,19 +102,82 @@ describe('pixelSort properties (engine.md section 14.3)', () => {
 					contextFor(input, {sourceWidth}),
 				);
 				const output = await render(input, sortParams, sourceWidth);
-				for (const {offsets} of intervals) {
-					expect(sortedWords(output, offsets)).toEqual(
-						sortedWords(input, offsets),
+				const all = lines.flat();
+				expect(all).toHaveLength(input.width * input.height);
+
+				if (sortParams.channelMode === 'rgba') {
+					for (const {offsets} of intervals) {
+						expect(sortedWords(output, offsets)).toEqual(
+							sortedWords(input, offsets),
+						);
+					}
+
+					for (const line of lines) {
+						expect(sortedWords(output, line)).toEqual(sortedWords(input, line));
+					}
+
+					expect(sortedWords(output, all)).toEqual(sortedWords(input, all));
+					return;
+				}
+
+				for (let channel = 0; channel < 4; channel++) {
+					for (const {offsets} of intervals) {
+						expect(sortedChannel(output, offsets, channel)).toEqual(
+							sortedChannel(input, offsets, channel),
+						);
+					}
+
+					for (const line of lines) {
+						expect(sortedChannel(output, line, channel)).toEqual(
+							sortedChannel(input, line, channel),
+						);
+					}
+
+					expect(sortedChannel(output, all, channel)).toEqual(
+						sortedChannel(input, all, channel),
 					);
 				}
 
-				for (const line of lines) {
-					expect(sortedWords(output, line)).toEqual(sortedWords(input, line));
+				// Unselected channels and alpha stay bit-identical at every pixel.
+				const active = new Set(
+					sortParams.channelMode === 'rgb'
+						? [0, 1, 2]
+						: [
+								sortParams.channelMode === 'r'
+									? 0
+									: sortParams.channelMode === 'g'
+										? 1
+										: 2,
+							],
+				);
+				for (let i = 0; i < input.width * input.height; i++) {
+					for (let c = 0; c < 4; c++) {
+						if (!active.has(c)) {
+							expect(output.data[4 * i + c]).toBe(input.data[4 * i + c]);
+						}
+					}
 				}
+			}),
+			RUNS,
+		);
+	});
 
-				const all = lines.flat();
-				expect(all).toHaveLength(input.width * input.height);
-				expect(sortedWords(output, all)).toEqual(sortedWords(input, all));
+	it('rgb channelMode equals the channel-wise composition of r, g and b with input alpha', async () => {
+		await fc.assert(
+			fc.asyncProperty(caseArb, async ({input, params, factor}) => {
+				const sourceWidth = sourceWidthFor(input, factor);
+				const [rgb, r, g, b] = await Promise.all([
+					render(input, {...params, channelMode: 'rgb'}, sourceWidth),
+					render(input, {...params, channelMode: 'r'}, sourceWidth),
+					render(input, {...params, channelMode: 'g'}, sourceWidth),
+					render(input, {...params, channelMode: 'b'}, sourceWidth),
+				]);
+				for (let i = 0; i < input.data.length; i += 4) {
+					expect(rgb.data[i]).toBe(r.data[i]);
+					expect(rgb.data[i + 1]).toBe(g.data[i + 1]);
+					expect(rgb.data[i + 2]).toBe(b.data[i + 2]);
+					expect(rgb.data[i + 3]).toBe(input.data[i + 3]);
+				}
 			}),
 			RUNS,
 		);
@@ -143,13 +216,19 @@ describe('pixelSort properties (engine.md section 14.3)', () => {
 		);
 	});
 
-	it('orders comparison keys monotonically in every non-skipped interval', async () => {
+	it('orders comparison keys monotonically in every non-skipped interval (rgba, no transform)', async () => {
 		await fc.assert(
 			fc.asyncProperty(
 				caseArb,
 				fc.constantFrom('ascending', 'descending', 'random'),
 				async ({input, params, factor}, order) => {
-					const sortParams = {...params, fill: 'sort' as const, order};
+					const sortParams = {
+						...params,
+						channelMode: 'rgba' as const,
+						intervalTransform: 'none' as const,
+						fill: 'sort' as const,
+						order,
+					};
 					const sourceWidth = sourceWidthFor(input, factor);
 					const {intervals} = model(
 						input,
@@ -193,9 +272,12 @@ describe('pixelSort properties (engine.md section 14.3)', () => {
 				}),
 				async ({width, height, seed, keyName, angle, params}) => {
 					const input = distinctKeyImage(width, height, seed, keyName);
-					// Interval splitting, skipping and discretize ties depend on which end a run starts from.
+					// Interval splitting, skipping, discretize ties, per-channel sorting and
+					// asymmetric transforms depend on which end a run starts from.
 					const base = {
 						...params,
+						channelMode: 'rgba' as const,
+						intervalTransform: 'none' as const,
 						sortKey: keyName,
 						maxLength: 0,
 						skipChance: 0,
@@ -330,10 +412,14 @@ describe('pixelSort properties (engine.md section 14.3)', () => {
 		);
 	});
 
-	it('with fill sort every output colour exists in the input (no blurred pixels)', async () => {
+	it('with fill sort and rgba channelMode every output colour exists in the input (no blurred pixels)', async () => {
 		await fc.assert(
 			fc.asyncProperty(caseArb, async ({input, params, factor}) => {
-				const sortParams = {...params, fill: 'sort' as const};
+				const sortParams = {
+					...params,
+					channelMode: 'rgba' as const,
+					fill: 'sort' as const,
+				};
 				const output = await render(
 					input,
 					sortParams,

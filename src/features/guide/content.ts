@@ -320,8 +320,16 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 						text: 'A run, or a piece of a run when the maximum interval length splits it. Each interval is sorted on its own.',
 					},
 					{
+						term: 'Channels',
+						text: 'Sort whole RGBA pixels together, sort red, green and blue independently for colour-split streaks, or sort one channel while leaving the rest unchanged.',
+					},
+					{
 						term: 'Sort key',
 						text: 'The number taken from each pixel that decides its order, such as brightness (luma), hue, saturation or one colour channel.',
+					},
+					{
+						term: 'Interval transform',
+						text: 'Rearranges each ordered interval: reverse flips it end to end, mirror peaks in the centre, splice swaps the two halves, and fold puts the smallest values in the centre.',
 					},
 					{
 						term: 'Mask',

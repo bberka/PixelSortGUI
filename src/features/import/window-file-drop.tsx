@@ -2,6 +2,8 @@ import {DropOverlay} from './drop-overlay.tsx';
 import {useImportFlow} from './import-flow.tsx';
 import type {ImageImportOptions} from './use-image-import.ts';
 import {useWindowFileDrop} from './use-window-file-drop.ts';
+import {useWindowImagePaste} from './use-window-image-paste.ts';
+import {useAppStore} from '@/app/runtime-context.tsx';
 import {useBackupDialogOpen} from '@/features/backup/backup-context.tsx';
 
 export type WindowFileDropProps = {
@@ -11,8 +13,8 @@ export type WindowFileDropProps = {
 };
 
 /**
- Window-wide file drop target active across both library and editor screens
- (product.md F1, DESIGN.md section 6.1).
+ Window-wide file drop and image paste target for the library and editor
+ screens (product.md F1 and F30, DESIGN.md section 6.1).
  */
 export function WindowFileDrop({
 	probe,
@@ -24,6 +26,12 @@ export function WindowFileDrop({
 	const blocked = useBackupDialogOpen();
 	const dragging = useWindowFileDrop((files) => {
 		if (!blocked) {
+			flow.start(files);
+		}
+	});
+	const screen = useAppStore((state) => state.route.screen);
+	useWindowImagePaste((files) => {
+		if (!blocked && (screen === 'library' || screen === 'editor')) {
 			flow.start(files);
 		}
 	});

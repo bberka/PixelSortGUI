@@ -8,6 +8,7 @@ import {ScrollArea} from '@/components/ui/scroll-area';
 import {LANDING} from '@/features/guide/content.ts';
 import {GUIDE_HASH} from '@/features/guide/navigation.ts';
 import {ImportImagesButton} from '@/features/import/import-images-button.tsx';
+import {PasteImageButton} from '@/features/import/paste-image-button.tsx';
 
 export type EmptyLibraryProps = {
 	/**
@@ -60,8 +61,9 @@ export function EmptyLibrary({headingRef}: EmptyLibraryProps) {
 					<p className="text-base leading-6 font-semibold">
 						{LANDING.dropTitle}
 					</p>
-					<div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row">
+					<div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center">
 						<ImportImagesButton>{LANDING.openLabel}</ImportImagesButton>
+						<PasteImageButton />
 						<Button
 							type="button"
 							variant="outline"

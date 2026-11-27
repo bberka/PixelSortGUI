@@ -196,6 +196,7 @@ test('every action works from the keyboard (AC-F2.12)', async ({page}) => {
 
 	for (const target of [
 		page.getByRole('button', {name: 'Open images'}),
+		page.getByRole('button', {name: 'Paste image'}),
 		sampleButton(page),
 		page.getByRole('link', {name: 'Read the guide'}),
 		page.getByRole('button', {name: 'Dismiss introduction'}),

@@ -7,6 +7,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {PasteImageMenuItem} from '@/features/import/paste-image-menu-item.tsx';
 
 /**
  The Library app bar's overflow menu (DESIGN.md section 7.2).
@@ -30,6 +31,7 @@ export function LibraryOverflowMenu() {
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
+				<PasteImageMenuItem />
 				<BackupMenuItems triggerRef={triggerRef} />
 			</DropdownMenuContent>
 		</DropdownMenu>

@@ -275,7 +275,12 @@ describe('empty library', () => {
 
 		expect(harness.container.textContent).not.toContain('See what Drift does');
 		expect(globalThis.document.activeElement?.textContent).toBe(LANDING.pitch);
-		expect(names()).toEqual(['Open images', 'Try a sample', 'Read the guide']);
+		expect(names()).toEqual([
+			'Open images',
+			'Paste image',
+			'Try a sample',
+			'Read the guide',
+		]);
 		expect((await harness.repository.getAppState()).welcomeDismissed).toBe(
 			true,
 		);

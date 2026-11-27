@@ -13,6 +13,8 @@ const CODEC_MODULES = [
 	'codec/encode.ts',
 	'codec/bmp-writer.ts',
 	'codec/tiff.ts',
+	'engine/math.ts',
+	'engine/render-size.ts',
 	'engine/resample.ts',
 	'engine/types.ts',
 ];

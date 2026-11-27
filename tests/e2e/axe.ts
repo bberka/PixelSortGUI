@@ -15,6 +15,26 @@ export type A11yCheckOptions = {
 	disableRules?: string[];
 };
 
+// While a Radix menu or select is open it marks the rest of the page
+// `aria-hidden` and traps focus in the list, so axe's `aria-hidden-focus` is a
+// false positive there (DESIGN.md section 10). Anything Radix did not mark, or
+// marked while no list is open, still counts.
+async function isBehindOpenList(
+	page: Page,
+	selector: string,
+): Promise<boolean> {
+	return page.evaluate((target) => {
+		const {document} = globalThis;
+		return (
+			document.querySelector(
+				'[role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+			) !== null &&
+			document.querySelector(target)?.matches('[data-aria-hidden="true"]') ===
+				true
+		);
+	}, selector);
+}
+
 export async function assertNoA11yViolations(
 	page: Page,
 	options: A11yCheckOptions = {},
@@ -43,7 +63,26 @@ export async function assertNoA11yViolations(
 	}
 
 	const results = await builder.analyze();
-	const violations = results.violations.map((violation) => {
+	const found = [];
+	for (const violation of results.violations) {
+		if (violation.id !== 'aria-hidden-focus') {
+			found.push(violation);
+			continue;
+		}
+
+		const nodes = [];
+		for (const node of violation.nodes) {
+			if (!(await isBehindOpenList(page, String(node.target[0])))) {
+				nodes.push(node);
+			}
+		}
+
+		if (nodes.length > 0) {
+			found.push({...violation, nodes});
+		}
+	}
+
+	const violations = found.map((violation) => {
 		const targets = violation.nodes
 			.map((node) => node.target.join(' '))
 			.join(', ');

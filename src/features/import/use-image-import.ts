@@ -25,6 +25,7 @@ import {
 	isQuotaExceededError,
 	type CreateProjectInput,
 } from '@/storage/types.ts';
+import {focusMain, isFocusLost} from '@/lib/focus.ts';
 
 export type {
 	ImportDownscale,
@@ -84,6 +85,11 @@ export type ImageImport = {
 	closeBackup(): void;
 	decide(choice: LargeImageChoice): void;
 	dismissProblems(): void;
+	/**
+	 `onCloseAutoFocus` of the import dialogs: back to what had the focus when
+	 the files arrived. A drop has no trigger for the dialog to return to.
+	 */
+	restoreFocus(event: Event): void;
 };
 
 const SAVE_FRACTION = 0.95;
@@ -118,6 +124,7 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 	const backupRef = useRef<PendingBackup | null>(null);
 	const aliveRef = useRef(true);
 	const abortRef = useRef<AbortController | null>(null);
+	const focusOriginRef = useRef<HTMLElement | null>(null);
 
 	useEffect(() => {
 		aliveRef.current = true;
@@ -232,6 +239,12 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		}
 
 		busyRef.current = true;
+		const focused = globalThis.document.activeElement;
+		// A file dropped on an open dialog leaves the earlier origin in place.
+		if (!focused?.closest('[role="alertdialog"]')) {
+			focusOriginRef.current = focused instanceof HTMLElement ? focused : null;
+		}
+
 		void (async () => {
 			const accepted: AcceptedImage[] = [];
 			const found: ImportProblem[] = [];
@@ -366,6 +379,21 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		}
 	};
 
+	const restoreFocus = (event: Event) => {
+		event.preventDefault();
+		// Another dialog may have taken over by now.
+		if (!isFocusLost()) {
+			return;
+		}
+
+		const origin = focusOriginRef.current;
+		if (origin?.isConnected && origin !== globalThis.document.body) {
+			origin.focus();
+		} else {
+			focusMain();
+		}
+	};
+
 	return {
 		busy: progress !== null || prompt !== null,
 		progress,
@@ -377,5 +405,6 @@ export function useImageImport(options: ImageImportOptions = {}): ImageImport {
 		closeBackup,
 		decide,
 		dismissProblems,
+		restoreFocus,
 	};
 }

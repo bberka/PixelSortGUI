@@ -68,6 +68,7 @@ const ProjectCardView = ({
 				<button
 					type="button"
 					aria-label={`Open ${project.name}`}
+					data-open-project={id}
 					className="block w-full cursor-pointer text-left focus-visible:-outline-offset-2"
 					onClick={open}
 				>

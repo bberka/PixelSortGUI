@@ -16,6 +16,7 @@ export function GuideButton() {
 					variant="ghost"
 					size="icon-sm"
 					aria-label={GUIDE_BUTTON_LABEL}
+					data-guide-button=""
 					onClick={openGuide}
 				>
 					<CircleHelpIcon className="size-4" aria-hidden="true" />

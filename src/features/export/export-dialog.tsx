@@ -22,12 +22,14 @@ import {
 	downloadBlob,
 	effectiveFormatFor,
 	FILE_SIZE_LIMIT_PRESETS_KB,
+	fileSizeInUnit,
 	fileSizeLimitModeFor,
 	formatByteSize,
 	formatExportError,
 	formatFileSizeLimitLabel,
 	getSupportedEncodeFormats,
-	parseCustomFileSizeToKb,
+	parseExportNumber,
+	parseExportSizeKb,
 	qualityFor,
 	replaceFilenameExtension,
 	resolveDownloadFilename,
@@ -139,6 +141,30 @@ function defaultNow(): Date {
 	return new Date();
 }
 
+const QUALITY_RANGE = {min: MIN_EXPORT_QUALITY, max: MAX_EXPORT_QUALITY};
+
+/**
+ Why a numeric field blocks the export. The live region stays mounted, so the
+ message is announced when it appears.
+ */
+function FieldError({
+	id,
+	message,
+}: {
+	readonly id: string;
+	readonly message: string | null;
+}) {
+	return (
+		<p
+			id={id}
+			aria-live="polite"
+			className="text-right text-xs leading-4 text-destructive-text not-empty:pt-1"
+		>
+			{message}
+		</p>
+	);
+}
+
 function isAbortError(error: unknown): boolean {
 	return error instanceof Error && error.name === 'AbortError';
 }
@@ -171,6 +197,9 @@ export function ExportDialog({
 	const longestSideInputId = useId();
 	const customSizeLimitInputId = useId();
 	const filenameInputId = useId();
+	const qualityErrorId = useId();
+	const longestSideErrorId = useId();
+	const customSizeLimitErrorId = useId();
 
 	const [probedFormats, setProbedFormats] = useState<SupportedEncodeFormats>(
 		providedFormats ?? DEFAULT_SUPPORTED_FORMATS,
@@ -332,24 +361,43 @@ export function ExportDialog({
 		return null;
 	}
 
-	const liveSettings: ExportSettings = (() => {
-		if (currentSettings.sizeMode !== 'custom') {
-			return currentSettings;
-		}
+	const typedLongestSide = parseExportNumber(longestSideDraft, {
+		min: 1,
+		max: maxImageSide,
+	});
+	const savedLongestSide = clampCustomLongestSide(
+		currentSettings.customLongestSide ?? maxImageSide,
+		imageWidth,
+		imageHeight,
+	);
+	const liveSettings: ExportSettings =
+		currentSettings.sizeMode === 'custom'
+			? {
+					...currentSettings,
+					customLongestSide: typedLongestSide ?? savedLongestSide,
+				}
+			: currentSettings;
 
-		const parsed = Number(longestSideDraft);
-		const maxSide = clampCustomLongestSide(
-			Number.isFinite(parsed)
-				? parsed
-				: (currentSettings.customLongestSide ?? maxImageSide),
-			imageWidth,
-			imageHeight,
-		);
-		return {
-			...currentSettings,
-			customLongestSide: maxSide,
-		};
-	})();
+	const typedQuality = parseExportNumber(qualityDraft, QUALITY_RANGE);
+	const typedSizeKb = parseExportSizeKb(
+		customSizeLimitDraft,
+		customSizeLimitUnit,
+	);
+	const savedSizeKb = activeProject.exportSettings.maxFileSizeKb ?? 1024;
+	const qualityError =
+		isLossyFormat(effectiveFormat) && typedQuality === null
+			? `Enter a whole number from ${MIN_EXPORT_QUALITY} to ${MAX_EXPORT_QUALITY}.`
+			: null;
+	const longestSideError =
+		liveSettings.sizeMode === 'custom' && typedLongestSide === null
+			? `Enter a whole number from 1 to ${maxImageSide}.`
+			: null;
+	const customSizeLimitError =
+		sizeLimitMode === 'custom' && typedSizeKb === null
+			? `Enter a size from ${fileSizeInUnit(MIN_EXPORT_MAX_FILE_SIZE_KB, customSizeLimitUnit)} to ${fileSizeInUnit(MAX_EXPORT_MAX_FILE_SIZE_KB, customSizeLimitUnit)} ${customSizeLimitUnit}.`
+			: null;
+	const invalid =
+		(qualityError ?? longestSideError ?? customSizeLimitError) !== null;
 
 	const outputDimensions = computeOutputDimensions(
 		liveSettings,
@@ -402,13 +450,30 @@ export function ExportDialog({
 	};
 
 	const commitQualityInput = () => {
-		const parsed = Number(qualityDraft);
-		const next = clampQuality(Number.isFinite(parsed) ? parsed : activeQuality);
-		setQualityPreview(null);
-		setQualityDraft(String(next));
-		if (next !== qualityFor(activeProject.exportSettings, effectiveFormat)) {
-			persistSettings(withQuality(liveSettings, effectiveFormat, next));
+		if (typedQuality === null) {
+			return;
 		}
+
+		setQualityPreview(null);
+		setQualityDraft(String(typedQuality));
+		if (
+			typedQuality !== qualityFor(activeProject.exportSettings, effectiveFormat)
+		) {
+			persistSettings(withQuality(liveSettings, effectiveFormat, typedQuality));
+		}
+	};
+
+	// Leaving a field also drops what could not be accepted.
+	const leaveQualityInput = () => {
+		commitQualityInput();
+		if (typedQuality !== null) {
+			return;
+		}
+
+		setQualityPreview(null);
+		setQualityDraft(
+			String(qualityFor(activeProject.exportSettings, effectiveFormat)),
+		);
 	};
 
 	const handleSizeModeChange = (value: string) => {
@@ -442,38 +507,25 @@ export function ExportDialog({
 	};
 
 	const commitLongestSideInput = () => {
-		const parsed = Number(longestSideDraft);
-		const next = clampCustomLongestSide(
-			Number.isFinite(parsed)
-				? parsed
-				: (currentSettings.customLongestSide ?? maxImageSide),
-			imageWidth,
-			imageHeight,
-		);
-		setLongestSideDraft(String(next));
-		if (next !== activeProject.exportSettings.customLongestSide) {
+		if (typedLongestSide === null) {
+			return;
+		}
+
+		setLongestSideDraft(String(typedLongestSide));
+		if (typedLongestSide !== activeProject.exportSettings.customLongestSide) {
 			persistSettings({
 				...liveSettings,
 				sizeMode: 'custom',
-				customLongestSide: next,
+				customLongestSide: typedLongestSide,
 			});
 		}
 	};
 
-	const parseCustomSizeDraftKb = (
-		draft: string,
-		unit: FileSizeUnit,
-		fallbackKb: number,
-	): number => {
-		const trimmed = draft.trim();
-		if (trimmed.length === 0) {
-			return fallbackKb;
+	const leaveLongestSideInput = () => {
+		commitLongestSideInput();
+		if (typedLongestSide === null) {
+			setLongestSideDraft(String(savedLongestSide));
 		}
-
-		const parsed = Number(trimmed);
-		return Number.isFinite(parsed) && parsed > 0
-			? parseCustomFileSizeToKb(parsed, unit)
-			: fallbackKb;
 	};
 
 	const handleSizeLimitModeChange = (mode: FileSizeLimitMode) => {
@@ -484,16 +536,10 @@ export function ExportDialog({
 		}
 
 		if (mode === 'custom') {
-			const nextKb = parseCustomSizeDraftKb(
-				customSizeLimitDraft,
-				customSizeLimitUnit,
-				liveSettings.maxFileSizeKb ?? 1024,
+			const nextKb = typedSizeKb ?? savedSizeKb;
+			setCustomSizeLimitDraft(
+				String(fileSizeInUnit(nextKb, customSizeLimitUnit)),
 			);
-			const displayValue =
-				customSizeLimitUnit === 'MB'
-					? Number((nextKb / 1024).toFixed(2))
-					: nextKb;
-			setCustomSizeLimitDraft(String(displayValue));
 			persistSettings({...liveSettings, maxFileSizeKb: nextKb});
 			return;
 		}
@@ -502,18 +548,25 @@ export function ExportDialog({
 		persistSettings({...liveSettings, maxFileSizeKb: presetKb});
 	};
 
-	const commitCustomSizeLimitInput = (unitOverride?: FileSizeUnit) => {
-		const unit = unitOverride ?? customSizeLimitUnit;
-		const nextKb = parseCustomSizeDraftKb(
-			customSizeLimitDraft,
-			unit,
-			liveSettings.maxFileSizeKb ?? 1024,
+	const commitCustomSizeLimitInput = () => {
+		if (typedSizeKb === null) {
+			return;
+		}
+
+		setCustomSizeLimitDraft(
+			String(fileSizeInUnit(typedSizeKb, customSizeLimitUnit)),
 		);
-		const displayValue =
-			unit === 'MB' ? Number((nextKb / 1024).toFixed(2)) : nextKb;
-		setCustomSizeLimitDraft(String(displayValue));
-		if (nextKb !== (activeProject.exportSettings.maxFileSizeKb ?? null)) {
-			persistSettings({...liveSettings, maxFileSizeKb: nextKb});
+		if (typedSizeKb !== (activeProject.exportSettings.maxFileSizeKb ?? null)) {
+			persistSettings({...liveSettings, maxFileSizeKb: typedSizeKb});
+		}
+	};
+
+	const leaveCustomSizeLimitInput = () => {
+		commitCustomSizeLimitInput();
+		if (typedSizeKb === null) {
+			setCustomSizeLimitDraft(
+				String(fileSizeInUnit(savedSizeKb, customSizeLimitUnit)),
+			);
 		}
 	};
 
@@ -522,16 +575,10 @@ export function ExportDialog({
 			return;
 		}
 
-		const nextUnit: FileSizeUnit = value;
-		setCustomSizeLimitUnit(nextUnit);
-		const currentKb = parseCustomSizeDraftKb(
-			customSizeLimitDraft,
-			customSizeLimitUnit,
-			liveSettings.maxFileSizeKb ?? 1024,
+		setCustomSizeLimitUnit(value);
+		setCustomSizeLimitDraft(
+			String(fileSizeInUnit(typedSizeKb ?? savedSizeKb, value)),
 		);
-		const nextDisplay =
-			nextUnit === 'MB' ? Number((currentKb / 1024).toFixed(2)) : currentKb;
-		setCustomSizeLimitDraft(String(nextDisplay));
 	};
 
 	const handleInputKeyDown = (
@@ -553,32 +600,18 @@ export function ExportDialog({
 	};
 
 	const startExport = (mode: ExportMode) => {
-		if (exporting) {
+		if (exporting || invalid) {
 			return;
 		}
 
-		const parsedQuality = Number(qualityDraft);
-		const finalQuality = clampQuality(
-			Number.isFinite(parsedQuality) ? parsedQuality : activeQuality,
-		);
-		const parsedLongest = Number(longestSideDraft);
-		const finalLongest =
-			liveSettings.sizeMode === 'custom'
-				? clampCustomLongestSide(
-						Number.isFinite(parsedLongest) ? parsedLongest : maxImageSide,
-						imageWidth,
-						imageHeight,
-					)
-				: liveSettings.customLongestSide;
+		// A hidden field is not validated, so the saved value stands in.
+		const finalQuality = typedQuality ?? activeQuality;
+		const finalLongest = liveSettings.customLongestSide;
 		const finalMaxFileSizeKb =
 			sizeLimitMode === 'off'
 				? null
 				: sizeLimitMode === 'custom'
-					? parseCustomSizeDraftKb(
-							customSizeLimitDraft,
-							customSizeLimitUnit,
-							liveSettings.maxFileSizeKb ?? 1024,
-						)
+					? typedSizeKb
 					: clampMaxFileSizeKb(Number(sizeLimitMode));
 		const finalSettings: ExportSettings = withQuality(
 			{
@@ -800,26 +833,28 @@ export function ExportDialog({
 							min={MIN_EXPORT_QUALITY}
 							max={MAX_EXPORT_QUALITY}
 							step={1}
+							aria-invalid={qualityError !== null}
+							aria-describedby={qualityErrorId}
 							disabled={exporting}
 							value={qualityDraft}
 							className="h-8 w-20 text-right font-mono text-[13px] tabular-nums"
 							onChange={(event) => {
 								setQualityDraft(event.target.value);
-								const parsed = Number(event.target.value);
-								if (
-									Number.isFinite(parsed) &&
-									parsed >= MIN_EXPORT_QUALITY &&
-									parsed <= MAX_EXPORT_QUALITY
-								) {
-									setQualityPreview(Math.round(parsed));
+								const parsed = parseExportNumber(
+									event.target.value,
+									QUALITY_RANGE,
+								);
+								if (parsed !== null) {
+									setQualityPreview(parsed);
 								}
 							}}
-							onBlur={commitQualityInput}
+							onBlur={leaveQualityInput}
 							onKeyDown={(event) => {
 								handleInputKeyDown(event, commitQualityInput);
 							}}
 						/>
 					</div>
+					<FieldError id={qualityErrorId} message={qualityError} />
 					<Slider
 						defaultMark={defaultQualityFor(effectiveFormat)}
 						min={MIN_EXPORT_QUALITY}
@@ -874,26 +909,31 @@ export function ExportDialog({
 				</ToggleGroup>
 
 				{liveSettings.sizeMode === 'custom' ? (
-					<div className="flex items-center justify-between gap-2 pt-1">
-						<Label htmlFor={longestSideInputId}>Longest side (px)</Label>
-						<Input
-							id={longestSideInputId}
-							type="number"
-							inputMode="numeric"
-							min={1}
-							max={maxImageSide}
-							step={1}
-							disabled={exporting}
-							value={longestSideDraft}
-							className="h-8 w-28 text-right font-mono text-[13px] tabular-nums"
-							onChange={(event) => {
-								setLongestSideDraft(event.target.value);
-							}}
-							onBlur={commitLongestSideInput}
-							onKeyDown={(event) => {
-								handleInputKeyDown(event, commitLongestSideInput);
-							}}
-						/>
+					<div className="pt-1">
+						<div className="flex items-center justify-between gap-2">
+							<Label htmlFor={longestSideInputId}>Longest side (px)</Label>
+							<Input
+								id={longestSideInputId}
+								type="number"
+								inputMode="numeric"
+								min={1}
+								max={maxImageSide}
+								step={1}
+								aria-invalid={longestSideError !== null}
+								aria-describedby={longestSideErrorId}
+								disabled={exporting}
+								value={longestSideDraft}
+								className="h-8 w-28 text-right font-mono text-[13px] tabular-nums"
+								onChange={(event) => {
+									setLongestSideDraft(event.target.value);
+								}}
+								onBlur={leaveLongestSideInput}
+								onKeyDown={(event) => {
+									handleInputKeyDown(event, commitLongestSideInput);
+								}}
+							/>
+						</div>
+						<FieldError id={longestSideErrorId} message={longestSideError} />
 					</div>
 				) : null}
 			</div>
@@ -969,52 +1009,56 @@ export function ExportDialog({
 				</div>
 
 				{sizeLimitMode === 'custom' ? (
-					<div className="flex items-center justify-between gap-2 pt-1">
-						<Label htmlFor={customSizeLimitInputId}>Max size</Label>
-						<div className="flex items-center gap-1.5">
-							<Input
-								id={customSizeLimitInputId}
-								type="number"
-								inputMode="decimal"
-								min={
-									customSizeLimitUnit === 'MB'
-										? Number((MIN_EXPORT_MAX_FILE_SIZE_KB / 1024).toFixed(2))
-										: MIN_EXPORT_MAX_FILE_SIZE_KB
-								}
-								max={
-									customSizeLimitUnit === 'MB'
-										? MAX_EXPORT_MAX_FILE_SIZE_KB / 1024
-										: MAX_EXPORT_MAX_FILE_SIZE_KB
-								}
-								step={customSizeLimitUnit === 'MB' ? 0.1 : 10}
-								disabled={exporting}
-								value={customSizeLimitDraft}
-								className="h-8 w-24 text-right font-mono text-[13px] tabular-nums"
-								onChange={(event) => {
-									setCustomSizeLimitDraft(event.target.value);
-								}}
-								onBlur={() => {
-									commitCustomSizeLimitInput();
-								}}
-								onKeyDown={(event) => {
-									handleInputKeyDown(event, () => {
-										commitCustomSizeLimitInput();
-									});
-								}}
-							/>
-							<ToggleGroup
-								type="single"
-								variant="outline"
-								size="sm"
-								value={customSizeLimitUnit}
-								disabled={exporting}
-								aria-label="Max size unit"
-								onValueChange={handleCustomSizeUnitChange}
-							>
-								<ToggleGroupItem value="KB">KB</ToggleGroupItem>
-								<ToggleGroupItem value="MB">MB</ToggleGroupItem>
-							</ToggleGroup>
+					<div className="pt-1">
+						<div className="flex items-center justify-between gap-2">
+							<Label htmlFor={customSizeLimitInputId}>Max size</Label>
+							<div className="flex items-center gap-1.5">
+								<Input
+									id={customSizeLimitInputId}
+									type="number"
+									inputMode="decimal"
+									min={
+										customSizeLimitUnit === 'MB'
+											? Number((MIN_EXPORT_MAX_FILE_SIZE_KB / 1024).toFixed(2))
+											: MIN_EXPORT_MAX_FILE_SIZE_KB
+									}
+									max={
+										customSizeLimitUnit === 'MB'
+											? MAX_EXPORT_MAX_FILE_SIZE_KB / 1024
+											: MAX_EXPORT_MAX_FILE_SIZE_KB
+									}
+									step={customSizeLimitUnit === 'MB' ? 0.1 : 10}
+									aria-invalid={customSizeLimitError !== null}
+									aria-describedby={customSizeLimitErrorId}
+									disabled={exporting}
+									value={customSizeLimitDraft}
+									className="h-8 w-24 text-right font-mono text-[13px] tabular-nums"
+									onChange={(event) => {
+										setCustomSizeLimitDraft(event.target.value);
+									}}
+									onBlur={leaveCustomSizeLimitInput}
+									onKeyDown={(event) => {
+										handleInputKeyDown(event, commitCustomSizeLimitInput);
+									}}
+								/>
+								<ToggleGroup
+									type="single"
+									variant="outline"
+									size="sm"
+									value={customSizeLimitUnit}
+									disabled={exporting}
+									aria-label="Max size unit"
+									onValueChange={handleCustomSizeUnitChange}
+								>
+									<ToggleGroupItem value="KB">KB</ToggleGroupItem>
+									<ToggleGroupItem value="MB">MB</ToggleGroupItem>
+								</ToggleGroup>
+							</div>
 						</div>
+						<FieldError
+							id={customSizeLimitErrorId}
+							message={customSizeLimitError}
+						/>
 					</div>
 				) : null}
 
@@ -1143,6 +1187,7 @@ export function ExportDialog({
 				<Button
 					type="button"
 					variant="secondary"
+					disabled={invalid}
 					onClick={() => {
 						startExport('share');
 					}}
@@ -1154,6 +1199,7 @@ export function ExportDialog({
 			<Button
 				type="button"
 				variant="default"
+				disabled={invalid}
 				onClick={() => {
 					startExport('download');
 				}}

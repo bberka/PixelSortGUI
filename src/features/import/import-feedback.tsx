@@ -14,7 +14,8 @@ export function ImportFeedback({
 	readonly flow: Pick<
 		ImageImport,
 		'progress' | 'prompt' | 'decide' | 'problems' | 'dismissProblems'
-	>;
+	> &
+		Partial<Pick<ImageImport, 'restoreFocus'>>;
 	// Where the focus goes when a dialog closes.
 	readonly onDialogCloseAutoFocus?: (event: Event) => void;
 }) {
@@ -24,14 +25,14 @@ export function ImportFeedback({
 			{flow.prompt ? (
 				<LargeImageDialog
 					prompt={flow.prompt}
-					onCloseAutoFocus={onDialogCloseAutoFocus}
+					onCloseAutoFocus={onDialogCloseAutoFocus ?? flow.restoreFocus}
 					onDecide={flow.decide}
 				/>
 			) : null}
 			{flow.problems.length > 0 ? (
 				<ImportProblemDialog
 					problems={flow.problems}
-					onCloseAutoFocus={onDialogCloseAutoFocus}
+					onCloseAutoFocus={onDialogCloseAutoFocus ?? flow.restoreFocus}
 					onDismiss={flow.dismissProblems}
 				/>
 			) : null}

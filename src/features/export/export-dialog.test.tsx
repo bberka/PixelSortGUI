@@ -12,7 +12,7 @@ import {
 	fileSizeLimitModeFor,
 	formatByteSize,
 	OOM_EXPORT_MESSAGE,
-	parseCustomFileSizeToKb,
+	parseExportSizeKb,
 	replaceFilenameExtension,
 	resolveDownloadFilename,
 	toExportScale,
@@ -147,10 +147,10 @@ function mountDialog(
 	return {rerender: renderWith};
 }
 
-function findButton(label: string): HTMLButtonElement {
-	const button = [...document.querySelectorAll('button')].find(
+function findButton(label: string, nth = 0): HTMLButtonElement {
+	const button = [...document.querySelectorAll('button')].filter(
 		(element) => element.textContent?.trim() === label,
-	);
+	)[nth];
 	if (!button) {
 		throw new Error(`Button "${label}" not found`);
 	}
@@ -167,6 +167,13 @@ function setInputValue(input: HTMLInputElement, value: string): void {
 		descriptor?.set?.call(input, value);
 		input.dispatchEvent(new Event('input', {bubbles: true}));
 		input.dispatchEvent(new Event('change', {bubbles: true}));
+	});
+}
+
+function leave(input: HTMLInputElement): void {
+	act(() => {
+		input.focus();
+		input.blur();
 	});
 }
 
@@ -343,7 +350,7 @@ describe('ExportDialog', () => {
 		expect(findButton('B · Right').dataset.state).toBe('on');
 	});
 
-	it('shows Quality (50..100, default 92) only for lossy formats and clamps input', async () => {
+	it('shows Quality (50..100, default 92) only for lossy formats and rejects values outside the range', async () => {
 		const context = await setup();
 		mountDialog(context);
 
@@ -374,9 +381,19 @@ describe('ExportDialog', () => {
 		});
 		await flush();
 
-		expect(qualityInput!.value).toBe('50');
+		expect(qualityInput!.value).toBe('12');
+		expect(qualityInput!.getAttribute('aria-invalid')).toBe('true');
+		expect(document.body.textContent).toContain(
+			'Enter a whole number from 50 to 100.',
+		);
+		expect(findButton('Download').disabled).toBe(true);
+
+		leave(qualityInput!);
+		await flush();
+		expect(qualityInput!.value).toBe('92');
+		expect(findButton('Download').disabled).toBe(false);
 		expect(context.store.getState().activeProject?.exportSettings.quality).toBe(
-			50,
+			92,
 		);
 
 		const filenameInput =
@@ -471,6 +488,86 @@ describe('ExportDialog', () => {
 		await flush();
 		expect(longestInput!.value).toBe('4001');
 		expect(readout()).toBe('4001 × 3001 px');
+	});
+
+	for (const draft of ['', '0', '321', '10.5']) {
+		it(`AC-F12.11: a longest side of "${draft}" blocks the export, then reverts`, async () => {
+			const context = await setup({width: 320, height: 240});
+			const jobs = attachExportController(context);
+			mountDialog(context);
+			act(() => {
+				findButton('Custom').click();
+			});
+			await flush();
+			const input = document.querySelector<HTMLInputElement>(
+				'input[type="number"]',
+			)!;
+			setInputValue(input, '200');
+			leave(input);
+			await flush();
+
+			setInputValue(input, draft);
+			act(() => {
+				input.dispatchEvent(
+					new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}),
+				);
+			});
+			await flush();
+			expect(input.value).toBe(draft);
+			expect(
+				document.querySelector(
+					`#${CSS.escape(input.getAttribute('aria-describedby')!)}`,
+				)?.textContent,
+			).toBe('Enter a whole number from 1 to 320.');
+			expect(findButton('Download').disabled).toBe(true);
+			expect(
+				document.querySelector('[data-slot="export-dimensions"]')?.textContent,
+			).toBe('200 × 150 px');
+
+			leave(input);
+			await flush();
+			expect(input.value).toBe('200');
+			expect(input.getAttribute('aria-invalid')).toBe('false');
+			expect(
+				context.store.getState().activeProject?.exportSettings
+					.customLongestSide,
+			).toBe(200);
+			act(() => {
+				findButton('Download').click();
+			});
+			await flush();
+			expect(jobs).toHaveLength(1);
+		});
+	}
+
+	it('AC-F12.11: an empty custom maximum size blocks the export, then reverts', async () => {
+		const context = await setup();
+		mountDialog(context);
+		act(() => {
+			findButton('Custom', 1).click();
+		});
+		await flush();
+		const input = document.querySelector<HTMLInputElement>(
+			'input[type="number"]',
+		)!;
+		setInputValue(input, '750');
+		leave(input);
+		await flush();
+
+		setInputValue(input, '');
+		await flush();
+		expect(document.body.textContent).toContain(
+			'Enter a size from 10 to 102400 KB.',
+		);
+		expect(findButton('Download').disabled).toBe(true);
+
+		leave(input);
+		await flush();
+		expect(input.value).toBe('750');
+		expect(findButton('Download').disabled).toBe(false);
+		expect(
+			context.store.getState().activeProject?.exportSettings.maxFileSizeKb,
+		).toBe(750);
 	});
 
 	it('runs export with progress, delivers download, and announces completion', async () => {
@@ -756,7 +853,9 @@ describe('ExportDialog', () => {
 		expect(fileSizeLimitModeFor(null)).toBe('off');
 		expect(fileSizeLimitModeFor(2048)).toBe('2048');
 		expect(fileSizeLimitModeFor(750)).toBe('custom');
-		expect(parseCustomFileSizeToKb(2, 'MB')).toBe(2048);
+		expect(parseExportSizeKb('2', 'MB')).toBe(2048);
+		expect(parseExportSizeKb('', 'KB')).toBeNull();
+		expect(parseExportSizeKb('9', 'KB')).toBeNull();
 		expect(formatByteSize(512)).toBe('512 B');
 		expect(formatByteSize(500 * 1024)).toBe('500 KB');
 		expect(formatByteSize(2.5 * 1024 * 1024)).toBe('2.50 MB');
@@ -820,7 +919,11 @@ describe('ExportDialog under a geometry transform (engine.md section 16.3)', () 
 			);
 		});
 		await flush();
-		expect(input.value).toBe('1200');
+		expect(findButton('Download').disabled).toBe(true);
 		expect(dimensions()).toBe('1200 × 800 px');
+
+		leave(input);
+		await flush();
+		expect(input.value).toBe('1200');
 	});
 });

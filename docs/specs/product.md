@@ -7,6 +7,7 @@ Updated with project files (F25), full backup and restore (F17), and multi-image
 Updated with split orientation and per-side effect stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with optional cloud backup and sync (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with masks and the on-canvas brush (F29) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
+Updated `F6` with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift product spec
 
@@ -186,14 +187,17 @@ The panel header also has a "Randomize" button (dice icon) that gives every para
 
 ### F6. Pixel sort effect
 
-The `pixelSort` effect type with every parameter listed in [engine.md section 5](engine.md#5-pixel-sort-effect-pixelsort): angle, interval mode (threshold, edges, whole line), selection key, threshold range, edge threshold, edge blur, invert, maximum interval length, length jitter, skip chance, sort key, order (ascending, descending, shuffle, random), discretize, fill (sort, average, gradient) and seed. The instance panel has a "Show selection" switch that, while on, renders this instance's selection instead of its result: selected pixels unchanged, unselected pixels darkened to 25% brightness.
+The `pixelSort` effect type (`version: 2`) with every parameter listed in [engine.md section 5](engine.md#5-pixel-sort-effect-pixelsort): angle, interval mode (threshold, edges, whole line), selection key, threshold range, edge threshold, edge blur, invert, maximum interval length, length jitter, skip chance, channels (all RGBA, RGB independent, red only, green only, blue only), sort key, order (ascending, descending, shuffle, random), discretize, fill (sort, average, gradient), interval transform (none, reverse, mirror, splice, fold) and seed. The instance panel has a "Show selection" switch that, while on, renders this instance's selection instead of its result: selected pixels unchanged, unselected pixels darkened to 25% brightness.
 
 - AC-F6.1: On a synthetic gradient test image generated in code by `tests/fixtures/synthetic.ts` (engine.md section 14.2; no photo file is committed) and imported into the app by the test, adding a pixel sort instance with defaults produces visible horizontal streaks within the visible-update budget.
-- AC-F6.2: Setting the angle to 90 makes the streaks vertical; 45 makes them diagonal from lower left to upper right; the result contains no blurred pixels (every output pixel colour exists in the instance's input at the same render level when `fill` is `sort`), checked by the engine property tests.
+- AC-F6.2: Setting the angle to 90 makes the streaks vertical; 45 makes them diagonal from lower left to upper right; the result contains no blurred pixels (every output pixel colour exists in the instance's input at the same render level when `channelMode` is `rgba` and `fill` is `sort`), checked by the engine property tests.
 - AC-F6.3: With threshold range 0 to 1, `invert` off and `intervalMode` threshold, every pixel with alpha above 0 is selected ("Show selection" shows no darkened pixels).
 - AC-F6.4: Changing only the seed changes the result when `order` is `shuffle` or `random`, or when `lengthJitter` or `skipChance` is above 0, and leaves it unchanged otherwise.
 - AC-F6.5: Exporting the same project twice gives byte-identical image data (compare decoded pixels of two PNG exports).
 - AC-F6.6: "Show selection" affects only the preview: exports never include the selection view, and turning it off restores the normal result.
+- AC-F6.7: Setting `channelMode` to `rgb`, `r`, `g` or `b` hides "Sort key", sorts each selected channel independently along the same intervals using its own channel value, leaves unselected channels and alpha bit-identical to the input, and preserves each channel's multiset when `fill` is `sort`.
+- AC-F6.8: Setting `intervalTransform` to `reverse`, `mirror`, `splice` or `fold` applies the deterministic bijective index mapping of [engine.md section 5.5](engine.md#55-order-channels-interval-transform-and-fill) to each non-skipped interval for `sort` and `gradient` fills; setting `fill` to `average` hides "Interval transform".
+- AC-F6.9: Saved `pixelSort` version 1 instances migrate cleanly to version 2 (`channelMode: 'rgba'`, `intervalTransform: 'none'`) with no `params-fixed` warning and render byte-for-byte identically to version 1.
 
 ### F7. Glitch effects
 
@@ -673,7 +677,7 @@ Grouped by likely order. Each needs its own spec before work starts (moved first
 
 1. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.4.5](persistence.md#845-safari-7-day-eviction-warning-later)).
 3. **More on-canvas tools.** Masks and the brush are specified in F29. Still later: region cutout if requested (Q11), combining several mask sources on one instance, turning a brightness or image mask into a painted one, selection tools (gradient, lasso), and drawing a sort path, using the slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot).
-4. **Remaining F22 effects and `pixelSort` v2.** The 6 lower-ranked effects from F22 (`bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert`, `jpegCrush`), per-channel pixel sort, interval transforms (mirror, splice, fold, grouping equal colours), and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density).
+4. **Further `pixelSort` paths and grouping.** Grouping equal colours (`smooth`) and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density). (The 6 remaining F22 effects, per-channel pixel sort, and the `reverse`, `mirror`, `splice` and `fold` interval transforms are shipped.)
 5. **Editing comfort.** Compare against any history entry; paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.
 6. **Extended colour pipelines.** WebP export on Safari through a WebAssembly encoder; 16-bit PNG/TIFF processing kept at 16 bits; wide-gamut (Display P3) output.
 7. **Speed.** WebGPU acceleration for axis-aligned pixel sort; multi-worker splitting; WebAssembly SIMD kernels. See engine.md section 12.

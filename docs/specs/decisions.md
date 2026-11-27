@@ -8,6 +8,7 @@ Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high t
 Updated with cloud backup and sync decisions (D39 to D41, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with the backup size limit decision (D44) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with mask decisions (D45 to D49) and open questions (Q28 to Q30) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
+Updated with `pixelSort` v2 decisions (D50) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift decisions and open questions
 
@@ -353,6 +354,15 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Choice:** (c), with the effect preview updated at stroke end.
 - **Reason:** A large dab covers hundreds of thousands of pixels, which risks main-thread long tasks. One rasteriser keeps the overlay and the stored mask identical. A separate worker is not blocked by effect renders. Live effect updates while painting can be added later without changing stored data.
 - **Also:** Pen pressure scales size only. Touch contact width and height are ignored for size because browsers report them inconsistently.
+
+### D50. Pixel sort v2: independent per-channel sort, bijective interval transforms and v1 migration (2026-11-27)
+
+- **Options considered:**
+  - Channels: (a) three independent R/G/B boolean toggles (which allows an all-off no-op state and cannot distinguish whole-pixel RGBA sorting by `sortKey` from independent RGB sorting); (b) a single `channelMode` enum (`rgba`, `rgb`, `r`, `g`, `b`) defaulting to `rgba`, where per-channel modes sort each active channel by its own 8-bit value (`byte * 257`), use channel-keyed random purpose codes (`P_CHANNEL_ORDER = 5`, `P_CHANNEL_SHUFFLE = 6`), and hide `sortKey`.
+  - Interval transforms: (a) non-bijective reflection that duplicates one half; (b) five exact integer bijections (`none`, `reverse`, `mirror`, `splice`, `fold`) applied to each ordered `sort` or `gradient` interval.
+- **Choice:** Option (b) for both, bumping `pixelSort` to `version: 2` with `migrations[1]` filling `channelMode: 'rgba'` and `intervalTransform: 'none'` (`engine.md` section 5).
+- **Reason:** One `channelMode` enum has no invalid/dead state, renders cleanly as a single dropdown across all viewport widths, keeps `rgba` defaults 100% byte-identical to v1, and makes `rgb` equal the exact channel-wise composition of `r`, `g` and `b` with input alpha. Bijective integer formulas preserve every channel's multiset for `fill: 'sort'`, avoid floating-point divergence across JS engines, and keep `mirror` (centre peak) and `fold` (centre valley) visually distinct. Providing `migrations[1]` upgrades v1 instances without emitting a `params-fixed` warning.
+- **Revisit if:** Users ask to sort a single channel by a different pixel key (such as sorting red by hue) or to pass a custom splice offset.
 
 ---
 

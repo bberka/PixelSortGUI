@@ -14,6 +14,8 @@ export const P_CAP = 1;
 export const P_SKIP = 2;
 export const P_ORDER = 3;
 export const P_SHUFFLE = 4;
+export const P_CHANNEL_ORDER = 5;
+export const P_CHANNEL_SHUFFLE = 6;
 
 // `unit(seed, a, b, c)` of random.ts without the rest-argument array.
 export function unit3(seed: number, a: number, b: number, c: number): number {
@@ -37,6 +39,24 @@ export function unit4(
 	h = mix32((h ^ b) >>> 0);
 	h = mix32((h ^ c) >>> 0);
 	h = mix32((h ^ d) >>> 0);
+	return h / 4_294_967_296;
+}
+
+// `unit(seed, a, b, c, d, e)` of random.ts without the rest-argument array.
+export function unit5(
+	seed: number,
+	a: number,
+	b: number,
+	c: number,
+	d: number,
+	e: number,
+): number {
+	let h = mix32(seed >>> 0);
+	h = mix32((h ^ a) >>> 0);
+	h = mix32((h ^ b) >>> 0);
+	h = mix32((h ^ c) >>> 0);
+	h = mix32((h ^ d) >>> 0);
+	h = mix32((h ^ e) >>> 0);
 	return h / 4_294_967_296;
 }
 

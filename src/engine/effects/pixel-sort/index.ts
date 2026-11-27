@@ -4,10 +4,15 @@ import type {EffectDefinition, RenderContext, RgbaImage} from '../../types.ts';
 import {computeEdgeSelection} from './edges.ts';
 import {
 	fillAverage,
+	fillChannelAverage,
+	fillChannelGradient,
+	fillChannelSort,
 	fillGradient,
 	fillSort,
+	packChannelKeys,
 	packKeys,
 	packedExtremes,
+	shuffleChannelIndices,
 	shuffleIndices,
 	sortPacked,
 	type Sorter,
@@ -16,6 +21,7 @@ import {
 	fillKeys,
 	intervalCap,
 	P_CAP,
+	P_CHANNEL_ORDER,
 	P_ORDER,
 	P_SKIP,
 	selectFromMap,
@@ -23,11 +29,14 @@ import {
 	selectWhole,
 	thresholdBound,
 	unit3,
+	unit4,
 	writeSelectionView,
 } from './select.ts';
 import {
 	pixelSortSpec,
+	type ChannelMode,
 	type FillMode,
+	type IntervalTransform,
 	type PixelSortParams,
 	type SortOrder,
 } from './spec.ts';
@@ -94,12 +103,22 @@ type LineBuffers = {
 	readonly counts: Int32Array;
 };
 
+const ACTIVE_CHANNELS: Readonly<
+	Record<Exclude<ChannelMode, 'rgba'>, readonly number[]>
+> = {
+	rgb: [0, 1, 2],
+	r: [0],
+	g: [1],
+	b: [2],
+};
+
 type SortSettings = {
 	readonly seed: number;
 	// `ctx.pxLength(maxLength)`; 0 means no limit.
 	readonly scaledMaxLength: number;
 	readonly lengthJitter: number;
 	readonly skipChance: number;
+	readonly channelMode: ChannelMode;
 	readonly sortKey: SortKey;
 	// True when `keys` already holds the sort key for the whole line.
 	readonly keysReady: boolean;
@@ -107,6 +126,7 @@ type SortSettings = {
 	// `discretize * 257`, or 0.
 	readonly divisor: number;
 	readonly fill: FillMode;
+	readonly intervalTransform: IntervalTransform;
 	readonly sorter: Sorter;
 };
 
@@ -121,6 +141,111 @@ function copyPixels(
 	}
 }
 
+function renderChannelInterval(
+	line: LineBuffers,
+	settings: SortSettings,
+	channels: readonly number[],
+	start: number,
+	length: number,
+	lineId: number,
+	sourcePosition: number,
+): void {
+	const {pixels, out, packed} = line;
+	const {seed, order, fill, intervalTransform} = settings;
+	copyPixels(pixels, out, start, start + length);
+
+	if (fill === 'average') {
+		for (const channel of channels) {
+			fillChannelAverage(line.bytes, line.outBytes, start, length, channel);
+		}
+
+		return;
+	}
+
+	if (order === 'shuffle') {
+		for (const channel of channels) {
+			shuffleChannelIndices(
+				packed,
+				length,
+				seed,
+				lineId,
+				sourcePosition,
+				channel,
+			);
+			if (fill === 'sort') {
+				fillChannelSort(
+					line.bytes,
+					line.outBytes,
+					start,
+					length,
+					channel,
+					packed,
+					intervalTransform,
+				);
+			} else {
+				fillChannelGradient(
+					line.bytes,
+					line.outBytes,
+					start,
+					length,
+					channel,
+					packed[0],
+					packed[length - 1],
+					intervalTransform,
+				);
+			}
+		}
+
+		return;
+	}
+
+	for (const channel of channels) {
+		const descending =
+			order === 'descending' ||
+			(order === 'random' &&
+				unit4(seed, P_CHANNEL_ORDER, lineId, sourcePosition, channel) >= 0.5);
+		packChannelKeys(
+			line.bytes,
+			start,
+			length,
+			channel,
+			settings.divisor,
+			descending,
+			packed,
+		);
+		if (fill === 'sort') {
+			const ordered = sortPacked(
+				packed,
+				line.spare,
+				line.counts,
+				length,
+				settings.sorter,
+			);
+			fillChannelSort(
+				line.bytes,
+				line.outBytes,
+				start,
+				length,
+				channel,
+				ordered,
+				intervalTransform,
+			);
+		} else {
+			const ends = packedExtremes(packed, length);
+			fillChannelGradient(
+				line.bytes,
+				line.outBytes,
+				start,
+				length,
+				channel,
+				Math.floor(ends / 65_536),
+				ends % 65_536,
+				intervalTransform,
+			);
+		}
+	}
+}
+
 function renderInterval(
 	line: LineBuffers,
 	settings: SortSettings,
@@ -130,13 +255,26 @@ function renderInterval(
 	sourcePosition: number,
 ): void {
 	const {pixels, out, packed} = line;
-	const {seed, order, fill} = settings;
+	const {seed, order, fill, channelMode, intervalTransform} = settings;
 	if (
 		length === 1 ||
 		(settings.skipChance > 0 &&
 			unit3(seed, P_SKIP, lineId, sourcePosition) < settings.skipChance)
 	) {
 		copyPixels(pixels, out, start, start + length);
+		return;
+	}
+
+	if (channelMode !== 'rgba') {
+		renderChannelInterval(
+			line,
+			settings,
+			ACTIVE_CHANNELS[channelMode],
+			start,
+			length,
+			lineId,
+			sourcePosition,
+		);
 		return;
 	}
 
@@ -148,7 +286,7 @@ function renderInterval(
 	if (order === 'shuffle') {
 		shuffleIndices(packed, length, seed, lineId, sourcePosition);
 		if (fill === 'sort') {
-			fillSort(pixels, out, start, length, packed);
+			fillSort(pixels, out, start, length, packed, intervalTransform);
 		} else {
 			fillGradient(
 				line.bytes,
@@ -157,6 +295,7 @@ function renderInterval(
 				length,
 				packed[0],
 				packed[length - 1],
+				intervalTransform,
 			);
 		}
 
@@ -179,7 +318,7 @@ function renderInterval(
 			length,
 			settings.sorter,
 		);
-		fillSort(pixels, out, start, length, ordered);
+		fillSort(pixels, out, start, length, ordered, intervalTransform);
 	} else {
 		const ends = packedExtremes(packed, length);
 		fillGradient(
@@ -189,6 +328,7 @@ function renderInterval(
 			length,
 			Math.floor(ends / 65_536),
 			ends % 65_536,
+			intervalTransform,
 		);
 	}
 }
@@ -355,11 +495,16 @@ export async function renderPixelSort(
 		scaledMaxLength: ctx.pxLength(params.maxLength),
 		lengthJitter: params.lengthJitter,
 		skipChance: params.skipChance,
+		channelMode: params.channelMode,
 		sortKey: params.sortKey,
-		keysReady: mode === 'threshold' && params.selectKey === params.sortKey,
+		keysReady:
+			params.channelMode === 'rgba' &&
+			mode === 'threshold' &&
+			params.selectKey === params.sortKey,
 		order: params.order,
 		divisor: params.discretize * 257,
 		fill: params.fill,
+		intervalTransform: params.intervalTransform,
 		sorter,
 	};
 
@@ -422,7 +567,9 @@ export const pixelSortEffect: EffectDefinition<PixelSortParams> = {
 };
 
 export {
+	type ChannelMode,
 	type IntervalMode,
+	type IntervalTransform,
 	type FillMode,
 	type SortOrder,
 	type PixelSortParams,

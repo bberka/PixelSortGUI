@@ -43,7 +43,8 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 
 These are planned and not in the app.
 
-- More effects.
+- Cloud backup and sync through your own Dropbox or Google Drive.
+- More pixel sort options, such as per-channel sorting and more line shapes.
 - Masks and painting on the canvas.
 - Animation and video.
 

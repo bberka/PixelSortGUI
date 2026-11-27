@@ -1,8 +1,12 @@
 /**
  Regressions found by walking the shipped app: touch targets, focus after
- dialogs and self-removing controls, long names and scroll regions.
+ dialogs, screen changes and self-removing controls, long names, scroll
+ regions and export fields.
  */
+import {Buffer} from 'node:buffer';
 import {expect, test, type Locator, type Page} from '@playwright/test';
+import {assertNoA11yViolations} from './axe.ts';
+import {dropImages} from './import.ts';
 import {importSyntheticProject} from './seed.ts';
 
 // No spaces, so nothing but an explicit rule can wrap it.
@@ -96,6 +100,28 @@ for (const [layout, viewport] of [
 			await expectTouchTarget(
 				page.getByRole('button', {name: /^ASDF classic/}),
 			);
+		});
+
+		test('library menu items and the history checkbox row are at least 44 px', async ({
+			page,
+		}) => {
+			await openEditor(page);
+			await button(page, 'Back to library').click();
+			for (const trigger of ['Actions for Sweep', 'Library actions']) {
+				await button(page, trigger).click();
+				const items = page.getByRole('menuitem');
+				await expect(items.first()).toBeVisible();
+				for (const item of await items.all()) {
+					await expectTouchTarget(item);
+				}
+
+				await page.keyboard.press('Escape');
+				await expect(items).toHaveCount(0);
+			}
+
+			await button(page, 'Actions for Sweep').click();
+			await page.getByRole('menuitem', {name: 'Save project file'}).click();
+			await expectTouchTarget(page.locator('[data-slot="check-row"]'));
 		});
 
 		test('the lower crop handles clear the zoom control', async ({page}) => {
@@ -272,3 +298,145 @@ for (const [layout, viewport] of [
 		await expect(button(page, 'JPEG crush actions')).toBeVisible();
 	});
 }
+
+test('AC-F12.11: clearing the longest side blocks the download until it is restored', async ({
+	page,
+}) => {
+	await openEditor(page);
+	await button(page, 'Export').click();
+	const dialog = page.getByRole('dialog');
+	await dialog.getByRole('radio', {name: 'Custom'}).first().click();
+	const field = dialog.getByRole('spinbutton', {name: 'Longest side (px)'});
+	const download = dialog.getByRole('button', {name: 'Download'});
+	await field.fill('200');
+
+	await field.fill('');
+	await expect(field).toHaveValue('');
+	await expect(field).toHaveAttribute('aria-invalid', 'true');
+	await expect(field).toHaveAccessibleDescription(
+		'Enter a whole number from 1 to 320.',
+	);
+	await expect(download).toBeDisabled();
+	await assertNoA11yViolations(page);
+
+	await field.press('Tab');
+	await expect(field).toHaveValue('320');
+	await expect(download).toBeEnabled();
+	await expect(dialog.getByText('Enter a whole number')).toHaveCount(0);
+
+	await dialog.getByRole('radio', {name: 'Custom'}).last().click();
+	const size = dialog.getByRole('spinbutton', {name: 'Max size'});
+	await size.fill('');
+	await expect(download).toBeDisabled();
+	await size.press('Tab');
+	await expect(size).toHaveValue('1024');
+	await expect(download).toBeEnabled();
+});
+
+for (const back of ['button', 'browser'] as const) {
+	test(`leaving the Guide and the editor by ${back} places the focus`, async ({
+		page,
+	}) => {
+		await openEditor(page);
+		const leave = async (name: string) => {
+			await (back === 'button' ? button(page, name).click() : page.goBack());
+		};
+
+		await button(page, 'Guide').click();
+		await expect(page.getByRole('heading', {level: 2})).toBeFocused();
+		await leave('Back to editor');
+		await expect(button(page, 'Guide')).toBeFocused();
+
+		// A hash change is how the browser leaves the editor for the library.
+		await (back === 'button'
+			? button(page, 'Back to library').click()
+			: page.evaluate(() => {
+					globalThis.location.hash = '#/';
+				}));
+		await expect(button(page, 'Open Sweep')).toBeFocused();
+
+		await button(page, 'Guide').click();
+		await expect(page.getByRole('heading', {level: 2})).toBeFocused();
+		await leave('Back to library');
+		await expect(button(page, 'Guide')).toBeFocused();
+	});
+}
+
+const BROKEN_IMAGE = {
+	name: 'broken.jpg',
+	mimeType: 'image/jpeg',
+	buffer: Buffer.from('not a picture'),
+};
+
+test('dismissing a dropped file error returns the focus', async ({page}) => {
+	await openEditor(page);
+	const dismiss = button(page, 'Dismiss');
+	const main = page.getByRole('main');
+
+	// Nothing had the focus.
+	await page.evaluate(() => {
+		(globalThis.document.activeElement as HTMLElement | null)?.blur();
+	});
+	await dropImages(page, [BROKEN_IMAGE]);
+	await dismiss.click();
+	await expect(main).toBeFocused();
+
+	await button(page, 'Transform').focus();
+	await expect(main).not.toHaveAttribute('tabindex');
+	await dropImages(page, [BROKEN_IMAGE]);
+	await expect(dismiss).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(button(page, 'Transform')).toBeFocused();
+});
+
+for (const list of ['menu', 'select'] as const) {
+	test(`an open ${list} keeps the focus away from the hidden page`, async ({
+		page,
+	}) => {
+		await openEditor(page);
+		await addEffect(page, 'Pixel sort');
+		await (
+			list === 'menu'
+				? button(page, 'Pixel sort actions')
+				: page.getByRole('combobox').first()
+		).click();
+		const open = page.getByRole(list === 'menu' ? 'menu' : 'listbox');
+		await expect(open).toBeVisible();
+		await assertNoA11yViolations(page);
+
+		// Why axe's `aria-hidden-focus` is a false positive here.
+		const focusInside = async () =>
+			open.evaluate((element) =>
+				element.contains(globalThis.document.activeElement),
+			);
+		for (const key of ['Tab', 'Shift+Tab']) {
+			await page.keyboard.press(key);
+			expect(await focusInside()).toBe(true);
+		}
+
+		await page.evaluate(() => {
+			globalThis.document
+				.querySelector<HTMLElement>('header[aria-hidden="true"] button')!
+				.focus();
+		});
+		expect(await focusInside()).toBe(true);
+	});
+}
+
+test('the whole undo history row toggles its checkbox', async ({page}) => {
+	await openEditor(page);
+	await button(page, 'Back to library').click();
+	await button(page, 'Actions for Sweep').click();
+	await page.getByRole('menuitem', {name: 'Save project file'}).click();
+	const row = page.locator('[data-slot="check-row"]');
+	const checkbox = page.getByRole('checkbox', {name: 'Include undo history'});
+	await expect(checkbox).toBeChecked();
+	// Polled, because the dialog zooms in from 95 %.
+	await expect
+		.poll(async () => Math.round((await row.boundingBox())!.height))
+		.toBeGreaterThanOrEqual(24);
+	const {width, height} = (await row.boundingBox())!;
+	// The far end, away from the box and its text.
+	await row.click({position: {x: width - 4, y: height / 2}});
+	await expect(checkbox).not.toBeChecked();
+});

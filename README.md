@@ -52,7 +52,7 @@ The order of work is in [roadmap.md](docs/specs/roadmap.md) and the feature list
 
 ## Try it
 
-The planned address is https://drift.bbay.dev. It is not usable yet: the host has no HTTPS certificate for that name, and the app needs HTTPS.
+Drift runs at https://drift.bbay.dev.
 
 To run it locally you need Node 22.18 or later (or 24.11 or later) and pnpm 12.15.0. The `vp` command comes from Vite+, which is a dev dependency, so `pnpm install` provides it. If `vp` is not on your path, put `pnpm exec` in front of the commands below.
 

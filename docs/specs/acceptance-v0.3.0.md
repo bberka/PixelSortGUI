@@ -1,6 +1,6 @@
 # Drift `v0.3.0` Acceptance Traceability (`T8.11`)
 
-Maps every acceptance criterion of the `v0.3.0` features in [product.md](product.md) to its automated tests: project files (`F25`), full backup and restore (`F17`) and image blending (`F26`). Earlier features stay mapped in [acceptance-v0.1.0.md](acceptance-v0.1.0.md) and [acceptance-v0.2.0.md](acceptance-v0.2.0.md). The other changes listed under `v0.3.0` in `CHANGELOG.md` have their criteria in product.md (`F2`, `F4`, `F18`) and tests that name them; they are not repeated here.
+Maps every acceptance criterion of the `v0.3.0` features in [product.md](product.md) to its automated tests: project files (`F25`), full backup and restore (`F17`) and image blending (`F26`). Earlier features stay mapped in [acceptance-v0.1.0.md](acceptance-v0.1.0.md) and [acceptance-v0.2.0.md](acceptance-v0.2.0.md). The other changes listed under `v0.3.0` in `CHANGELOG.md` have their criteria in product.md (`F2`, `F4`, `F12`, `F18`) and tests that name them; they are not repeated here.
 
 Each test is written as its file, then its title in quotes. Titles with `%s` or `%o`, and titles holding a `${...}` value, are table-driven. Tests under `tests/storage/` that name two adapters run against IndexedDB (`fake-indexeddb`) and the in-memory adapter. The `M` numbers point to the [manual checklist](#manual-checklist), which covers what a test machine cannot judge. Run the automated tests with `vp run check` (unit and component), `vp run test:e2e` (Playwright, Chromium and Firefox) and `vp run test:perf` (speed budgets).
 

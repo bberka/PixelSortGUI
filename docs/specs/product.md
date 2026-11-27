@@ -560,7 +560,7 @@ Acceptance criteria:
 
 ### F28. Optional cloud backup and sync (Dropbox, Google Drive)
 
-The user can keep a copy of the library in their own Dropbox or Google Drive and, later, keep several devices in step. Technical rules (sign-in, formats, conflicts, security, provider setup) are in [persistence.md section 11](persistence.md#11-cloud-backup-and-sync-f28); the reasons are in [decisions.md D39 to D41](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). F28 builds on F17 and comes after it ([roadmap.md Milestone 9](roadmap.md#milestone-9-optional-cloud-backup-and-sync-v040-and-v050)).
+The user can keep a copy of the library in their own Dropbox or Google Drive and, later, keep several devices in step. Technical rules (sign-in, formats, conflicts, security, provider setup) are in [persistence.md section 11](persistence.md#11-cloud-backup-and-sync-f28); the reasons are in [decisions.md D39 to D41](decisions.md#d37-opt-in-cloud-backup-and-sync-as-the-one-exception-to-the-offline-rule-2026-11-26). F28 builds on F17 and comes after it ([roadmap.md Milestone 9](roadmap.md#milestone-9-optional-cloud-backup-and-sync-v050-and-v060)).
 
 **Opt-in.** Off by default. The app stays fully usable offline and without an account. A provider is offered only when its client ID was built into the app; with no client ID there is no cloud UI at all. No request goes to any provider before the user presses that provider's Connect button. One provider is connected at a time.
 
@@ -571,13 +571,13 @@ The user can keep a copy of the library in their own Dropbox or Google Drive and
 - "Connect Dropbox" leaves the app for dropbox.com and returns to it after the user approves.
 - "Connect Google Drive" shows the privacy text and loads Google's sign-in script. "Continue with Google" then opens Google's window. Two presses are needed so that the window follows a click and the script is not loaded before the user chose Google.
 
-**Phase 1: backup and restore by hand (v0.4.0).**
+**Phase 1: backup and restore by hand (v0.5.0).**
 
 - "Back up now" opens the choices of the F17 "Export backup" dialog (projects, history, presets, settings) and uploads them. Files the cloud already holds are not uploaded again. A progress line ("Uploading 3 of 12") and "Cancel" are shown. A backup is listed only once it is complete.
 - "Restore from cloud" lists the backups (date, device name, project count, size). Choosing one opens the F17 "Import backup" preview with Merge (default) or Replace, and restores with the F17 rules.
 - Each device keeps its 5 newest backups.
 
-**Phase 2: automatic sync (v0.5.0).**
+**Phase 2: automatic sync (v0.6.0).**
 
 - A switch "Sync automatically", off by default, also after connecting. When on, the app syncs on start, 30 s after the last change, on return to the tab (at most once in 5 minutes), when the connection returns, and on "Sync now". Nothing syncs while the app is closed.
 - Projects (with history) and user presets sync. Theme and compare mode stay per device and are only part of backups. Zoom, pan, split view and selection stay per device.
@@ -620,7 +620,7 @@ Acceptance criteria, phase 2:
 
 ### F29. Masks and on-canvas brush
 
-Any effect instance can have one mask that limits where it applies. Pixels where the mask is 0 keep the instance's input; 255 applies the effect fully (scaled by Mix); values between fade it. Exact rules are in [engine.md section 16.6](engine.md#166-masks-f29), storage in [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29), and controls in [DESIGN.md section 7.4](../../DESIGN.md#74-masks-and-the-brush-f29). Planned for [roadmap.md Milestone 10](roadmap.md#milestone-10-masks-and-on-canvas-brush).
+Any effect instance can have one mask that limits where it applies. Pixels where the mask is 0 keep the instance's input; 255 applies the effect fully (scaled by Mix); values between fade it. Exact rules are in [engine.md section 16.6](engine.md#166-masks-f29), storage in [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29), and controls in [DESIGN.md section 7.4](../../DESIGN.md#74-masks-and-the-brush-f29). Shipped in `v0.4.0` ([roadmap.md Milestone 10](roadmap.md#milestone-10-masks-and-on-canvas-brush)).
 
 **Adding and removing.** The parameter panel has a "Mask" group for the selected instance with "Add mask": "Paint", "Brightness" or "Image". An instance has at most one mask. Changing its type replaces the mask (Undo brings the old one back). "Remove mask" returns the effect to the whole image. Every mask has "Invert mask" and "Mask feather" (0 to 256 px, default 0). Mix is the mask's overall strength. "Reset all" and "Randomize" leave the mask alone. Duplicate and "Copy to other side" copy it; the copies can then be edited separately.
 

@@ -6,6 +6,7 @@ Updated with the phone editor redesign and the keyboard hint rule (F18) by Claud
 Updated with the cloud sync network exception (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with touch targets, dialog focus and long names by Claude Sonnet 5.5 (apx, medium thinking), bug-sweep subagent.
 Updated with export field validation and focus after screen changes by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
+Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
 
 # Drift design system
 
@@ -354,8 +355,12 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Desktop (`1440 × 900`):** Second tab in the right sidebar `Tabs` bar alongside Stack: `[Stack | History]`. Selecting `History` replaces the Stack + Parameters area with a full-height `ScrollArea` listing commits newest-first (`Initial` at bottom).
   - **Tablet (`820 × 1180`):** Second tab in the left column of the docked bottom panel (`[Stack | History]`).
   - **Phone (`390 × 844`):** `"History"` button in the editor toolbar, opening the History list in a `Sheet`.
-  - **Row anatomy:** Single-line truncated action label (`13 px` sans, `font-medium`), relative or short timestamp (`12 px` `text-muted-foreground`), `2 px` `--accent` left border and `"Current"` `Badge` on the active row (`aria-current="step"`). Entries with `seq > historyHeadSeq` render their label in `text-muted-foreground`, with `"Redo step"` for screen readers, to show they belong to the redo branch and will be discarded on a new commit. No opacity is applied, because dimmed text fails the 4.5:1 contrast minimum. Each row is a native `<button>` so `Tab` and `Enter`/`Space` jump directly to that state. The timestamp is the clock time for today's entries, and `"Yesterday"` or a short date for older ones.
-  - The phone `Sheet` (bottom in portrait, right in landscape) stays open after a jump, so several entries can be tried in a row.
+  - **Row anatomy:** Each row holds the jump `<button>` (single-line truncated action label in `13 px` sans `font-medium`, relative or short timestamp in `12 px` `text-muted-foreground`, `2 px` `--accent` left border and `"Current"` `Badge` on the active row with `aria-current="step"`, and `"Comparing"` `Badge` when pinned for F31 comparison) beside a compact `"Compare with this"` icon toggle button (`Columns2`, `aria-pressed`, `aria-label="Compare with this: <label>"`, tooltip `"Compare with this"` or `"Stop comparing"`, `32 × 32 px` on fine pointers and `44 × 44 px` under `@media (pointer: coarse)`). Entries with `seq > historyHeadSeq` render their label in `text-muted-foreground`, with `"Redo step"` for screen readers, to show they belong to the redo branch and will be discarded on a new commit. No opacity is applied, because dimmed text fails the 4.5:1 contrast minimum. `Tab` and `Enter`/`Space` operate both the jump button and the compare toggle. The timestamp is the clock time for today's entries, and `"Yesterday"` or a short date for older ones.
+  - The phone `Sheet` (bottom in portrait, right in landscape) stays open after a jump, so several entries can be tried in a row, and closes when `"Compare with this"` pins a step so the comparison is immediately visible on the canvas.
+- **Compare against any history step (F31):**
+  - **Canvas overlay:** While a history step is pinned and crop mode is off, the top-left overlay pill shows `"Step #<seq>: <label>"` (single-line truncated with `max-w-[min(60vw,320px)]`) beside a one-click `"Stop comparing history step"` icon button (`X`, `pointer-events-auto`, `44 × 44 px` under `@media (pointer: coarse)`). In Split view, side B's pill reads `"Current"`; in toggle Compare when showing the current edit, the top-left pill reads `"Comparing Step #<seq>: <label>"` with the same exit button.
+  - **Split side switcher:** Hidden while a history step is pinned, because side A displays the read-only history snapshot rather than `stackA`.
+  - **Different geometry:** When the pinned step's `transform` yields different effective dimensions from the current edit, its snapshot is uniformly contain-fitted and centered inside the current image rectangle without stretching.
 - **App changelog (F24):**
   - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
 - **Project files (F25):**
@@ -477,6 +482,7 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | `Enter` / `Escape` | Crop mode (canvas or crop box; `Escape` anywhere outside text fields and open menus) | Apply / cancel the crop (F20) |
 | `Space` held while dragging | Crop mode | Pan instead of moving the crop box (F20) |
 | `Alt+ArrowUp` / `Alt+ArrowDown` | Effect stack row focused | Move selected effect instance up / down 1 position (AC-F4.3) |
+| `Escape` | History compare active (outside text fields, crop mode, and open modals) | Stop comparing against the pinned history step (F31) |
 | `Escape` | Any modal / menu / sheet | Close overlay and restore focus to its trigger |
 
 ### 8.4 Keyboard hints

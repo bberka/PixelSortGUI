@@ -406,4 +406,76 @@ describe('EditorToolbar compare and split controls', () => {
 		// History count never changed.
 		expect(initialHistoryCount).toBe(1);
 	});
+
+	it('renders the pinned history step pill with one-click exit and clears on Escape (F31)', async () => {
+		const context = createTestStore();
+		await context.store.getState().importImage({
+			name: 'escape-test.png',
+			blob: makeTestBlob('escape-test'),
+			width: 120,
+			height: 90,
+		});
+		await context.store.getState().addEffect('pixelSort');
+
+		container = document.createElement('div');
+		document.body.append(container);
+		root = createRoot(container);
+
+		const stageRef = {current: container};
+		const onExit = vi.fn();
+
+		act(() => {
+			root!.render(
+				<AppRuntimeProvider
+					value={{runtime: stubRuntime, bundle: context.bundle}}
+				>
+					<TooltipProvider>
+						<EditorToolbar />
+						<CompareOverlay
+							splitActive
+							stageRef={stageRef}
+							showingOriginal={false}
+							splitPosition={0.5}
+							historyCompareLabel="Step #0: Initial"
+							onExitHistoryCompare={onExit}
+							onDragSplit={vi.fn()}
+							onCommitSplit={vi.fn()}
+						/>
+					</TooltipProvider>
+				</AppRuntimeProvider>,
+			);
+		});
+
+		expect(
+			container.querySelector('[data-slot="split-label-a"]')?.textContent,
+		).toContain('Step #0: Initial');
+		expect(
+			container.querySelector('[data-slot="split-label-b"]')?.textContent,
+		).toBe('Current');
+
+		const exitButton = container.querySelector<HTMLButtonElement>(
+			'button[aria-label="Stop comparing history step"]',
+		)!;
+		expect(exitButton).not.toBeNull();
+		act(() => {
+			exitButton.click();
+		});
+		expect(onExit).toHaveBeenCalledTimes(1);
+
+		// Escape clears compareHistorySeq via EditorToolbar.
+		act(() => {
+			context.store.getState().setCompareHistorySeq(0);
+		});
+		expect(context.store.getState().compareHistorySeq).toBe(0);
+		act(() => {
+			globalThis.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 'Escape',
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+		expect(context.store.getState().compareHistorySeq).toBeNull();
+	});
 });

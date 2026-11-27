@@ -180,6 +180,11 @@ export const SHORTCUTS: readonly Shortcut[] = [
 	},
 	{
 		keys: ['Escape'],
+		where: 'History compare',
+		action: 'Stop comparing against the pinned history step',
+	},
+	{
+		keys: ['Escape'],
 		where: 'Dialog or menu',
 		action: 'Close it',
 	},
@@ -376,6 +381,10 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 			{
 				kind: 'paragraph',
 				text: 'Each project keeps up to 200 steps, and they are still there after you reload. One history covers both sides of the split view, and those steps name their side. Undo does not change zoom, pan or theme.',
+			},
+			{
+				kind: 'paragraph',
+				text: 'Use “Compare with this” on any step in the History panel to compare that snapshot against your current edit in split view or with Compare, without changing your history or effect stacks. Use the close button on the canvas label to stop comparing.',
 			},
 		],
 	},

@@ -24,7 +24,6 @@ import {
 	newSourceRecord,
 	projectSourceHashes,
 	referencedSourceHashes,
-	stripSourceReferences,
 } from './extra-sources.ts';
 import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
@@ -44,6 +43,14 @@ import {
 	validateStackForWrite,
 	withSideA,
 } from './helpers.ts';
+import {
+	addedMaskReferences,
+	missingMaskError,
+	newMaskRecords,
+	referencedMaskHashes,
+	stripPresetReferences,
+	validateNewMasks,
+} from './masks.ts';
 import type {ProjectFileOutput} from './project-format.ts';
 import {
 	buildImportedProject,
@@ -71,6 +78,7 @@ import {
 	type HistoryEntryRecord,
 	type HistoryStepResult,
 	type ImportProjectOptions,
+	type MaskRecord,
 	type ProjectRecord,
 	type SchemaInfoRecord,
 	type SourceRecord,
@@ -273,12 +281,27 @@ async function requireSources(
 	}
 }
 
-// Keeps a record that is already stored under the same hash.
-async function storeSourceOnce(
+async function requireMasks(
 	transaction: IDBTransaction,
-	record: SourceRecord,
+	hashes: readonly string[],
 ): Promise<void> {
-	const store = transaction.objectStore(STORE_NAMES.sources);
+	for (const sha256 of hashes) {
+		const count = await requestToPromise(
+			transaction.objectStore(STORE_NAMES.masks).count(sha256),
+		);
+		if (count === 0) {
+			throw missingMaskError(sha256);
+		}
+	}
+}
+
+// Keeps a record that is already stored under the same hash.
+async function storeOnce(
+	transaction: IDBTransaction,
+	storeName: typeof STORE_NAMES.sources | typeof STORE_NAMES.masks,
+	record: SourceRecord | MaskRecord,
+): Promise<void> {
+	const store = transaction.objectStore(storeName);
 	if ((await requestToPromise(store.count(record.sha256))) === 0) {
 		await requestToPromise(store.put(record));
 	}
@@ -310,6 +333,30 @@ async function deleteUnreferencedSources(
 			transaction.objectStore(STORE_NAMES.sources).delete(sha256),
 		);
 		deleted.push(sha256);
+	}
+
+	return deleted;
+}
+
+// The same for painted masks (section 8.6). The transaction covers masks and
+// projects.
+async function deleteUnreferencedMasks(
+	transaction: IDBTransaction,
+	hashes: Iterable<string>,
+): Promise<number> {
+	const index = transaction
+		.objectStore(STORE_NAMES.projects)
+		.index('byReferencedMaskHash');
+	let deleted = 0;
+	for (const sha256 of hashes) {
+		if ((await requestToPromise(index.count(sha256))) !== 0) {
+			continue;
+		}
+
+		await requestToPromise(
+			transaction.objectStore(STORE_NAMES.masks).delete(sha256),
+		);
+		deleted++;
 	}
 
 	return deleted;
@@ -441,6 +488,7 @@ export class IndexedDbRepository implements StorageRepository {
 					},
 				),
 			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
+			cleanupOrphanedMasks: async () => this.cleanupOrphanedMasks(),
 		};
 	}
 
@@ -521,7 +569,7 @@ export class IndexedDbRepository implements StorageRepository {
 		const quotaCheck = await checkQuotaForImport(bytes, this.#storageManager);
 		if (!quotaCheck.ok) {
 			throw new StorageQuotaError(
-				`Insufficient storage quota for ${bytes} bytes of images`,
+				`Insufficient storage quota for ${bytes} bytes of images and masks`,
 			);
 		}
 	}
@@ -597,6 +645,7 @@ export class IndexedDbRepository implements StorageRepository {
 					name,
 					sourceHash: sha256,
 					referencedSourceHashes: [sha256],
+					referencedMaskHashes: [],
 					sourceWidth: input.width,
 					sourceHeight: input.height,
 					transform: IDENTITY_TRANSFORM,
@@ -686,6 +735,18 @@ export class IndexedDbRepository implements StorageRepository {
 				);
 				return count > 0;
 			},
+		);
+	}
+
+	async getMask(sha256: string): Promise<MaskRecord | undefined> {
+		return runTransaction(
+			this.#db,
+			STORE_NAMES.masks,
+			'readonly',
+			async (tx) =>
+				(await requestToPromise(
+					tx.objectStore(STORE_NAMES.masks).get(sha256),
+				)) as MaskRecord | undefined,
 		);
 	}
 
@@ -782,6 +843,7 @@ export class IndexedDbRepository implements StorageRepository {
 				const copy: ProjectRecord = {
 					...existing,
 					referencedSourceHashes: referencedSourceHashes(existing, historyRows),
+					referencedMaskHashes: referencedMaskHashes(existing, historyRows),
 					id: newId,
 					name: createDuplicateProjectName(existing.name),
 					viewState: createDefaultViewState(
@@ -827,6 +889,7 @@ export class IndexedDbRepository implements StorageRepository {
 				STORE_NAMES.history,
 				STORE_NAMES.thumbnails,
 				STORE_NAMES.sources,
+				STORE_NAMES.masks,
 				STORE_NAMES.meta,
 			],
 			'readwrite',
@@ -865,6 +928,7 @@ export class IndexedDbRepository implements StorageRepository {
 					tx,
 					existing.referencedSourceHashes,
 				);
+				await deleteUnreferencedMasks(tx, existing.referencedMaskHashes);
 				return {
 					deleted: true,
 					sourceDeleted: removed.includes(existing.sourceHash),
@@ -1120,19 +1184,37 @@ export class IndexedDbRepository implements StorageRepository {
 			validateStackForWrite(input.stackA);
 		}
 
-		const {newSource} = input;
+		const {newSource, newMasks = []} = input;
 		if (newSource) {
 			validateImageDimensions(newSource.width, newSource.height);
-			if (!(await this.hasSource(newSource.sha256))) {
-				await this.#requireQuota(newSource.blob.size);
+		}
+
+		validateNewMasks(newMasks);
+		let newBytes = 0;
+		if (newSource && !(await this.hasSource(newSource.sha256))) {
+			newBytes += newSource.blob.size;
+		}
+
+		for (const {sha256, blob} of newMasks) {
+			if (!(await this.getMask(sha256))) {
+				newBytes += blob.size;
 			}
+		}
+
+		if (newBytes > 0) {
+			await this.#requireQuota(newBytes);
 		}
 
 		const now = this.#now();
 
 		return runTransaction(
 			this.#db,
-			[STORE_NAMES.projects, STORE_NAMES.history, STORE_NAMES.sources],
+			[
+				STORE_NAMES.projects,
+				STORE_NAMES.history,
+				STORE_NAMES.sources,
+				STORE_NAMES.masks,
+			],
 			'readwrite',
 			async (tx) => {
 				const projectsStore = tx.objectStore(STORE_NAMES.projects);
@@ -1154,10 +1236,15 @@ export class IndexedDbRepository implements StorageRepository {
 				const added = addedSourceReferences(existing, next);
 				const record = newSource && newSourceRecord(newSource, next, now);
 				if (record) {
-					await storeSourceOnce(tx, record);
+					await storeOnce(tx, STORE_NAMES.sources, record);
 				}
 
 				await requireSources(tx, added);
+				for (const mask of newMaskRecords(newMasks, next, now)) {
+					await storeOnce(tx, STORE_NAMES.masks, mask);
+				}
+
+				await requireMasks(tx, addedMaskReferences(existing, next));
 				await requestToPromise(
 					historyStore.delete(
 						this.#keyRange.bound(
@@ -1215,10 +1302,12 @@ export class IndexedDbRepository implements StorageRepository {
 					stackA,
 					selectedInstanceIdA,
 				);
+				const retained = await readHistory(tx, input.projectId);
 				updated.referencedSourceHashes = referencedSourceHashes(
 					updated,
-					await readHistory(tx, input.projectId),
+					retained,
 				);
+				updated.referencedMaskHashes = referencedMaskHashes(updated, retained);
 				await requestToPromise(projectsStore.put(updated));
 
 				return {project: updated, entry};
@@ -1235,7 +1324,12 @@ export class IndexedDbRepository implements StorageRepository {
 		const now = this.#now();
 		return runTransaction(
 			this.#db,
-			[STORE_NAMES.projects, STORE_NAMES.history, STORE_NAMES.sources],
+			[
+				STORE_NAMES.projects,
+				STORE_NAMES.history,
+				STORE_NAMES.sources,
+				STORE_NAMES.masks,
+			],
 			'readwrite',
 			async (tx) => {
 				const projectsStore = tx.objectStore(STORE_NAMES.projects);
@@ -1245,10 +1339,9 @@ export class IndexedDbRepository implements StorageRepository {
 					throw new StorageNotFoundError(`Project "${id}" not found`);
 				}
 
-				await requireSources(
-					tx,
-					addedSourceReferences(existing, {stack, stackA: existing.stackA}),
-				);
+				const next = {stack, stackA: existing.stackA};
+				await requireSources(tx, addedSourceReferences(existing, next));
+				await requireMasks(tx, addedMaskReferences(existing, next));
 				const updated: ProjectRecord = {
 					...existing,
 					stack,
@@ -1258,10 +1351,12 @@ export class IndexedDbRepository implements StorageRepository {
 							: selectedInstanceId,
 					updatedAt: now,
 				};
+				const retained = await readHistory(tx, id);
 				updated.referencedSourceHashes = referencedSourceHashes(
 					updated,
-					await readHistory(tx, id),
+					retained,
 				);
+				updated.referencedMaskHashes = referencedMaskHashes(updated, retained);
 				await requestToPromise(projectsStore.put(updated));
 				return updated;
 			},
@@ -1452,7 +1547,7 @@ export class IndexedDbRepository implements StorageRepository {
 			id: `user:${generateId()}`,
 			name,
 			nameLower: name.toLocaleLowerCase('en'),
-			stack: stripSourceReferences(input.stack),
+			stack: stripPresetReferences(input.stack),
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -1599,6 +1694,20 @@ export class IndexedDbRepository implements StorageRepository {
 					tx.objectStore(STORE_NAMES.sources).getAllKeys(),
 				)) as string[];
 				return (await deleteUnreferencedSources(tx, keys)).length;
+			},
+		);
+	}
+
+	async cleanupOrphanedMasks(): Promise<number> {
+		return runTransaction(
+			this.#db,
+			[STORE_NAMES.masks, STORE_NAMES.projects],
+			'readwrite',
+			async (tx) => {
+				const keys = (await requestToPromise(
+					tx.objectStore(STORE_NAMES.masks).getAllKeys(),
+				)) as string[];
+				return deleteUnreferencedMasks(tx, keys);
 			},
 		);
 	}

@@ -248,7 +248,7 @@ export async function restoreStartup(
 			)
 		: Promise.resolve();
 
-	// Step 7: Idle housekeeping (storage estimate/persisted + orphaned source cleanup)
+	// Step 7: Idle housekeeping (storage estimate/persisted + orphaned source and mask cleanup)
 	const housekeepingPromise = new Promise<void>((resolve) => {
 		scheduleIdle(() => {
 			void runIdleHousekeeping(bundle, repository, options.storageManager)
@@ -343,4 +343,5 @@ async function runIdleHousekeeping(
 	]);
 	bundle.store.getState().setStorageMetrics(estimate, persisted);
 	await repository.cleanupOrphanedSources();
+	await repository.cleanupOrphanedMasks();
 }

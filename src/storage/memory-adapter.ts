@@ -24,7 +24,6 @@ import {
 	newSourceRecord,
 	projectSourceHashes,
 	referencedSourceHashes,
-	stripSourceReferences,
 } from './extra-sources.ts';
 import {commitGeometry, resolveStoredGeometry} from './geometry.ts';
 import {
@@ -45,6 +44,14 @@ import {
 	validateStackForWrite,
 	withSideA,
 } from './helpers.ts';
+import {
+	addedMaskReferences,
+	missingMaskError,
+	newMaskRecords,
+	referencedMaskHashes,
+	stripPresetReferences,
+	validateNewMasks,
+} from './masks.ts';
 import type {ProjectFileOutput} from './project-format.ts';
 import {
 	buildImportedProject,
@@ -69,6 +76,7 @@ import {
 	type HistoryEntryRecord,
 	type HistoryStepResult,
 	type ImportProjectOptions,
+	type MaskRecord,
 	type ProjectRecord,
 	type SchemaInfoRecord,
 	type SourceRecord,
@@ -87,6 +95,7 @@ export type MemoryStorageAdapterOptions = ProjectTransferDependencies &
 export class MemoryStorageAdapter implements StorageRepository {
 	readonly #sources = new Map<string, SourceRecord>();
 	readonly #projects = new Map<string, ProjectRecord>();
+	readonly #masks = new Map<string, MaskRecord>();
 	readonly #thumbnails = new Map<string, ThumbnailRecord>();
 	readonly #history = new Map<string, Map<number, HistoryEntryRecord>>();
 	readonly #presets = new Map<string, UserPresetRecord>();
@@ -187,6 +196,25 @@ export class MemoryStorageAdapter implements StorageRepository {
 		}
 	}
 
+	#deleteUnreferencedMasks(hashes: Iterable<string>): number {
+		const referenced = new Set(
+			Array.from(this.#projects.values()).flatMap(
+				(project) => project.referencedMaskHashes,
+			),
+		);
+		return [...hashes].filter(
+			(sha256) => !referenced.has(sha256) && this.#masks.delete(sha256),
+		).length;
+	}
+
+	#requireMasks(hashes: Iterable<string>): void {
+		for (const sha256 of hashes) {
+			if (!this.#masks.has(sha256)) {
+				throw missingMaskError(sha256);
+			}
+		}
+	}
+
 	#backupStore(): BackupImportStore {
 		return {
 			async checkQuota() {},
@@ -218,6 +246,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 				this.#deleteUnreferencedSources(hashes);
 			},
 			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
+			cleanupOrphanedMasks: async () => this.cleanupOrphanedMasks(),
 		};
 	}
 
@@ -298,6 +327,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 			name,
 			sourceHash: sha256,
 			referencedSourceHashes: [sha256],
+			referencedMaskHashes: [],
 			sourceWidth: input.width,
 			sourceHeight: input.height,
 			transform: IDENTITY_TRANSFORM,
@@ -365,6 +395,11 @@ export class MemoryStorageAdapter implements StorageRepository {
 		return this.#sources.has(sha256);
 	}
 
+	async getMask(sha256: string): Promise<MaskRecord | undefined> {
+		const mask = this.#masks.get(sha256);
+		return mask ? {...mask} : undefined;
+	}
+
 	async openProject(id: string): Promise<ProjectRecord> {
 		const existing = this.#projects.get(id);
 		if (!existing) {
@@ -423,6 +458,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 				existing,
 				this.#historyOf(id),
 			),
+			referencedMaskHashes: referencedMaskHashes(existing, this.#historyOf(id)),
 			id: newId,
 			name: createDuplicateProjectName(existing.name),
 			viewState: createDefaultViewState(
@@ -479,6 +515,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 		const removed = this.#deleteUnreferencedSources(
 			existing.referencedSourceHashes,
 		);
+		this.#deleteUnreferencedMasks(existing.referencedMaskHashes);
 		return {
 			deleted: true,
 			sourceDeleted: removed.includes(existing.sourceHash),
@@ -643,10 +680,12 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${input.projectId}" not found`);
 		}
 
-		const {newSource} = input;
+		const {newSource, newMasks = []} = input;
 		if (newSource) {
 			validateImageDimensions(newSource.width, newSource.height);
 		}
+
+		validateNewMasks(newMasks);
 
 		// Everything that can refuse the commit comes before the first write, so a
 		// rejected one leaves history and sources alone.
@@ -658,6 +697,19 @@ export class MemoryStorageAdapter implements StorageRepository {
 		const added = addedSourceReferences(existing, next);
 		const record = newSource && newSourceRecord(newSource, next, now);
 		this.#requireSources(added.filter((sha256) => sha256 !== record?.sha256));
+		const masks = newMaskRecords(newMasks, next, now);
+		const supplied = new Set(masks.map((mask) => mask.sha256));
+		this.#requireMasks(
+			addedMaskReferences(existing, next).filter(
+				(sha256) => !supplied.has(sha256),
+			),
+		);
+		for (const mask of masks) {
+			if (!this.#masks.has(mask.sha256)) {
+				this.#masks.set(mask.sha256, mask);
+			}
+		}
+
 		if (record && !this.#sources.has(record.sha256)) {
 			this.#sources.set(record.sha256, record);
 		}
@@ -719,9 +771,9 @@ export class MemoryStorageAdapter implements StorageRepository {
 			stackA,
 			selectedInstanceIdA,
 		);
-		updated.referencedSourceHashes = referencedSourceHashes(updated, [
-			...projectHistory.values(),
-		]);
+		const retained = [...projectHistory.values()];
+		updated.referencedSourceHashes = referencedSourceHashes(updated, retained);
+		updated.referencedMaskHashes = referencedMaskHashes(updated, retained);
 		this.#projects.set(input.projectId, updated);
 
 		return {
@@ -741,9 +793,9 @@ export class MemoryStorageAdapter implements StorageRepository {
 			throw new StorageNotFoundError(`Project "${id}" not found`);
 		}
 
-		this.#requireSources(
-			addedSourceReferences(existing, {stack, stackA: existing.stackA}),
-		);
+		const next = {stack, stackA: existing.stackA};
+		this.#requireSources(addedSourceReferences(existing, next));
+		this.#requireMasks(addedMaskReferences(existing, next));
 		const updated: ProjectRecord = {
 			...existing,
 			stack: cloneRecord(stack),
@@ -753,10 +805,9 @@ export class MemoryStorageAdapter implements StorageRepository {
 					: selectedInstanceId,
 			updatedAt: this.#now(),
 		};
-		updated.referencedSourceHashes = referencedSourceHashes(
-			updated,
-			this.#historyOf(id),
-		);
+		const retained = this.#historyOf(id);
+		updated.referencedSourceHashes = referencedSourceHashes(updated, retained);
+		updated.referencedMaskHashes = referencedMaskHashes(updated, retained);
 		this.#projects.set(id, updated);
 		return cloneRecord(updated);
 	}
@@ -879,7 +930,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 			id: `user:${generateId()}`,
 			name,
 			nameLower: name.toLocaleLowerCase('en'),
-			stack: cloneRecord(stripSourceReferences(input.stack)),
+			stack: cloneRecord(stripPresetReferences(input.stack)),
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -937,6 +988,10 @@ export class MemoryStorageAdapter implements StorageRepository {
 
 	async cleanupOrphanedSources(): Promise<number> {
 		return this.#deleteUnreferencedSources(this.#sources.keys()).length;
+	}
+
+	async cleanupOrphanedMasks(): Promise<number> {
+		return this.#deleteUnreferencedMasks(this.#masks.keys());
 	}
 
 	close(): void {

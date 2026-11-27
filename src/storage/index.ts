@@ -57,6 +57,7 @@ export * from './db.ts';
 export * from './extra-sources.ts';
 export * from './geometry.ts';
 export * from './helpers.ts';
+export * from './masks.ts';
 export * from './memory-adapter.ts';
 export * from './migrations.ts';
 export * from './project-transfer.ts';

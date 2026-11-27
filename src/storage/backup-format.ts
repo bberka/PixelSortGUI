@@ -1,6 +1,7 @@
 // The backup format: types, limits and validation (persistence.md section 8.4).
 // `backup.ts` reads and writes the archive.
-import {projectSourceHashes, stripSourceReferences} from './extra-sources.ts';
+import {projectSourceHashes} from './extra-sources.ts';
+import {stripPresetReferences} from './masks.ts';
 import {
 	booleanValue,
 	ensure,
@@ -298,7 +299,7 @@ function presetValue(value: unknown): UserPresetRecord {
 		id,
 		name,
 		nameLower: name.toLocaleLowerCase('en'),
-		stack: stripSourceReferences(stackValue(preset.stack, 'preset stack')),
+		stack: stripPresetReferences(stackValue(preset.stack, 'preset stack')),
 		createdAt: timestamp(preset.createdAt, 'preset createdAt'),
 		updatedAt: timestamp(preset.updatedAt, 'preset updatedAt'),
 	};

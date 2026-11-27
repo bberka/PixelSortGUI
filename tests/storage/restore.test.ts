@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vite-plus/test';
+import {describe, expect, it, vi} from 'vite-plus/test';
 import {IDENTITY_TRANSFORM} from '../../src/engine/transform.ts';
 import {createRegistry} from '../../src/engine/registry.ts';
 import type {EffectDefinition} from '../../src/engine/types.ts';
@@ -381,6 +381,7 @@ describe('startup restore sequence (persistence.md section 9)', () => {
 		});
 		await repository.updateAppState({theme: 'dark', compareMode: 'split'});
 
+		const maskCleanup = vi.spyOn(repository, 'cleanupOrphanedMasks');
 		let cleanupCalled = false;
 		const origCleanup = repository.cleanupOrphanedSources.bind(repository);
 		repository.cleanupOrphanedSources = async () => {
@@ -434,6 +435,7 @@ describe('startup restore sequence (persistence.md section 9)', () => {
 		expect(state.storage.persisted).toBe(true);
 		expect(state.storage.estimate.usage).toBe(10_000_000);
 		expect(cleanupCalled).toBe(true);
+		expect(maskCleanup).toHaveBeenCalledOnce();
 
 		expect(coordinator.calls).toEqual([
 			{

@@ -205,6 +205,7 @@ describe('readProjectFile', () => {
 			effectiveWidth,
 			effectiveHeight,
 			referencedSourceHashes,
+			referencedMaskHashes,
 			...project
 		} = input.project;
 		expect(contents.project).toStrictEqual({

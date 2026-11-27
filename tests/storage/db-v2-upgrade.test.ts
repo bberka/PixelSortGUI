@@ -185,7 +185,10 @@ describe('database upgrade from version 1 (persistence.md section 8.1)', () => {
 		expect((await repository.getSchemaInfo())?.dbVersion).toBe(DB_VERSION);
 
 		// Version 3 ran after version 2 and kept what it wrote.
-		const references = {referencedSourceHashes: ['a'.repeat(64)]};
+		const references = {
+			referencedSourceHashes: ['a'.repeat(64)],
+			referencedMaskHashes: [],
+		};
 		const identity = {
 			...references,
 			transform: IDENTITY_TRANSFORM,

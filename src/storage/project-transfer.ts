@@ -7,6 +7,7 @@ import type {openProjectFile, saveProjectFile} from './archive-client.ts';
 import {referencedSourceHashes} from './extra-sources.ts';
 import {resolveStoredGeometry} from './geometry.ts';
 import {withSideA} from './helpers.ts';
+import {referencedMaskHashes} from './masks.ts';
 import {ProjectFileError, projectOpenMessage} from './project-file-error.ts';
 import type {
 	ProjectFileContents,
@@ -205,7 +206,9 @@ export function buildProjectRecords(
 		payload.sourceHeight,
 		payload.transform,
 	);
-	const project = withSideA<Omit<ProjectRecord, 'referencedSourceHashes'>>(
+	const project = withSideA<
+		Omit<ProjectRecord, 'referencedSourceHashes' | 'referencedMaskHashes'>
+	>(
 		{
 			...payload,
 			id: projectId,
@@ -236,6 +239,7 @@ export function buildProjectRecords(
 		project: {
 			...project,
 			referencedSourceHashes: referencedSourceHashes(project, history),
+			referencedMaskHashes: referencedMaskHashes(project, history),
 		},
 		history,
 		// An empty signature matches no stack, so the next render replaces it.

@@ -13,7 +13,7 @@ import type {
 import type {ArchiveOptions, ProjectFileOutput} from './project-format.ts';
 
 export const DB_NAME = 'drift';
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 export const STORE_NAMES = {
 	sources: 'sources',
@@ -22,6 +22,7 @@ export const STORE_NAMES = {
 	history: 'history',
 	presets: 'presets',
 	meta: 'meta',
+	masks: 'masks',
 } as const;
 
 export type StoreName = (typeof STORE_NAMES)[keyof typeof STORE_NAMES];
@@ -48,6 +49,18 @@ export type SourceRecord = {
 	byteLength: number;
 	width: number;
 	height: number;
+	createdAt: number;
+};
+
+// A painted mask asset (persistence.md section 8.6).
+export type MaskRecord = {
+	// Mask hash: SHA-256 of the canonical bytes.
+	sha256: string;
+	width: number;
+	height: number;
+	// The canonical bytes, compressed with raw DEFLATE.
+	blob: Blob;
+	byteLength: number;
 	createdAt: number;
 };
 
@@ -89,6 +102,8 @@ export type ProjectRecord = {
 	// `sourceHash` and every extra source of the stacks and the history, sorted
 	// (persistence.md section 8.5).
 	referencedSourceHashes: string[];
+	// Every painted mask of the stacks and the history, sorted (section 8.6).
+	referencedMaskHashes: string[];
 	sourceWidth: number;
 	sourceHeight: number;
 	// Crop, rotation, flip and resize (persistence.md section 8.1).
@@ -184,6 +199,9 @@ export type NewSource = Pick<
 	'sha256' | 'blob' | 'mimeType' | 'width' | 'height'
 >;
 
+// A painted mask stored by the commit that first refers to it.
+export type NewMask = Omit<MaskRecord, 'byteLength' | 'createdAt'>;
+
 export type CommitStackInput = {
 	projectId: string;
 	stack: EffectStack;
@@ -196,6 +214,8 @@ export type CommitStackInput = {
 	label: string;
 	// Stored with this commit when `stack` or `stackA` refers to it.
 	newSource?: NewSource;
+	// Each is stored with this commit when `stack` or `stackA` refers to it.
+	newMasks?: readonly NewMask[];
 };
 
 export type CommitStackResult = {
@@ -240,6 +260,7 @@ export type StorageRepository = {
 	getProject(id: string): Promise<ProjectRecord | undefined>;
 	getSource(sha256: string): Promise<SourceRecord | undefined>;
 	hasSource(sha256: string): Promise<boolean>;
+	getMask(sha256: string): Promise<MaskRecord | undefined>;
 	openProject(id: string): Promise<ProjectRecord>;
 	closeActiveProject(): Promise<AppStateRecord>;
 	renameProject(id: string, name: string): Promise<ProjectRecord>;
@@ -314,6 +335,7 @@ export type StorageRepository = {
 	getStartupSnapshot(): Promise<StartupSnapshot>;
 	getSchemaInfo(): Promise<SchemaInfoRecord | undefined>;
 	cleanupOrphanedSources(): Promise<number>;
+	cleanupOrphanedMasks(): Promise<number>;
 	close(): void;
 };
 

@@ -123,6 +123,7 @@ export type BackupImportStore = {
 	// Deletes those of the sources that no project refers to.
 	discardSources(hashes: readonly string[]): Promise<void>;
 	cleanupOrphanedSources(): Promise<number>;
+	cleanupOrphanedMasks(): Promise<number>;
 };
 
 // The projects an export covers, in the order given.
@@ -551,11 +552,11 @@ export async function runBackupImport(
 	}
 
 	// The import is committed: nothing below may fail it.
-	await (
+	const cleanup =
 		plan.mode === 'replace'
-			? store.cleanupOrphanedSources()
-			: store.discardSources(inserted)
-	).catch(() => undefined);
+			? [store.cleanupOrphanedSources(), store.cleanupOrphanedMasks()]
+			: [store.discardSources(inserted)];
+	await Promise.allSettled(cleanup);
 	onProgress?.({stage: 'importing', fraction: 1});
 	const {sources, records, ...result} = plan;
 	return result;

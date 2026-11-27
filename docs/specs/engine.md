@@ -1224,4 +1224,29 @@ Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceH
 - **Geometry (16.3):** the transform belongs to the project's source. It never applies to an extra source, which is decoded whole. It still affects the blend through the base image: `ctx.sourceWidth`, `ctx.sourceHeight` and `ctx.scale` are those of the effective image, so `tile` and `none` place one extra-source pixel on one effective-image pixel at scale 1.
 - **Render coordinator:** which sources are loaded, and when the stack is rendered again, is in section 8.3.
 - **Determinism:** Uses only `DIRECTION_TABLE`, exact integer blend/alpha formulas, and deterministic bilinear sampling. Output bytes are identical across runs, browsers, and Node for identical decoded input pixels.
-- **Measured speed (2026-11-27, not an acceptance run):** the section 9 laptop (i7-13650HX), 1-minute load average 10 to 12 between runs, browser processes at idle scheduling priority on 4 performance and 8 efficiency threads. Production build, 4000 × 3000 base, 3600 × 3200 overlay, 20 timed renders, median / p95 worker time. `settle` (4 MP): Chromium 246 / 269 ms normal and 267 / 281 ms overlay rotated 33.3° pinned to the performance threads (220 / 274 and 245 / 314 ms unpinned); Firefox 325 / 369 and 334 / 388 ms pinned (346 / 396 and 393 / 447 ms unpinned). `drag`: the adaptive cap settled between 0.26 and 0.52 MP, median 30 to 38 ms, p95 36 to 57 ms. In the same runs the p95 of a `pixelSort` `settle` was 1.5 to 1.8 times what section 9 records for it. So the 5 updates per second of AC-F8.1 are met, Chromium meets the 300 ms `settle` target in three of its four cases (worst p95 314 ms), Firefox misses it, and `drag` stays near 50 ms only by lowering its cap (in Node a 1 MP render took 74 to 105 ms median). Measure again on an idle reference device (roadmap task `T8.11`) before changing the effect.
+- **Measured speed (2026-11-27, not an acceptance run):** the section 9 laptop (i7-13650HX), 1-minute load average 10 to 12 between runs, browser processes at idle scheduling priority on 4 performance and 8 efficiency threads. Production build, 4000 × 3000 base, 3600 × 3200 overlay, 20 timed renders, median / p95 worker time. `settle` (4 MP): Chromium 246 / 269 ms normal and 267 / 281 ms overlay rotated 33.3° pinned to the performance threads (220 / 274 and 245 / 314 ms unpinned); Firefox 325 / 369 and 334 / 388 ms pinned (346 / 396 and 393 / 447 ms unpinned). `drag`: the adaptive cap settled between 0.26 and 0.52 MP, median 30 to 38 ms, p95 36 to 57 ms. In the same runs the p95 of a `pixelSort` `settle` was 1.5 to 1.8 times what section 9 records for it. So the 5 updates per second of AC-F8.1 are met, Chromium meets the 300 ms `settle` target in three of its four cases (worst p95 314 ms), Firefox misses it, and `drag` stays near 50 ms only by lowering its cap (in Node a 1 MP render took 74 to 105 ms median).
+- **Measured again for `v0.3.0` (roadmap task `T8.11`, 2026-11-27, not an acceptance run):** the same laptop and workload, now `tests/e2e/render-bench.spec.ts` "imageBlend timings on a 12 MP base" (`normal` blend, and `overlay` rotated 33.3°; 20 timed renders per cell; median / p95 worker ms; three runs per browser in each of three rounds). The machine was never idle: `power-saver` profile, browsers at idle scheduling priority on 4 performance and 8 efficiency threads, an Android emulator using about 30% of one thread, and other test runs for part of the first two rounds. No tests ran during the third round (each browser's last three rows). Load is the 1-minute average.
+
+  | Browser, load before → after | `settle` normal | `settle` rotated | `pixelSort` `settle` | `drag` p95, normal / rotated |
+  |---|---|---|---|---|
+  | Chromium, 3 → 3 | 318 / 443 | 292 / 467 | 54 / 135 | 56 / 79 |
+  | Chromium, 3 → 2 | 257 / 419 | 295 / 547 | 54 / 133 | 55 / 62 |
+  | Chromium, 2 → 7 | 340 / 397 | 405 / 462 | 86 / 103 | 43 / 32 |
+  | Chromium, 11 → 13 | 361 / 379 | 353 / 382 | 69 / 94 | 48 / 47 |
+  | Chromium, 13 → 20 | 309 / 322 | 369 / 394 | 68 / 93 | 44 / 49 |
+  | Chromium, 20 → 17 | 349 / 445 | 312 / 407 | 56 / 114 | 45 / 44 |
+  | Chromium, 6 → 5 | 243 / 496 | 315 / 551 | 55 / 141 | 38 / 37 |
+  | Chromium, 5 → 4 | 304 / 435 | 303 / 504 | 79 / 133 | 32 / 50 |
+  | Chromium, 4 → 3 | 257 / 416 | 358 / 533 | 57 / 127 | 77 / 55 |
+  | Firefox, 8 → 13 | 474 / 522 | 556 / 569 | 141 / 168 | 32 / 46 |
+  | Firefox, 13 → 13 | 487 / 545 | 367 / 443 | 98 / 143 | 35 / 35 |
+  | Firefox, 13 → 11 | 373 / 633 | 332 / 346 | 77 / 139 | 58 / 26 |
+  | Firefox, 16 → 11 | 337 / 619 | 328 / 549 | 75 / 183 | 30 / 53 |
+  | Firefox, 11 → 29 | 785 / 903 | 674 / 760 | 150 / 169 | 41 / 49 |
+  | Firefox, 30 → 43 | 704 / 773 | 685 / 778 | 95 / 137 | 50 / 52 |
+  | Firefox, 3 → 2 | 322 / 571 | 548 / 649 | 141 / 165 | 49 / 32 |
+  | Firefox, 3 → 3 | 425 / 710 | 527 / 722 | 100 / 157 | 47 / 34 |
+  | Firefox, 3 → 2 | 471 / 720 | 541 / 687 | 76 / 158 | 51 / 50 |
+
+  `settle` misses the 300 ms p95 target in all 18 runs: Chromium p95 322 to 551 ms (median 243 to 405), Firefox 346 to 903 ms (median 322 to 785). The quieter third round was no better. The p95 of `pixelSort` in the same runs was 93 to 183 ms against the 60 to 97 ms section 9 records, so the machine explains part of the miss, but not how much. `drag` p95 was 26 to 79 ms, and only at a cap lowered to 0.13 to 0.52 MP. `AC-F8.1` (5 updates per second) is met.
+- **Recommendation:** ship `v0.3.0` with the effect unchanged, because the acceptance limit is met and `settle` is an engineering target; product.md section 9 asks the owner to accept the miss. Then run manual item `M7` of [acceptance-v0.3.0.md](acceptance-v0.3.0.md#manual-checklist) on an idle machine. If it still misses, give the fast paths their own task: copy rows directly for unrotated whole-pixel placement, and one inner loop per blend mode instead of a call per channel. The golden cases must stay unchanged.

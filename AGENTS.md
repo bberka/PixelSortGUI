@@ -1,7 +1,7 @@
 # Drift
 
 Web GUI editor for glitch art and pixel sorting of still photos. Static-hostable (`drift.bbay.dev`), works offline with no account, state in browser storage, desktop-first, responsive.
-Stack: Vite+ (`vp`), pnpm, TypeScript, React 19, Tailwind 4, shadcn, Zustand, xo. Status: v0.2.0 features built; see README.md.
+Stack: Vite+ (`vp`), pnpm, TypeScript, React 19, Tailwind 4, shadcn, Zustand, xo. Status: v0.3.0 features built; see README.md.
 The owner does not write code. A lead agent splits work into tasks, delegates each to a subagent, reviews the result, and merges approved pull requests.
 
 ## Hard rules

@@ -1,5 +1,9 @@
+import {loadavg} from 'node:os';
 import process from 'node:process';
 import {expect, test} from '@playwright/test';
+import {imageBlendSpec} from '../../src/engine/effects/image-blend-spec.ts';
+import {defaultParams} from '../../src/engine/params.ts';
+import type {EffectStack, ParamValue} from '../../src/engine/types.ts';
 import {
 	builtAsset,
 	openRenderPage,
@@ -265,4 +269,168 @@ test('12 MP timings with the default pixelSort stack', async ({
 		`render-bench ${browserName} ${page.context().browser()?.version()}\n${JSON.stringify(report, null, 2)}`,
 	);
 	expect(report.fullTiles).toBe(4);
+});
+
+function blendStack(params: Record<string, ParamValue>): EffectStack {
+	return {
+		schemaVersion: 1,
+		instances: [
+			{
+				id: 'blend0000',
+				type: 'imageBlend',
+				version: imageBlendSpec.version,
+				enabled: true,
+				params: {
+					...defaultParams(imageBlendSpec.params),
+					image: 'a'.repeat(64),
+					...params,
+				},
+				mix: 1,
+				blend: 'normal',
+			},
+		],
+	};
+}
+
+// Times `imageBlend` against the `drag` and `settle` targets (engine.md section
+// 16.5), with a `pixelSort` render in the same run to show the machine's speed.
+test('imageBlend timings on a 12 MP base', async ({page, browserName}) => {
+	test.setTimeout(300_000);
+	await openRenderPage(page);
+	const loadBefore = loadavg();
+	const report = await page.evaluate(
+		async (input) => {
+			const {renderTest} = globalThis as unknown as PageScope;
+			const base = {width: 4000, height: 3000};
+			const overlay = {width: 3600, height: 3200};
+			const runs = 20;
+			const blob = await renderTest.sourceBlob(
+				base.width,
+				base.height,
+				'image/jpeg',
+			);
+			const extra = await renderTest.sourceBlob(
+				overlay.width,
+				overlay.height,
+				'image/png',
+			);
+			const {createRenderCoordinator} = await renderTest.loadCoordinator(
+				input.url,
+			);
+			const coordinator = createRenderCoordinator();
+			const signal = renderTest.signal();
+			const frames: Array<{
+				level: string;
+				workerMs: number;
+				pixels: number;
+				pending: boolean;
+				missing: boolean;
+			}> = [];
+			let loaded = false;
+			coordinator.setExtraSourceLoader(async () => ({
+				blob: extra,
+				...overlay,
+			}));
+			coordinator.subscribe((event) => {
+				if (event.type === 'frame') {
+					frames.push({
+						level: event.frame.level,
+						workerMs: event.frame.totalMs,
+						pixels: event.frame.width * event.frame.height,
+						pending: Boolean(event.frame.sourcesPending),
+						missing: event.frame.warnings.some(
+							({code}) => code === 'missing-source',
+						),
+					});
+				}
+
+				if (event.type === 'source') {
+					loaded = event.source !== undefined;
+				}
+
+				if (event.type === 'error') {
+					throw new Error(event.error.message);
+				}
+
+				signal.wake();
+			});
+			coordinator.setSource({key: 'blend', blob, ...base});
+			await signal.until(() => loaded);
+
+			let step = 0;
+			const measure = async (
+				stack: typeof input.sort,
+				level: 'drag' | 'settle',
+				count: number,
+			) => {
+				const worker: number[] = [];
+				let pixels = 0;
+				for (let run = 0; run < count; run++) {
+					step++;
+					const next = structuredClone(stack);
+					const [{params}] = next.instances;
+					// A new value each time, so no stage comes from the cache.
+					if (next.instances[0].type === 'imageBlend') {
+						params.opacity = (50 + (step % 49)) / 100;
+					} else {
+						params.threshold = [0.2 + (step % 97) * 0.001, 0.8];
+					}
+
+					const seen = frames.length;
+					coordinator.setStack({stack: next}, {dragging: level === 'drag'});
+					await signal.until(() =>
+						frames
+							.slice(seen)
+							.some((item) => item.level === level && !item.pending),
+					);
+					const done = frames
+						.slice(seen)
+						.find((item) => item.level === level && !item.pending)!;
+					if (done.missing) {
+						throw new Error('The blend image was missing.');
+					}
+
+					worker.push(done.workerMs);
+					pixels = done.pixels;
+				}
+
+				const round = (value: number) => Math.round(value);
+				return {
+					pixels,
+					median: round(renderTest.percentile(worker, 0.5)),
+					p95: round(renderTest.percentile(worker, 0.95)),
+					max: round(Math.max(...worker)),
+				};
+			};
+
+			const results: Record<string, unknown> = {};
+			for (const [name, stack] of Object.entries({
+				normal: input.normal,
+				rotated: input.rotated,
+				sort: input.sort,
+			})) {
+				// Loads the blend image; a `settle` render follows its arrival.
+				await measure(stack, 'settle', 1);
+				await measure(stack, 'drag', 5);
+				const drag = await measure(stack, 'drag', runs);
+				const {dragCap} = coordinator.getState();
+				await measure(stack, 'settle', 3);
+				const settle = await measure(stack, 'settle', runs);
+				results[name] = {settle, drag, dragCap};
+			}
+
+			coordinator.dispose();
+			return results;
+		},
+		{
+			url: builtAsset('coordinator'),
+			normal: blendStack({}),
+			rotated: blendStack({blendMode: 'overlay', rotation: 33.3}),
+			sort: pixelSortStack({}),
+		},
+	);
+
+	console.log(
+		`imageBlend-bench ${browserName} ${page.context().browser()?.version()} load before ${loadBefore.join(' ')}, after ${loadavg().join(' ')}\n${JSON.stringify(report)}`,
+	);
 });

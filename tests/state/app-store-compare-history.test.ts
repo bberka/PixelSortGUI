@@ -2,7 +2,10 @@ import {describe, expect, it} from 'vite-plus/test';
 import {IDENTITY_TRANSFORM} from '../../src/engine/transform.ts';
 import {selectCompareHistoryEntry} from '../../src/state/app-store.ts';
 import {CLOSED_GEOMETRY} from '../../src/state/geometry.ts';
-import {selectEditingSide} from '../../src/state/split-sides.ts';
+import {
+	selectEditingSide,
+	selectSplitChosen,
+} from '../../src/state/split-sides.ts';
 import {createTestStore, makeTestBlob} from './fixtures.ts';
 
 async function seedProjectWithSteps() {
@@ -125,6 +128,18 @@ describe('app store — compare against any history step (F31)', () => {
 		expect(store.getState().compareHistorySeq).toBeNull();
 		expect(store.getState().compareMode).toBe('toggle');
 
+		// Redo clears compareHistorySeq.
+		store.getState().setCompareHistorySeq(1);
+		expect(await store.getState().redo()).toBe(true);
+		expect(store.getState().compareHistorySeq).toBeNull();
+		expect(store.getState().compareMode).toBe('toggle');
+
+		// A history jump clears compareHistorySeq.
+		store.getState().setCompareHistorySeq(1);
+		expect(await store.getState().jumpToHistory(project.id, 2)).toBe(true);
+		expect(store.getState().compareHistorySeq).toBeNull();
+		expect(store.getState().compareMode).toBe('toggle');
+
 		// 3. Pinning a redo-branch step (seq 3) and making a new commit trims seq 3 and clears pin.
 		store.getState().setCompareHistorySeq(3);
 		expect(store.getState().compareHistorySeq).toBe(3);
@@ -150,6 +165,62 @@ describe('app store — compare against any history step (F31)', () => {
 		expect(store.getState().compareHistorySeq).toBe(1);
 		await store.getState().closeProject();
 		expect(store.getState().compareHistorySeq).toBeNull();
+	});
+
+	it('clears the pin and restores the compare mode when opening a missing project', async () => {
+		const {store, transientStore} = await seedProjectWithSteps();
+		store.getState().setCompareHistorySeq(1);
+		transientStore.setState({compareLatched: true});
+
+		expect(await store.getState().openProject('nonexistent')).toBeNull();
+
+		expect(store.getState().compareHistorySeq).toBeNull();
+		expect(store.getState().compareMode).toBe('toggle');
+		expect(transientStore.getState().compareLatched).toBe(false);
+	});
+
+	it('saves a plain label for an edit made while pinned from toggle compare', async () => {
+		const {store, effect} = await seedProjectWithSteps();
+		store.getState().setCompareHistorySeq(1);
+		expect(selectSplitChosen(store.getState())).toBe(false);
+
+		await store.getState().commitParam(effect.id, 'angle', 120, 'Angle 120°');
+		await store.getState().addEffect('channelShift');
+
+		const labels = store.getState().history.map((entry) => entry.label);
+		expect(labels).toContain('Angle 120°');
+		expect(labels.filter((label) => label.includes('(side'))).toEqual([]);
+	});
+
+	it('keeps the side in the label for an edit made while pinned in the split view', async () => {
+		const {store} = await seedProjectWithSteps();
+		await store.getState().setCompareMode('split');
+		store.getState().setCompareHistorySeq(1);
+		expect(selectSplitChosen(store.getState())).toBe(true);
+
+		await store.getState().addEffect('channelShift');
+
+		expect(store.getState().history.at(-1)?.label).toMatch(/\(side B\)$/);
+	});
+
+	it('renders a pinned entry with a corrupt stored transform as untransformed', async () => {
+		const {store, sideCoordinators} = await seedProjectWithSteps();
+		store.setState((state) => ({
+			history: state.history.map((entry) =>
+				entry.seq === 2
+					? {...entry, transform: {...entry.transform, rotation: 45 as never}}
+					: entry,
+			),
+		}));
+
+		store.getState().setCompareHistorySeq(2);
+
+		const sourceCall = sideCoordinators[0].calls.find(
+			(call) => call.type === 'setSource',
+		);
+		expect(
+			sourceCall?.type === 'setSource' && sourceCall.source?.transform,
+		).toEqual(IDENTITY_TRANSFORM);
 	});
 
 	it('ignores invalid seq values and refuses to pin while cropping', async () => {

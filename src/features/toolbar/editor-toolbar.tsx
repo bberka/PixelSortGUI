@@ -36,6 +36,7 @@ import {cn} from '@/lib/utils';
 import {
 	selectCanRedo,
 	selectCanUndo,
+	selectCompareHistoryEntry,
 	selectRedoLabel,
 	selectUndoLabel,
 } from '@/state/app-store.ts';
@@ -82,9 +83,15 @@ export function EditorToolbar() {
 						void bundle.store.getState().setCompareMode('toggle');
 					}
 
-					if (latched !== previous) {
-						announce(latched ? 'Showing original' : 'Showing edited result');
+					if (latched === previous) {
+						return;
 					}
+
+					const pinned = selectCompareHistoryEntry(bundle.store.getState());
+					const reference = pinned
+						? `Step #${pinned.seq}: ${pinned.label}`
+						: 'original';
+					announce(latched ? `Showing ${reference}` : 'Showing edited result');
 				},
 			}),
 		[bundle],

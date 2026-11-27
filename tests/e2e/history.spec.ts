@@ -662,6 +662,53 @@ test('AC-F31.5 AC-F31.6: handles different geometry transforms and clears cleanl
 	expect(consoleErrors).toEqual([]);
 });
 
+test('AC-F31.8: the compare toggle and the canvas exit work from the keyboard', async ({
+	page,
+}) => {
+	await seedCompareHistoryProject(page);
+	await openHistoryTab(page);
+	const compareInitial = page.getByRole('button', {
+		name: 'Compare with this: Initial',
+	});
+	const pill = page.locator('[data-slot="split-label-a"]');
+	const exit = page.getByRole('button', {
+		name: 'Stop comparing history step',
+	});
+
+	for (const key of ['Enter', 'Space']) {
+		await compareInitial.focus();
+		await page.keyboard.press(key);
+		await expect(compareInitial).toHaveAttribute('aria-pressed', 'true');
+		await expect(pill).toContainText('Step #0: Initial');
+
+		await exit.focus();
+		await page.keyboard.press(key);
+		await expect(pill).toHaveCount(0);
+		await expect(compareInitial).toHaveAttribute('aria-pressed', 'false');
+	}
+});
+
+test.describe('compare history on a coarse pointer', () => {
+	test.skip(
+		({browserName}) => browserName !== 'chromium',
+		'Playwright isMobile (pointer: coarse) emulation is Chromium-only',
+	);
+	test.use({viewport: PROOF_VIEWPORTS[1], hasTouch: true, isMobile: true});
+
+	test('AC-F31.8: the compare toggle is at least 44 by 44 px', async ({
+		page,
+	}) => {
+		await seedCompareHistoryProject(page);
+		await openHistoryTab(page);
+
+		const box = await page
+			.getByRole('button', {name: 'Compare with this: Initial'})
+			.boundingBox();
+		expect(box?.width).toBeGreaterThanOrEqual(44);
+		expect(box?.height).toBeGreaterThanOrEqual(44);
+	});
+});
+
 for (const theme of THEMES) {
 	for (const viewport of PROOF_VIEWPORTS) {
 		test(`AC-F31.8: compare history layout and a11y at ${viewport.name} in ${theme} @a11y`, async ({

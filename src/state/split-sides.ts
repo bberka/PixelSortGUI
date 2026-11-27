@@ -16,6 +16,7 @@ type SplitState = {
 	readonly compareMode: CompareMode;
 	readonly activeProject: ProjectRecord | null;
 	readonly compareHistorySeq?: number | null;
+	readonly compareHistoryRestoreMode?: CompareMode | null;
 };
 
 export function otherSide(side: SplitSide): SplitSide {
@@ -58,6 +59,19 @@ export function projectInstanceIds(project: ProjectRecord): Set<string> {
 		[project.stack, project.stackA ?? EMPTY_STACK].flatMap((stack) =>
 			stack.instances.map((item) => item.id),
 		),
+	);
+}
+
+/**
+ Whether the user chose the split view. Pinning a history step from toggle
+ compare shows the split only while the step stays pinned.
+ */
+export function selectSplitChosen(
+	state: Pick<SplitState, 'compareMode' | 'compareHistoryRestoreMode'>,
+): boolean {
+	return (
+		state.compareMode === 'split' &&
+		(state.compareHistoryRestoreMode ?? 'split') === 'split'
 	);
 }
 

@@ -35,9 +35,9 @@ import {
 	useAppStore,
 	useTransientStore,
 } from '@/app/runtime-context.tsx';
-import {effectiveDimensions} from '@/engine/transform.ts';
 import {CropOverlay} from '@/features/transform/crop-overlay.tsx';
 import {useCropBodyDrag} from '@/features/transform/use-crop-body-drag.ts';
+import {resolveStoredGeometry} from '@/storage/geometry.ts';
 import {projectDimensions} from '@/render/render-source.ts';
 import {projectOrientedDimensions} from '@/state/geometry.ts';
 import {selectShowingOriginal} from '@/state/transient.ts';
@@ -292,7 +292,7 @@ export function CanvasStage() {
 
 		const pinnedSize =
 			pinnedEntry && activeProject
-				? effectiveDimensions(
+				? resolveStoredGeometry(
 						activeProject.sourceWidth,
 						activeProject.sourceHeight,
 						pinnedEntry.transform,
@@ -312,7 +312,13 @@ export function CanvasStage() {
 					}
 				: null,
 			...toRenderedSide({frame: frameRef.current, full: fullRef.current}),
-			sideA: {...toRenderedSide(renderA), size: pinnedSize},
+			sideA: {
+				...toRenderedSide(renderA),
+				size: pinnedSize && {
+					width: pinnedSize.effectiveWidth,
+					height: pinnedSize.effectiveHeight,
+				},
+			},
 			compare,
 			checker: checkerRef.current,
 			dpr,

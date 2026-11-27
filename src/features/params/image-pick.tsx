@@ -35,6 +35,11 @@ export type ImageTarget = {
 	readonly label: string;
 	// The id of the button the focus returns to after a dialog.
 	readonly triggerId: string;
+	// Replaces `commitImageParam` for a choice that is not a parameter.
+	readonly commit?: (
+		projectId: string,
+		choice: ImageChoice,
+	) => Promise<boolean>;
 };
 
 export type ImagePick = {
@@ -101,12 +106,14 @@ function useImagePickState({
 	// `false` when the choice was refused.
 	const commit = async (target: ImageTarget, choice: ImageChoice) => {
 		try {
-			const changed = await commitImageParam(
-				target.projectId,
-				target.instanceId,
-				target.paramKey,
-				choice,
-			);
+			const changed = await (target.commit
+				? target.commit(target.projectId, choice)
+				: commitImageParam(
+						target.projectId,
+						target.instanceId,
+						target.paramKey,
+						choice,
+					));
 			if (changed) {
 				const cleared = 'sha256' in choice && choice.sha256 === '';
 				announce(`${target.label} ${cleared ? 'cleared' : 'chosen'}`);

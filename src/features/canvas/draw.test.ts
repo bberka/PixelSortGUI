@@ -29,6 +29,7 @@ function record(): Recorder {
 		transform: null,
 		surface: {
 			imageSmoothingEnabled: true,
+			globalAlpha: 1,
 			fillStyle: '',
 			setTransform(a, b, c, d, e, f) {
 				recorder.transform = [a, b, c, d, e, f];

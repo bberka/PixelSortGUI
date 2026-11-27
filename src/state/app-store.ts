@@ -1,9 +1,14 @@
 import {createStore, type StoreApi} from 'zustand/vanilla';
 import {effectRegistry} from '../engine/effects/index.ts';
+import {clamp} from '../engine/math.ts';
 import {validateParams} from '../engine/params.ts';
+import {maskGridSize} from '../engine/mask/grid.ts';
+import type {InstanceMask, MaskKind} from '../engine/mask/types.ts';
 import {transformKey, type SourceTransform} from '../engine/transform.ts';
 import {
 	canonicalStackJson,
+	MASKED_STACK_SCHEMA_VERSION,
+	stackSchemaVersion,
 	type BlendMode,
 	type EffectInstance,
 	type EffectRegistry,
@@ -60,6 +65,7 @@ import {
 	isQuotaExceededError,
 	StorageValidationError,
 	type CompareMode,
+	type CommitStackInput,
 	type CreateProjectInput,
 	type CreateProjectResult,
 	type DeleteProjectResult,
@@ -81,6 +87,8 @@ import {
 } from '../storage/types.ts';
 import {
 	formatBlendCommitLabel,
+	formatMaskCommitLabel,
+	formatMaskKindCommitLabel,
 	formatMixCommitLabel,
 	formatParamCommitLabel,
 	formatTransformCommitLabel,
@@ -105,13 +113,25 @@ import {
 	type AppRoute,
 	type HashRouterEnv,
 } from './router.ts';
+import {
+	createMask,
+	DEFAULT_MASK_OVERLAY,
+	MIN_OVERLAY_OPACITY,
+	patchMask,
+	validatedPatch,
+	withMask,
+	type MaskOverlaySettings,
+	type MaskPatch,
+} from './mask-edits.ts';
 import {createSideRenderer} from './side-renderer.ts';
 import {
 	EMPTY_STACK,
 	findInstanceSide,
 	otherSide,
 	projectInstanceIds,
+	selectEditingSelectedId,
 	selectEditingSide,
+	selectEditingStack,
 	selectSplitChosen,
 	sideHistoryLabel,
 	sideLetter,
@@ -213,6 +233,8 @@ export type ImageChoice =
 	{readonly sha256: string} | {readonly image: Omit<NewSource, 'sha256'>};
 
 export type AppState = {
+	// How the mask overlay is drawn. Changing it makes no commit.
+	maskOverlay: MaskOverlaySettings;
 	bootStatus: BootStatus;
 	route: AppRoute;
 	notice: string | null;
@@ -354,6 +376,38 @@ export type AppState = {
 		choice: ImageChoice,
 	): Promise<boolean>;
 	cancelDrag(): void;
+
+	// Mask actions (product.md F29). Each commit is one history entry.
+	// A new mask of `kind` replaces the current one; `null` removes it.
+	setMaskKind(instanceId: string, kind: MaskKind | null): Promise<void>;
+	dragMask(instanceId: string, patch: MaskPatch): void;
+	commitMask(
+		instanceId: string,
+		patch: MaskPatch,
+		label?: string,
+	): Promise<void>;
+	nudgeMask(instanceId: string, patch: MaskPatch): void;
+	// "Fill" and "Clear" of a painted mask.
+	fillMask(instanceId: string): Promise<void>;
+	clearMask(instanceId: string): Promise<void>;
+	// Like `commitImageParam`, for the image of an image mask.
+	commitMaskImage(
+		projectId: string,
+		instanceId: string,
+		choice: ImageChoice,
+	): Promise<boolean>;
+	setMaskOverlay(patch: Partial<MaskOverlaySettings>): void;
+	// Shows or hides the overlay when the selected effect has a mask. Returns the
+	// new visibility, or `null` without such a mask.
+	toggleMaskOverlay(): boolean | null;
+	// `RenderCoordinator.renderMask` of the coordinator that draws `side`.
+	renderMask(
+		side: SplitSide,
+		mask: InstanceMask,
+		width: number,
+		height: number,
+	): Promise<Uint8Array | undefined>;
+
 	flushPendingCommit(): Promise<void>;
 
 	// Undo / redo
@@ -630,7 +684,25 @@ type PendingKeyboardCommit =
 			instanceId: string;
 			mix: number;
 			timer: unknown;
+	  }
+	| {
+			kind: 'mask';
+			projectId: string;
+			instanceId: string;
+			patch: MaskPatch;
+			timer: unknown;
 	  };
+
+// The blobs a commit stores beside its stacks.
+type NewAssets = Pick<CommitStackInput, 'newSource' | 'newMasks'>;
+
+// A stack says whether it holds a mask. A newer envelope keeps its version.
+function withStackVersion(stack: EffectStack): EffectStack {
+	const version: number = stack.schemaVersion;
+	return version > MASKED_STACK_SCHEMA_VERSION
+		? stack
+		: {...stack, schemaVersion: stackSchemaVersion(stack.instances)};
+}
 
 export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	const {repository, coordinator} = deps;
@@ -664,10 +736,13 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	const loadExtraSource = async (sha256: string) =>
 		repository.getSource(sha256);
 	coordinator.setExtraSourceLoader(loadExtraSource);
+	const loadMask = async (sha256: string) => repository.getMask(sha256);
+	coordinator.setMaskLoader(loadMask);
 
 	const sideRenderer = createSideRenderer({
 		createCoordinator: deps.createSideCoordinator,
 		loadExtraSource,
+		loadMask,
 		onEvent(event) {
 			store.setState((state) => ({
 				renderA: applyRenderEvent(state.renderA, event),
@@ -991,20 +1066,20 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		label: string,
 		changesMain: boolean,
 		transform?: SourceTransform,
-		newSource?: NewSource,
+		assets?: NewAssets,
 	): Promise<ProjectRecord> => {
 		const active = requireActiveProject();
 
 		try {
 			const {project, entry} = await repository.commitStack({
 				projectId: active.id,
-				stack: next.stack,
+				stack: withStackVersion(next.stack),
 				selectedInstanceId: next.selectedInstanceId,
-				stackA: next.stackA ?? EMPTY_STACK,
+				stackA: withStackVersion(next.stackA ?? EMPTY_STACK),
 				selectedInstanceIdA: next.selectedInstanceIdA ?? null,
 				transform,
 				label,
-				newSource,
+				...assets,
 			});
 
 			const currentState = store.getState();
@@ -1091,7 +1166,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		nextStack: EffectStack,
 		selectedInstanceId: string | null,
 		label: string,
-		newSource?: NewSource,
+		assets?: NewAssets,
 	): Promise<ProjectRecord> => {
 		const active = requireActiveProject();
 		assertStackCapacity(nextStack.instances.length);
@@ -1100,7 +1175,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			sideHistoryLabel(label, side, selectSplitChosen(store.getState())),
 			side === 'b',
 			undefined,
-			newSource,
+			assets,
 		);
 	};
 
@@ -1287,6 +1362,11 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			return;
 		}
 
+		if (pending.kind === 'mask') {
+			await store.getState().commitMask(pending.instanceId, pending.patch);
+			return;
+		}
+
 		await store.getState().commitMix(pending.instanceId, pending.mix);
 	};
 
@@ -1420,6 +1500,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			databaseClosedByUpgrade: false,
 			versionErrorMessage: null,
 		},
+		maskOverlay: DEFAULT_MASK_OVERLAY,
 		render: createDefaultRenderStatus(),
 		renderA: createDefaultRenderStatus(),
 		cropSource: undefined,
@@ -2099,6 +2180,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					[paramKey]: validated[paramKey],
 				},
 				mix: prevDrag?.instanceId === instanceId ? prevDrag.mix : undefined,
+				mask: prevDrag?.instanceId === instanceId ? prevDrag.mask : undefined,
 			};
 			transientStore.setState({activeDrag: nextDrag});
 			if (found.side === 'a') {
@@ -2219,6 +2301,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				instanceId,
 				params: prevDrag?.instanceId === instanceId ? prevDrag.params : {},
 				mix: normalized,
+				mask: prevDrag?.instanceId === instanceId ? prevDrag.mask : undefined,
 			};
 			transientStore.setState({activeDrag: nextDrag});
 			if (side === 'a') {
@@ -2467,7 +2550,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					nextStack,
 					found.selectedId,
 					formatParamCommitLabel(spec, params[paramKey]),
-					newSource,
+					{newSource},
 				);
 				return true;
 			});
@@ -2484,6 +2567,268 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			) {
 				dispatchStackToCoordinator(activeProject.stack, debugView, false);
 			}
+		},
+
+		async setMaskKind(instanceId, kind) {
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found) {
+					return;
+				}
+
+				const {side, stack, target} = found;
+				const before = target.mask?.kind;
+				if (kind === null ? !target.mask : kind === before) {
+					return;
+				}
+
+				await commitNextStack(
+					side,
+					withMask(stack, instanceId, kind ? createMask(kind) : undefined),
+					found.selectedId,
+					formatMaskKindCommitLabel(before, kind),
+				);
+			});
+		},
+
+		dragMask(instanceId, patch) {
+			const {activeProject, debugView} = get();
+			const found = activeProject && locateInstance(activeProject, instanceId);
+			if (!activeProject || !found?.target.mask) {
+				return;
+			}
+
+			const prevDrag = transientStore.getState().activeDrag;
+			const same = prevDrag?.instanceId === instanceId ? prevDrag : null;
+			const nextDrag = {
+				instanceId,
+				params: same?.params ?? {},
+				mix: same?.mix,
+				mask: {...same?.mask, ...patch},
+			};
+			transientStore.setState({activeDrag: nextDrag});
+			if (found.side === 'a') {
+				return;
+			}
+
+			dispatchStackToCoordinator(
+				applyTransientDragToStack(activeProject.stack, nextDrag),
+				debugView,
+				true,
+			);
+		},
+
+		async commitMask(instanceId, patch, label) {
+			if (
+				pendingKeyboard?.kind === 'mask' &&
+				pendingKeyboard.instanceId === instanceId
+			) {
+				clearKeyboardTimer();
+			}
+
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				if (!found?.target.mask) {
+					transientStore.setState({activeDrag: null});
+					return;
+				}
+
+				const {side, stack, target} = found;
+				const mask = patchMask(target.mask!, patch);
+				const nextStack = withMask(stack, instanceId, mask);
+				if (
+					!get().stackNeedsWriteBack &&
+					canonicalStackJson(nextStack) === canonicalStackJson(stack)
+				) {
+					transientStore.setState({activeDrag: null});
+					if (side === 'b') {
+						coordinator.endDrag();
+					}
+
+					return;
+				}
+
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					label ?? formatMaskCommitLabel(validatedPatch(mask, patch)),
+				);
+			});
+		},
+
+		nudgeMask(instanceId, patch) {
+			const {activeProject} = get();
+			if (!activeProject) {
+				return;
+			}
+
+			if (
+				pendingKeyboard &&
+				(pendingKeyboard.kind !== 'mask' ||
+					pendingKeyboard.instanceId !== instanceId ||
+					Object.keys(pendingKeyboard.patch).join(',') !==
+						Object.keys(patch).join(','))
+			) {
+				void commitHeldKeys();
+			} else if (pendingKeyboard) {
+				timerEnv.clearTimeout(pendingKeyboard.timer);
+			}
+
+			get().dragMask(instanceId, patch);
+			const timer = timerEnv.setTimeout(() => {
+				void commitHeldKeys();
+			}, KEYBOARD_COMMIT_DEBOUNCE_MS);
+
+			pendingKeyboard = {
+				kind: 'mask',
+				projectId: activeProject.id,
+				instanceId,
+				patch,
+				timer,
+			};
+		},
+
+		async fillMask(instanceId) {
+			return editInOrder(async () => {
+				const active = requireActiveProject();
+				if (locateInstance(active, instanceId)?.target.mask?.kind !== 'paint') {
+					return;
+				}
+
+				// Loaded on demand: it brings the compression library.
+				const {encodeMaskAsset} = await import('../engine/mask/asset.ts');
+				const {width, height} = maskGridSize(
+					active.sourceWidth,
+					active.sourceHeight,
+				);
+				const {sha256, compressed} = await encodeMaskAsset({
+					width,
+					height,
+					data: new Uint8Array(width * height).fill(255),
+				});
+				// A stored asset that went missing is written again.
+				const stores = !(await repository.getMask(sha256));
+				const latest = get().activeProject;
+				const found =
+					latest?.id === active.id ? locateInstance(latest, instanceId) : null;
+				const mask = found?.target.mask;
+				if (!found || mask?.kind !== 'paint') {
+					return;
+				}
+
+				const {side, stack} = found;
+				const nextStack = withMask(stack, instanceId, {
+					...mask,
+					asset: sha256,
+				});
+				if (
+					!stores &&
+					!get().stackNeedsWriteBack &&
+					canonicalStackJson(nextStack) === canonicalStackJson(stack)
+				) {
+					return;
+				}
+
+				await commitNextStack(side, nextStack, found.selectedId, 'Fill mask', {
+					newMasks: [{sha256, width, height, blob: new Blob([compressed])}],
+				});
+			});
+		},
+
+		async clearMask(instanceId) {
+			return editInOrder(async () => {
+				const found = locateInstance(requireActiveProject(), instanceId);
+				const mask = found?.target.mask;
+				if (!found || mask?.kind !== 'paint' || mask.asset === '') {
+					return;
+				}
+
+				await commitNextStack(
+					found.side,
+					withMask(found.stack, instanceId, {...mask, asset: ''}),
+					found.selectedId,
+					'Clear mask',
+				);
+			});
+		},
+
+		async commitMaskImage(projectId, instanceId, choice) {
+			return editInOrder(async () => {
+				const newSource =
+					'image' in choice
+						? {
+								...choice.image,
+								sha256: await hashBlobSha256(choice.image.blob),
+							}
+						: undefined;
+				const sha256 = 'image' in choice ? newSource!.sha256 : choice.sha256;
+				// A picked file that is already stored changes nothing by itself.
+				const stores = newSource && !(await repository.hasSource(sha256));
+				const active = get().activeProject;
+				if (active?.id !== projectId) {
+					return false;
+				}
+
+				const found = locateInstance(active, instanceId);
+				const mask = found?.target.mask;
+				if (!found || mask?.kind !== 'image') {
+					return false;
+				}
+
+				const {side, stack} = found;
+				const patch = {source: sha256};
+				const nextStack = withMask(stack, instanceId, patchMask(mask, patch));
+				if (
+					!stores &&
+					!get().stackNeedsWriteBack &&
+					canonicalStackJson(nextStack) === canonicalStackJson(stack)
+				) {
+					return false;
+				}
+
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					formatMaskCommitLabel(patch),
+					{newSource},
+				);
+				return true;
+			});
+		},
+
+		setMaskOverlay(patch) {
+			const next = {...get().maskOverlay, ...patch};
+			set({
+				maskOverlay: {
+					visible: next.visible,
+					opacity: Number.isFinite(next.opacity)
+						? Math.round(clamp(next.opacity, MIN_OVERLAY_OPACITY, 100))
+						: DEFAULT_MASK_OVERLAY.opacity,
+				},
+			});
+		},
+
+		toggleMaskOverlay() {
+			const state = get();
+			const selectedId = selectEditingSelectedId(state);
+			const selected = selectEditingStack(state)?.instances.find(
+				(item) => item.id === selectedId,
+			);
+			if (!selected?.mask) {
+				return null;
+			}
+
+			const visible = !state.maskOverlay.visible;
+			state.setMaskOverlay({visible});
+			return visible;
+		},
+
+		async renderMask(side, mask, width, height) {
+			return side === 'a'
+				? sideRenderer.renderMask(mask, width, height)
+				: coordinator.renderMask(mask, width, height);
 		},
 
 		flushPendingCommit: flushPendingCommitImpl,

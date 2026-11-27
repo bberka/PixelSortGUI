@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {CompareOverlay} from './compare.tsx';
 import {clampSplitPosition} from './compare-logic.ts';
-import {drawCanvas, type CompareDraw} from './draw.ts';
+import {drawCanvas, type CompareDraw, type MaskOverlayImage} from './draw.ts';
 import {createCheckerPattern} from './checker.ts';
 import {
 	arrowPan,
@@ -17,6 +17,7 @@ import {
 import {StageOverlays} from './stage-overlays.tsx';
 import {cropFitView} from './crop-fit.ts';
 import {useDelayedFlag} from './use-delayed-flag.ts';
+import {useMaskOverlay} from './use-mask-overlay.ts';
 import {
 	clampCenter,
 	fitView,
@@ -230,6 +231,8 @@ export function CanvasStage() {
 		announce('Rendered');
 	}, [announceRender, failed, projectId, renderBusy]);
 
+	const overlayRef = useRef<MaskOverlayImage | null>(null);
+
 	const draw = useCallback(() => {
 		const canvas = canvasRef.current;
 		const stage = stageRef.current;
@@ -320,6 +323,8 @@ export function CanvasStage() {
 				},
 			},
 			compare,
+			// History compare hides the overlay, like Compare and crop mode.
+			overlay: pinnedEntry ? null : overlayRef.current,
 			checker: checkerRef.current,
 			dpr,
 		});
@@ -336,6 +341,8 @@ export function CanvasStage() {
 			draw();
 		});
 	}, [draw]);
+
+	useMaskOverlay(overlayRef, scheduleDraw);
 
 	const writeLabel = useCallback((zoom: number) => {
 		const label = labelRef.current;

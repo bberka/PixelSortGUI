@@ -92,6 +92,11 @@ export const SHORTCUTS: readonly Shortcut[] = [
 		action:
 			'Change the split between left/right and top/bottom, turning split view on',
 	},
+	{
+		keys: ['M'],
+		where: 'Editor',
+		action: 'Show or hide the mask of the selected effect',
+	},
 	{keys: ['+', '='], where: 'Editor', action: 'Zoom in by 2×'},
 	{keys: ['-', '_'], where: 'Editor', action: 'Zoom out by 2×'},
 	{keys: ['0'], where: 'Editor', action: 'Fit the image to the view'},

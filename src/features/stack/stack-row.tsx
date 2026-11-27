@@ -1,5 +1,10 @@
 import type {KeyboardEvent} from 'react';
-import {EyeOffIcon, GripVerticalIcon, MoreVerticalIcon} from 'lucide-react';
+import {
+	EyeOffIcon,
+	GripVerticalIcon,
+	MoreVerticalIcon,
+	VenetianMaskIcon,
+} from 'lucide-react';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {
@@ -64,6 +69,12 @@ export function StackRow({
 	const showControls = !compact || isSelected || isUnsupported;
 	const moveUpLabel = compact ? 'Move left' : 'Move up';
 	const moveDownLabel = compact ? 'Move right' : 'Move down';
+	const maskBadge = instance.mask ? (
+		<span className="flex shrink-0 items-center text-muted-foreground">
+			<VenetianMaskIcon aria-hidden="true" className="size-3.5" />
+			<span className="sr-only">Has mask</span>
+		</span>
+	) : null;
 
 	return (
 		<li
@@ -91,8 +102,9 @@ export function StackRow({
 				</span>
 			)}
 			{isUnsupported ? (
-				<span className="min-w-0 flex-1 truncate px-1 text-sm text-muted-foreground">
-					{label}
+				<span className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm text-muted-foreground">
+					<span className="min-w-0 truncate">{label}</span>
+					{maskBadge}
 				</span>
 			) : (
 				<button
@@ -106,6 +118,7 @@ export function StackRow({
 					onClick={onSelect}
 				>
 					<span className="min-w-0 truncate">{label}</span>
+					{maskBadge}
 					{instance.enabled ? null : (
 						<Badge variant="outline">
 							<EyeOffIcon aria-hidden="true" />

@@ -21,6 +21,8 @@ export type SideRenderer = {
 	sync(target: SideTarget | null): void;
 	setViewScale(devicePixelsPerSourcePixel: number): void;
 	retry(): void;
+	// Side A's `RenderCoordinator.renderMask`; `undefined` while side A is closed.
+	renderMask: RenderCoordinator['renderMask'];
 	dispose(): void;
 };
 
@@ -29,8 +31,8 @@ export type SideRendererOptions = {
 	createCoordinator?: () => RenderCoordinator;
 	// Given to each coordinator, so side A reads its own extra sources.
 	loadExtraSource: ExtraSourceLoader;
-	// Absent until storage holds painted masks (persistence.md section 8.6).
-	loadMask?: MaskLoader;
+	// The same for painted masks.
+	loadMask: MaskLoader;
 	onEvent(event: RenderEvent): void;
 	// Called before the coordinator closes its bitmaps.
 	onClose(): void;
@@ -79,10 +81,7 @@ export function createSideRenderer({
 			if (!coordinator) {
 				coordinator = createCoordinator();
 				coordinator.setExtraSourceLoader(loadExtraSource);
-				if (loadMask) {
-					coordinator.setMaskLoader(loadMask);
-				}
-
+				coordinator.setMaskLoader(loadMask);
 				unsubscribe = coordinator.subscribe(onEvent);
 				coordinator.setViewScale(viewScale);
 			}
@@ -109,6 +108,10 @@ export function createSideRenderer({
 
 		retry() {
 			coordinator?.retry();
+		},
+
+		async renderMask(mask, width, height) {
+			return coordinator?.renderMask(mask, width, height);
 		},
 
 		dispose: close,

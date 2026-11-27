@@ -97,6 +97,44 @@ export const SHORTCUTS: readonly Shortcut[] = [
 		where: 'Editor',
 		action: 'Show or hide the mask of the selected effect',
 	},
+	{
+		keys: ['B'],
+		where: 'Editor',
+		action:
+			'Switch the mask brush on or off, for an effect with a painted mask',
+	},
+	{keys: ['X'], where: 'Brush on', action: 'Switch between Paint and Erase'},
+	{
+		keys: ['[', ']'],
+		where: 'Brush on',
+		action: 'Make the brush smaller or larger',
+	},
+	{
+		keys: ['Shift+[', 'Shift+]'],
+		where: 'Brush on',
+		action: 'Lower or raise the hardness by 10%',
+	},
+	{
+		keys: ['Arrow keys'],
+		where: 'Brush on',
+		action:
+			'With the image focused, move the brush by a quarter of its size. Add Shift for its whole size',
+	},
+	{
+		keys: ['Enter'],
+		where: 'Brush on',
+		action: 'With the image focused, start or end a stroke',
+	},
+	{
+		keys: ['Escape'],
+		where: 'Brush on',
+		action: 'Drop the stroke being drawn, or else turn the brush off',
+	},
+	{
+		keys: ['Space'],
+		where: 'Brush on',
+		action: 'Hold while dragging to pan instead of painting',
+	},
 	{keys: ['+', '='], where: 'Editor', action: 'Zoom in by 2×'},
 	{keys: ['-', '_'], where: 'Editor', action: 'Zoom out by 2×'},
 	{keys: ['0'], where: 'Editor', action: 'Fit the image to the view'},
@@ -348,8 +386,32 @@ export const GUIDE_SECTIONS: readonly GuideSection[] = [
 					},
 					{
 						term: 'Mask',
-						text: 'A map that limits where an effect applies. Painted masks are not in the app yet. For now, use the selection controls to limit where pixels move.',
+						text: 'A map that limits where an effect applies. See “Masks and the brush”. No pixel sort run crosses an area the mask leaves out.',
 					},
+				],
+			},
+		],
+	},
+	{
+		id: 'masks',
+		title: 'Masks and the brush',
+		blocks: [
+			{
+				kind: 'paragraph',
+				text: 'A mask limits an effect to part of the photo. Select an effect and choose “Add mask” under “Mask”: “Paint”, “Brightness” or “Image”. “Mix” sets how strong the masked effect is.',
+			},
+			{
+				kind: 'list',
+				items: [
+					'A new painted mask is empty, so the effect shows nowhere until you paint or press “Fill”. “Clear” empties it again.',
+					'“Edit with brush” turns the brush on, and “Done” turns it off. Choose “Paint” to add to the mask and “Erase” to remove from it.',
+					'“Brush size”, “Hardness” and “Strength” set the brush. One drag is one undo step, and its overlaps do not add up. The effect updates when you lift.',
+					'With a pen, pressing harder paints wider unless you switch “Pen pressure sets size” off. While a pen is in use, touches are ignored.',
+					'On a touch screen, one finger paints. A second finger drops that stroke, and two fingers zoom and move the photo.',
+					'“Show mask” tints the painted area. It always shows while you draw, and never in exports.',
+					'Paint stays on the same part of the photo when you crop, rotate, flip or resize.',
+					'In split view the brush paints the side you are editing. Compare and crop mode pause it.',
+					'“Brightness” selects by how light the photo is, and “Image” by how light another picture is. Presets keep brightness masks only.',
 				],
 			},
 		],

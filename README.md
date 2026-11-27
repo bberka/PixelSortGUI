@@ -32,6 +32,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Parameter panel built from each effect's definition: sliders, a range slider, an angle control, switches, choice lists, a random seed, exact number entry, per-parameter reset, "Reset all" and a "Randomize" button that gives every parameter a random valid value. Each effect also has a mix amount and a blend setting.
 - Preview canvas with zoom (including a Fit option) and pan, by wheel, keyboard and touch pinch.
 - Masks: limit any effect to part of the photo by brightness or by another image, with feather, invert, a "Show mask" overlay (`M`) and a badge on masked effects. A painted mask can be filled or cleared.
+- Mask brush: paint and erase a mask on the photo with a mouse, pen, touch or the keyboard, with size, hardness, strength and pen pressure. One stroke is one undo step, two fingers zoom and pan while the brush is on, and paint follows crop, rotate, flip and resize.
 - Compare view: toggle or hold Compare (button or `\`) to view the original image, and split view (`S`) with a draggable and keyboard-operable divider, left/right or top/bottom (`Shift+S`).
 - A separate effect stack for each side of the split view, with copy to the other side, swap sides, presets and undo for both, and export of either side.
 - Responsive editor layouts: a fixed right sidebar on desktop, a resizable and collapsible docked bottom panel on tablet, and a collapsible right drawer on landscape phone. On a portrait phone the photo keeps most of the screen: a labelled toolbar and a row of effects sit under it, then a panel that shows one control at a time, picked by name, or all of them.
@@ -47,7 +48,6 @@ These are planned and not in the app.
 
 - Cloud backup and sync through your own Dropbox or Google Drive.
 - More pixel sort line shapes, such as concentric rectangles, circles, spirals and random walks.
-- Painting a mask on the canvas with a brush.
 - Animation and video.
 
 The order of work is in [roadmap.md](docs/specs/roadmap.md) and the feature list is in [product.md](docs/specs/product.md).

@@ -323,7 +323,9 @@ function EditorFrame() {
 			key="toolbar"
 			className={cn(
 				'shrink-0 border-border',
-				isPhone ? 'h-13 border-t bg-background' : 'h-10 border-b',
+				isPhone
+					? 'h-13 border-t bg-background'
+					: 'h-10 border-b pointer-coarse:h-[45px]',
 			)}
 			id="toolbar"
 			label="Canvas toolbar"

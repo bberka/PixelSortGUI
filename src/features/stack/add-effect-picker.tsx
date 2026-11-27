@@ -9,6 +9,7 @@ import {
 	DialogTrigger,
 } from '@/components/ui/dialog';
 import {Popover, PopoverContent, PopoverTrigger} from '@/components/ui/popover';
+import {ScrollArea} from '@/components/ui/scroll-area';
 import {listedEffects} from '@/engine/registry.ts';
 import type {EffectRegistry} from '@/engine/types.ts';
 import {cn} from '@/lib/utils';
@@ -108,11 +109,9 @@ export function AddEffectPicker({
 					<DialogHeader>
 						<DialogTitle>Add effect</DialogTitle>
 					</DialogHeader>
-					<EffectOptions
-						registry={registry}
-						className="-mx-1 max-h-[60dvh] overflow-y-auto px-1"
-						onAdd={add}
-					/>
+					<ScrollArea tabStop={false} className="-mx-1 max-h-[60dvh]">
+						<EffectOptions registry={registry} className="p-1" onAdd={add} />
+					</ScrollArea>
 				</DialogContent>
 			</Dialog>
 		);
@@ -134,11 +133,13 @@ export function AddEffectPicker({
 				>
 					Add effect
 				</p>
-				<EffectOptions
-					registry={registry}
-					className="min-h-0 overflow-y-auto"
-					onAdd={add}
-				/>
+				<ScrollArea
+					tabStop={false}
+					className="flex min-h-0 flex-col"
+					viewportClassName="min-h-0 flex-1"
+				>
+					<EffectOptions registry={registry} className="p-0.5" onAdd={add} />
+				</ScrollArea>
 			</PopoverContent>
 		</Popover>
 	);

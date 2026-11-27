@@ -74,6 +74,9 @@ function ScrollArea({
 				tabIndex={tabStop ? 0 : undefined}
 				className={cn(
 					'size-full max-h-[inherit] rounded-[inherit] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+					// Radix lays the content out as a table, which grows to its widest
+					// row. A list that only scrolls down must truncate instead.
+					orientation === 'vertical' && '[&>div]:block!',
 					viewportClassName,
 				)}
 				onScroll={handleScroll}

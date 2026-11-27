@@ -37,6 +37,7 @@ function validateNameInput(raw: string): string | null {
 }
 
 export type SavePresetDialogProps = {
+	readonly onCloseAutoFocus: (event: Event) => void;
 	readonly open: boolean;
 	readonly effectCount: number;
 	readonly onOpenChange: (open: boolean) => void;
@@ -48,6 +49,7 @@ export function SavePresetDialog({
 	effectCount,
 	onOpenChange,
 	onSave,
+	onCloseAutoFocus,
 }: SavePresetDialogProps) {
 	const [name, setName] = useState('');
 	const [error, setError] = useState<string | null>(null);
@@ -93,7 +95,7 @@ export function SavePresetDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent>
+			<DialogContent onCloseAutoFocus={onCloseAutoFocus}>
 				<DialogHeader>
 					<DialogTitle>Save as preset</DialogTitle>
 					<DialogDescription>{summary}</DialogDescription>
@@ -153,6 +155,7 @@ export function SavePresetDialog({
 }
 
 export type RenamePresetDialogProps = {
+	readonly onCloseAutoFocus: (event: Event) => void;
 	readonly preset: UserPresetRecord | null;
 	readonly onOpenChange: (open: boolean) => void;
 	readonly onRename: (id: string, name: string) => Promise<void>;
@@ -162,6 +165,7 @@ export function RenamePresetDialog({
 	preset,
 	onOpenChange,
 	onRename,
+	onCloseAutoFocus,
 }: RenamePresetDialogProps) {
 	return (
 		<Dialog open={preset !== null} onOpenChange={onOpenChange}>
@@ -169,6 +173,7 @@ export function RenamePresetDialog({
 				<RenamePresetDialogBody
 					key={preset.id}
 					preset={preset}
+					onCloseAutoFocus={onCloseAutoFocus}
 					onCancel={() => {
 						onOpenChange(false);
 					}}
@@ -183,7 +188,9 @@ function RenamePresetDialogBody({
 	preset,
 	onCancel,
 	onRename,
+	onCloseAutoFocus,
 }: {
+	readonly onCloseAutoFocus: (event: Event) => void;
 	readonly preset: UserPresetRecord;
 	readonly onCancel: () => void;
 	readonly onRename: (id: string, name: string) => Promise<void>;
@@ -216,7 +223,10 @@ function RenamePresetDialogBody({
 	};
 
 	return (
-		<DialogContent aria-describedby={undefined}>
+		<DialogContent
+			aria-describedby={undefined}
+			onCloseAutoFocus={onCloseAutoFocus}
+		>
 			<DialogHeader>
 				<DialogTitle>Rename preset</DialogTitle>
 			</DialogHeader>
@@ -271,6 +281,7 @@ function RenamePresetDialogBody({
 }
 
 export type DeletePresetDialogProps = {
+	readonly onCloseAutoFocus: (event: Event) => void;
 	readonly preset: UserPresetRecord | null;
 	readonly onOpenChange: (open: boolean) => void;
 	readonly onDelete: (id: string) => Promise<void>;
@@ -280,6 +291,7 @@ export function DeletePresetDialog({
 	preset,
 	onOpenChange,
 	onDelete,
+	onCloseAutoFocus,
 }: DeletePresetDialogProps) {
 	const [busy, setBusy] = useState(false);
 
@@ -299,7 +311,7 @@ export function DeletePresetDialog({
 
 	return (
 		<AlertDialog open={preset !== null} onOpenChange={onOpenChange}>
-			<AlertDialogContent>
+			<AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>Delete preset?</AlertDialogTitle>
 					<AlertDialogDescription>

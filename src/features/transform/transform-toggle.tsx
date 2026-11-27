@@ -19,6 +19,7 @@ export function TransformToggle({compact}: {readonly compact: boolean}) {
 					size={compact ? 'default' : 'sm'}
 					className={compact ? PHONE_TOOL_CLASS : undefined}
 					aria-label="Transform"
+					data-transform-toggle=""
 					aria-pressed={open}
 					onClick={() => {
 						const controller = geometryController(bundle);

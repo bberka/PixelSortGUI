@@ -52,8 +52,8 @@ export function LibraryScreen() {
 		null,
 	);
 	const renameSeqRef = useRef(0);
-	// Kept after the dialog closes, to give focus back to that card.
-	const savedIdRef = useRef('');
+	// Kept after a card dialog closes, to give focus back to that card.
+	const menuIdRef = useRef('');
 	const emptyHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
 	const handleOpen = useCallback(
@@ -64,6 +64,7 @@ export function LibraryScreen() {
 	);
 
 	const handleRename = useCallback((project: ProjectRecord) => {
+		menuIdRef.current = project.id;
 		renameSeqRef.current += 1;
 		setRenameRequest({project, seq: renameSeqRef.current});
 	}, []);
@@ -78,17 +79,30 @@ export function LibraryScreen() {
 	);
 
 	const handleSaveFile = useCallback((project: ProjectRecord) => {
-		savedIdRef.current = project.id;
+		menuIdRef.current = project.id;
 		setSavingProject(project);
 	}, []);
 
 	const handleDelete = useCallback((project: ProjectRecord) => {
+		menuIdRef.current = project.id;
 		setPendingDeletion(project);
 	}, []);
 
 	if (ordered.length === 0) {
 		return <EmptyLibrary headingRef={emptyHeadingRef} />;
 	}
+
+	const returnFocusToCard = () => {
+		elementFor(menuIdRef.current)
+			?.querySelector<HTMLButtonElement>('[data-slot="project-actions"]')
+			?.focus();
+	};
+
+	// The menu item that opened the dialog is gone, so Radix has nowhere to go.
+	const handleDialogClosed = (event: Event) => {
+		event.preventDefault();
+		returnFocusToCard();
+	};
 
 	const confirmRename = (project: ProjectRecord, name: string) => {
 		setRenameRequest(null);
@@ -123,7 +137,6 @@ export function LibraryScreen() {
 				viewportRef={scrollRef}
 				tabStop={false}
 				className="min-h-0 flex-1"
-				viewportClassName="[&>div]:block!"
 			>
 				<ul className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 md:gap-4 md:p-4 lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:gap-4 lg:p-6">
 					{ordered.map((project) => (
@@ -145,6 +158,7 @@ export function LibraryScreen() {
 			<RenameProjectDialog
 				key={renameRequest?.seq ?? 0}
 				project={renameRequest?.project ?? null}
+				onCloseAutoFocus={handleDialogClosed}
 				onClose={() => {
 					setRenameRequest(null);
 				}}
@@ -152,17 +166,14 @@ export function LibraryScreen() {
 			/>
 			<SaveProjectDialog
 				project={savingProject}
-				returnFocus={() => {
-					elementFor(savedIdRef.current)
-						?.querySelector<HTMLButtonElement>('[data-slot="project-actions"]')
-						?.focus();
-				}}
+				returnFocus={returnFocusToCard}
 				onClose={() => {
 					setSavingProject(null);
 				}}
 			/>
 			<DeleteProjectDialog
 				project={pendingDeletion}
+				onCloseAutoFocus={handleDialogClosed}
 				onClose={() => {
 					setPendingDeletion(null);
 				}}

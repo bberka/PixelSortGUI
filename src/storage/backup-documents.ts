@@ -18,6 +18,7 @@ import {
 	PROJECT_FORMAT_VERSION,
 	ensure,
 	historyValue,
+	matchMasks,
 	migrateProjectDocuments,
 	objectValue,
 	payloadValue,
@@ -148,6 +149,9 @@ export async function readBackupDocuments(
 	const listed = new Map(
 		manifest.sources.map((source) => [source.sha256, source]),
 	);
+	const listedMasks = new Map(
+		manifest.masks?.map((mask) => [mask.sha256, mask]),
+	);
 	const projects: BackupProjectDocuments[] = [];
 	for (const entry of manifest.projects) {
 		const read = await readProject(reader, entry, formatVersion);
@@ -166,6 +170,16 @@ export async function readBackupDocuments(
 			primary.width === read.project.sourceWidth &&
 				primary.height === read.project.sourceHeight,
 			'primary source',
+		);
+		matchMasks(
+			listedMasks,
+			read.project,
+			read.history,
+			(path) =>
+				new BackupError(
+					'missing-mask',
+					backupImportMessage('missing-mask', {path}),
+				),
 		);
 		projects.push(read);
 	}

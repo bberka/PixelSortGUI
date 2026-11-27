@@ -2,8 +2,11 @@
 // backup codec shares. It runs in the archive worker: the main thread must
 // import only its types.
 import {Zip, ZipDeflate, ZipPassThrough} from 'fflate';
+import {decodeMaskAsset, MaskAssetError} from '../engine/mask/asset.ts';
+import {maskGridSize} from '../engine/mask/grid.ts';
 import {projectSourceHashes} from './extra-sources.ts';
 import {repairProjectGeometry, resolveStoredGeometry} from './geometry.ts';
+import {referencedMaskHashes} from './masks.ts';
 import {
 	ProjectFileError,
 	projectOpenMessage,
@@ -12,7 +15,12 @@ import {
 	type ProjectFileErrorDetail,
 	type ProjectSaveErrorCode,
 } from './project-file-error.ts';
-import type {HistoryEntryRecord, ProjectRecord, SourceRecord} from './types.ts';
+import type {
+	HistoryEntryRecord,
+	MaskRecord,
+	ProjectRecord,
+	SourceRecord,
+} from './types.ts';
 import {
 	inSteps,
 	readZipDirectory,
@@ -24,6 +32,7 @@ import {
 } from './zip-reader.ts';
 import {
 	PROJECT_FORMAT_VERSION,
+	MAX_MASK_BYTES,
 	MAX_PROJECT_FILE_BYTES,
 	MAX_JSON_BYTES,
 	MAX_THUMBNAIL_BYTES,
@@ -40,6 +49,10 @@ import {
 	payloadValue,
 	historyValue,
 	matchPrimarySource,
+	matchMasks,
+	maskPath,
+	hasMask,
+	type ArchiveMaskEntry,
 	type ArchiveSourceEntry,
 	type ThumbnailPath,
 	type ProjectFileManifest,
@@ -253,6 +266,64 @@ export function archiveSource(source: SourceRecord): ArchiveSourceEntry {
 	};
 }
 
+// The manifest entry of a stored mask.
+export function archiveMask({
+	sha256,
+	width,
+	height,
+	blob,
+}: MaskRecord): ArchiveMaskEntry {
+	return {
+		sha256,
+		path: maskPath(sha256),
+		width,
+		height,
+		byteLength: blob.size,
+	};
+}
+
+// The stored masks a project needs. `undefined` when one is not stored on the
+// grid of its source, which counts as missing (engine.md section 16.6).
+export function savedMasks(
+	project: ProjectFilePayload,
+	history: readonly HistoryEntryRecord[] | null,
+	stored: ReadonlyMap<string, MaskRecord>,
+): MaskRecord[] | undefined {
+	const grid = maskGridSize(project.sourceWidth, project.sourceHeight);
+	const masks: MaskRecord[] = [];
+	for (const hash of referencedMaskHashes(project, history ?? [])) {
+		const mask = stored.get(hash);
+		if (mask?.width !== grid.width || mask.height !== grid.height) {
+			return undefined;
+		}
+
+		masks.push(mask);
+	}
+
+	return masks;
+}
+
+// Whether an archive entry holds exactly the asset its manifest entry states.
+export async function isMaskData(
+	bytes: Uint8Array,
+	entry: ArchiveMaskEntry,
+): Promise<boolean> {
+	if (bytes.length !== entry.byteLength) {
+		return false;
+	}
+
+	try {
+		await decodeMaskAsset({...entry, compressed: bytes});
+		return true;
+	} catch (error) {
+		if (error instanceof MaskAssetError) {
+			return false;
+		}
+
+		throw error;
+	}
+}
+
 /**
  Builds a `.glproj` archive without decoding any pixels. Rejects with
  `ProjectFileError`, or with the signal's reason when cancelled.
@@ -289,6 +360,15 @@ export async function writeProjectFile(
 			media.push({path: thumbnailPath, blob: thumbnail!});
 		}
 
+		const masks = savedMasks(
+			project,
+			history,
+			new Map(input.masks?.map((mask) => [mask.sha256, mask])),
+		);
+		if (!masks) {
+			throw saveError('missing-mask', name);
+		}
+
 		const sources = [primary, ...bySha.values()].map((source) => {
 			if (source.blob.size > MAX_SOURCE_BYTES) {
 				throw saveError('too-large', name);
@@ -298,14 +378,25 @@ export async function writeProjectFile(
 			media.push({path: entry.path, blob: source.blob});
 			return entry;
 		});
+		const maskEntries = masks.map((mask) => {
+			if (mask.blob.size > MAX_MASK_BYTES) {
+				throw saveError('too-large', name);
+			}
+
+			const entry = archiveMask(mask);
+			media.push({path: entry.path, blob: mask.blob});
+			return entry;
+		});
+		const masked = hasMask([project, ...(history ?? [])]);
 		manifest = manifestValue({
 			kind: 'project',
-			formatVersion: PROJECT_FORMAT_VERSION,
+			formatVersion: masked ? 2 : 1,
 			appVersion: input.appVersion,
 			exportedAt: exportedAt.toISOString(),
 			includesHistory: history !== null,
 			primarySourceHash: project.sourceHash,
 			sources,
+			...(masked && {masks: maskEntries}),
 			thumbnailPath,
 		});
 		matchPrimarySource(manifest, project);
@@ -369,6 +460,10 @@ function entryLimit(path: string): number | undefined {
 
 	if (Object.hasOwn(THUMBNAIL_TYPES, path)) {
 		return MAX_THUMBNAIL_BYTES;
+	}
+
+	if (path.startsWith('masks/')) {
+		return MAX_MASK_BYTES;
 	}
 
 	return path.startsWith('sources/') ? MAX_SOURCE_BYTES : undefined;
@@ -469,11 +564,27 @@ async function readContents(
 
 		return {source, entry};
 	});
+	const listedMasks = manifest.masks ?? [];
+	matchMasks(
+		new Map(listedMasks.map((mask) => [mask.sha256, mask])),
+		project,
+		history,
+		(path) => openError('missing-mask', {path}),
+	);
+	const maskEntries = listedMasks.map((mask) => {
+		const entry = directory.entries.get(mask.path);
+		if (!entry) {
+			throw openError('missing-mask', {path: mask.path});
+		}
+
+		return {mask, entry};
+	});
 	const thumbnailEntry = manifest.thumbnailPath
 		? directory.entries.get(manifest.thumbnailPath)
 		: undefined;
 	const media: ZipEntry[] = [
 		...sourceEntries.map(({entry}) => entry),
+		...maskEntries.map(({entry}) => entry),
 		...(thumbnailEntry ? [thumbnailEntry] : []),
 	];
 	const mediaBytes = media.reduce((sum, entry) => sum + entry.size, 0);
@@ -512,6 +623,16 @@ async function readContents(
 		});
 	}
 
+	const masks: ProjectFileContents['masks'] = [];
+	for (const {mask, entry} of maskEntries) {
+		const bytes = await readMedia(entry, MAX_MASK_BYTES);
+		if (!(await isMaskData(bytes, mask))) {
+			throw openError('damaged-mask', {path: mask.path});
+		}
+
+		masks.push({...mask, blob: new Blob([bytes])});
+	}
+
 	let thumbnail: Blob | null = null;
 	if (thumbnailEntry) {
 		thumbnail = new Blob(
@@ -521,7 +642,7 @@ async function readContents(
 	}
 
 	signal?.throwIfAborted();
-	return {manifest, project, history, sources, thumbnail};
+	return {manifest, project, history, sources, masks, thumbnail};
 }
 
 /**

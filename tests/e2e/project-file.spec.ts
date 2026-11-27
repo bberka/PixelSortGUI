@@ -397,11 +397,11 @@ test('AC-F25.5 to 25.7: refused files show the exact message and create nothing'
 			'new.zip',
 			edited(file, (all) => {
 				editJson<{formatVersion: number}>(all, 'manifest.json', (manifest) => {
-					manifest.formatVersion = 2;
+					manifest.formatVersion = 3;
 				});
 			}),
 		),
-		"Can't open new.zip: project format version 2 is newer than this app supports. Update the app and try again.",
+		"Can't open new.zip: project format version 3 is newer than this app supports. Update the app and try again.",
 	);
 	await other.context().close();
 });

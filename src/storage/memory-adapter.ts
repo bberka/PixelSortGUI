@@ -56,6 +56,7 @@ import type {ProjectFileOutput} from './project-format.ts';
 import {
 	buildImportedProject,
 	prepareProjectImport,
+	toMaskRecord,
 	toSourceRecord,
 	writeProjectArchive,
 	type ProjectTransferDependencies,
@@ -207,6 +208,10 @@ export class MemoryStorageAdapter implements StorageRepository {
 		).length;
 	}
 
+	#storedMasks(hashes: Iterable<string>): MaskRecord[] {
+		return [...hashes].flatMap((sha256) => this.#masks.get(sha256) ?? []);
+	}
+
 	#requireMasks(hashes: Iterable<string>): void {
 		for (const sha256 of hashes) {
 			if (!this.#masks.has(sha256)) {
@@ -242,6 +247,20 @@ export class MemoryStorageAdapter implements StorageRepository {
 				this.#writeBackupPlan(plan);
 				return plan;
 			},
+			hasMask: async (sha256) => this.#masks.has(sha256),
+			stageMask: async (mask, signal) => {
+				const blob = new Blob([await mask.blob.arrayBuffer()]);
+				signal?.throwIfAborted();
+				if (this.#masks.has(mask.sha256)) {
+					return false;
+				}
+
+				this.#masks.set(mask.sha256, {...mask, blob});
+				return true;
+			},
+			discardMasks: async (hashes) => {
+				this.#deleteUnreferencedMasks(hashes);
+			},
 			discardSources: async (hashes) => {
 				this.#deleteUnreferencedSources(hashes);
 			},
@@ -255,6 +274,12 @@ export class MemoryStorageAdapter implements StorageRepository {
 		for (const source of plan.sources) {
 			if (!this.#sources.has(source.sha256)) {
 				this.#sources.set(source.sha256, toSourceRecord(source, now));
+			}
+		}
+
+		for (const mask of plan.masks) {
+			if (!this.#masks.has(mask.sha256)) {
+				this.#masks.set(mask.sha256, toMaskRecord(mask, now));
 			}
 		}
 
@@ -539,6 +564,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 		const snapshot = {
 			project: copy,
 			sources: this.#storedSources(projectSourceHashes(copy, history)),
+			masks: this.#storedMasks(referencedMaskHashes(copy, history ?? [])),
 			history,
 			thumbnail: this.#thumbnails.get(projectId),
 		};
@@ -556,7 +582,10 @@ export class MemoryStorageAdapter implements StorageRepository {
 			fileName,
 			options,
 			this.#transfer,
-			async (sha256) => this.getSource(sha256),
+			{
+				findSource: async (sha256) => this.getSource(sha256),
+				findMask: async (sha256) => this.getMask(sha256),
+			},
 		);
 		options.signal?.throwIfAborted();
 
@@ -573,6 +602,15 @@ export class MemoryStorageAdapter implements StorageRepository {
 		for (const entry of prepared.contents.sources) {
 			if (!this.#sources.has(entry.sha256)) {
 				this.#sources.set(entry.sha256, toSourceRecord(entry, now));
+			}
+		}
+
+		for (const mask of prepared.contents.masks) {
+			if (
+				project.referencedMaskHashes.includes(mask.sha256) &&
+				!this.#masks.has(mask.sha256)
+			) {
+				this.#masks.set(mask.sha256, toMaskRecord(mask, now));
 			}
 		}
 
@@ -623,12 +661,21 @@ export class MemoryStorageAdapter implements StorageRepository {
 			),
 		);
 
+		const masks = this.#storedMasks(
+			new Set(
+				items.flatMap(({project, history}) =>
+					referencedMaskHashes(project, history ?? []),
+				),
+			),
+		);
+
 		const {theme, compareMode} = this.#appState;
 		const snapshot = {
 			scope,
 			includesHistory,
 			projects: items,
 			sources,
+			masks,
 			presets:
 				(options.includePresets ?? true) ? await this.listPresets() : undefined,
 			settings:
@@ -653,6 +700,7 @@ export class MemoryStorageAdapter implements StorageRepository {
 	): Promise<BackupInspection> {
 		return inspectBackupArchive(file, options, this.#transfer, {
 			findSource: async (sha256) => this.getSource(sha256),
+			findMask: async (sha256) => this.getMask(sha256),
 			read: async () => this.getStartupSnapshot(),
 		});
 	}

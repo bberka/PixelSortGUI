@@ -1,5 +1,6 @@
 // The `.glproj` format: types, limits and validation (persistence.md section
 // 8.3). `project-file.ts` reads and writes the archive.
+import {MASK_PIXEL_CAP, maskGridSize} from '../engine/mask/grid.ts';
 import {MAX_STACK_INSTANCES, type EffectStack} from '../engine/types.ts';
 import type {SourceTransform} from '../engine/transform.ts';
 import {
@@ -9,23 +10,28 @@ import {
 } from './extra-sources.ts';
 import {resolveStoredGeometry} from './geometry.ts';
 import {normalizeExportSettings, normalizeViewState} from './helpers.ts';
+import {referencedMaskHashes} from './masks.ts';
 import {
 	MAX_HISTORY_ENTRIES,
 	MAX_PROJECT_NAME_LENGTH,
 	type ExportSettings,
 	type HistoryEntryRecord,
+	type MaskRecord,
 	type ProjectRecord,
 	type SourceRecord,
 	type ViewState,
 } from './types.ts';
 
-export const PROJECT_FORMAT_VERSION = 1;
+// The newest version read. A file with no mask is written as version 1, which
+// older builds open (persistence.md section 8.6).
+export const PROJECT_FORMAT_VERSION = 2;
 export const PROJECT_FILE_EXTENSION = '.glproj';
 
 export const MAX_PROJECT_FILE_BYTES = 1024 * 1024 * 1024;
 export const MAX_JSON_BYTES = 16 * 1024 * 1024;
 export const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
 export const MAX_SOURCE_BYTES = 200 * 1024 * 1024;
+export const MAX_MASK_BYTES = 8 * 1024 * 1024;
 
 const MAX_SIDE = 16_384;
 const MAX_SLUG_LENGTH = 64;
@@ -63,14 +69,24 @@ export type ArchiveSourceEntry = {
 	height: number;
 };
 
+export type ArchiveMaskEntry = {
+	sha256: string;
+	path: string;
+	width: number;
+	height: number;
+	byteLength: number;
+};
+
 export type ProjectFileManifest = {
 	kind: 'project';
-	formatVersion: 1;
+	formatVersion: 1 | 2;
 	appVersion: string;
 	exportedAt: string;
 	includesHistory: boolean;
 	primarySourceHash: string;
 	sources: ArchiveSourceEntry[];
+	// Present exactly in version 2.
+	masks?: ArchiveMaskEntry[];
 	thumbnailPath: ThumbnailPath | null;
 };
 
@@ -101,6 +117,8 @@ export type ProjectFileInput = {
 	project: ProjectRecord;
 	// The primary source and every other source the project refers to.
 	sources: readonly SourceRecord[];
+	// The painted masks the written stacks refer to.
+	masks?: readonly MaskRecord[];
 	// Omitted saves the project without undo history.
 	history?: readonly HistoryEntryRecord[];
 	thumbnail?: Blob;
@@ -117,6 +135,8 @@ export type ProjectFileContents = {
 	history: HistoryEntryRecord[] | null;
 	// Verified against their hashes; the primary source comes first.
 	sources: Array<ArchiveSourceEntry & {blob: Blob}>;
+	// Verified too.
+	masks: Array<ArchiveMaskEntry & {blob: Blob}>;
 	thumbnail: Blob | null;
 };
 
@@ -145,7 +165,10 @@ export type ProjectFileMigration = (
 
 export const projectFileMigrations: Readonly<
 	Record<number, ProjectFileMigration>
-> = {};
+> = {
+	// Version 2 only adds masks, which a version 1 file cannot hold.
+	1: (documents) => documents,
+};
 
 // A value that breaks the format rules.
 export class InvalidMetadata extends Error {
@@ -391,6 +414,71 @@ export function sourceEntryValue(value: unknown): ArchiveSourceEntry {
 	};
 }
 
+export function maskPath(sha256: string): string {
+	return `masks/${sha256}.mask`;
+}
+
+function maskEntryValue(value: unknown): ArchiveMaskEntry {
+	const entry = objectValue(value, 'mask entry');
+	const sha256 = hashValue(entry.sha256, 'mask sha256');
+	ensure(entry.path === maskPath(sha256), 'mask path');
+	const width = integerValue(entry.width, 1, MASK_PIXEL_CAP, 'mask width');
+	const height = integerValue(entry.height, 1, MASK_PIXEL_CAP, 'mask height');
+	ensure(width * height <= MASK_PIXEL_CAP, 'mask grid');
+	return {
+		sha256,
+		path: maskPath(sha256),
+		width,
+		height,
+		byteLength: integerValue(
+			entry.byteLength,
+			0,
+			Number.MAX_SAFE_INTEGER,
+			'mask byteLength',
+		),
+	};
+}
+
+export function maskEntriesValue(value: unknown): ArchiveMaskEntry[] {
+	ensure(Array.isArray(value), 'masks');
+	const entries = value.map((entry) => maskEntryValue(entry));
+	ensure(
+		new Set(entries.map((entry) => entry.sha256)).size === entries.length,
+		'masks',
+	);
+	return entries;
+}
+
+// Whether writing these stacks needs format version 2.
+export function hasMask(stacks: ReadonlyArray<Partial<StackPair>>): boolean {
+	return stacks.some((pair) =>
+		[pair.stack, pair.stackA].some((stack) =>
+			stack?.instances.some((instance) => instance.mask !== undefined),
+		),
+	);
+}
+
+// Every mask the project uses must be listed, on the grid of its source.
+export function matchMasks(
+	listed: ReadonlyMap<string, ArchiveMaskEntry>,
+	project: ProjectFilePayload,
+	history: readonly HistoryEntryRecord[] | null,
+	missing: (path: string) => Error,
+) {
+	const grid = maskGridSize(project.sourceWidth, project.sourceHeight);
+	for (const hash of referencedMaskHashes(project, history ?? [])) {
+		const entry = listed.get(hash);
+		if (!entry) {
+			throw missing(maskPath(hash));
+		}
+
+		ensure(
+			entry.width === grid.width && entry.height === grid.height,
+			'mask grid',
+		);
+	}
+}
+
 export function manifestValue(
 	value: Record<string, unknown>,
 ): ProjectFileManifest {
@@ -403,14 +491,16 @@ export function manifestValue(
 	);
 	const exportedAt = stringValue(value.exportedAt, 'exportedAt');
 	ensure(!Number.isNaN(Date.parse(exportedAt)), 'exportedAt');
+	const formatVersion = value.formatVersion === 2 ? 2 : 1;
 	return {
 		kind: 'project',
-		formatVersion: PROJECT_FORMAT_VERSION,
+		formatVersion,
 		appVersion: stringValue(value.appVersion, 'appVersion'),
 		exportedAt,
 		includesHistory: booleanValue(value.includesHistory, 'includesHistory'),
 		primarySourceHash: hashValue(value.primarySourceHash, 'primarySourceHash'),
 		sources: entries,
+		...(formatVersion === 2 && {masks: maskEntriesValue(value.masks)}),
 		thumbnailPath:
 			thumbnailPath === null
 				? null

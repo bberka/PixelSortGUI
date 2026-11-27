@@ -55,6 +55,7 @@ import type {ProjectFileOutput} from './project-format.ts';
 import {
 	buildImportedProject,
 	prepareProjectImport,
+	toMaskRecord,
 	toSourceRecord,
 	writeProjectArchive,
 	type ProjectTransferDependencies,
@@ -307,6 +308,23 @@ async function storeOnce(
 	}
 }
 
+async function readMasks(
+	transaction: IDBTransaction,
+	hashes: Iterable<string>,
+): Promise<MaskRecord[]> {
+	const store = transaction.objectStore(STORE_NAMES.masks);
+	const masks: MaskRecord[] = [];
+	for (const sha256 of hashes) {
+		const mask = (await requestToPromise(store.get(sha256))) as
+			MaskRecord | undefined;
+		if (mask) {
+			masks.push(mask);
+		}
+	}
+
+	return masks;
+}
+
 // Deletes those of the sources that no project refers to, and returns them
 // (persistence.md section 8.5). The transaction covers sources and projects.
 async function deleteUnreferencedSources(
@@ -463,11 +481,29 @@ export class IndexedDbRepository implements StorageRepository {
 					},
 					signal,
 				),
+			hasMask: async (sha256) => (await this.getMask(sha256)) !== undefined,
+			stageMask: async (mask, signal) =>
+				runTransaction(
+					this.#db,
+					STORE_NAMES.masks,
+					'readwrite',
+					async (tx) => {
+						const store = tx.objectStore(STORE_NAMES.masks);
+						if ((await requestToPromise(store.count(mask.sha256))) > 0) {
+							return false;
+						}
+
+						await requestToPromise(store.put(mask));
+						return true;
+					},
+					signal,
+				),
 			commit: async (plan, signal) =>
 				runTransaction(
 					this.#db,
 					[
 						STORE_NAMES.sources,
+						STORE_NAMES.masks,
 						STORE_NAMES.projects,
 						STORE_NAMES.history,
 						STORE_NAMES.thumbnails,
@@ -485,6 +521,15 @@ export class IndexedDbRepository implements StorageRepository {
 					'readwrite',
 					async (tx) => {
 						await deleteUnreferencedSources(tx, hashes);
+					},
+				),
+			discardMasks: async (hashes) =>
+				runTransaction(
+					this.#db,
+					[STORE_NAMES.masks, STORE_NAMES.projects],
+					'readwrite',
+					async (tx) => {
+						await deleteUnreferencedMasks(tx, hashes);
 					},
 				),
 			cleanupOrphanedSources: async () => this.cleanupOrphanedSources(),
@@ -517,6 +562,10 @@ export class IndexedDbRepository implements StorageRepository {
 					sourcesStore.put(toSourceRecord(source, this.#now())),
 				);
 			}
+		}
+
+		for (const mask of plan.masks) {
+			await storeOnce(tx, STORE_NAMES.masks, toMaskRecord(mask, this.#now()));
 		}
 
 		const replace = plan.mode === 'replace';
@@ -948,6 +997,7 @@ export class IndexedDbRepository implements StorageRepository {
 			[
 				STORE_NAMES.projects,
 				STORE_NAMES.sources,
+				STORE_NAMES.masks,
 				STORE_NAMES.history,
 				STORE_NAMES.thumbnails,
 			],
@@ -967,10 +1017,14 @@ export class IndexedDbRepository implements StorageRepository {
 					tx,
 					projectSourceHashes(project, history),
 				);
+				const masks = await readMasks(
+					tx,
+					referencedMaskHashes(project, history ?? []),
+				);
 				const thumbnail = (await requestToPromise(
 					tx.objectStore(STORE_NAMES.thumbnails).get(projectId),
 				)) as ThumbnailRecord | undefined;
-				return {project, sources, history, thumbnail};
+				return {project, sources, masks, history, thumbnail};
 			},
 		);
 		return writeProjectArchive(snapshot, options, this.#transfer);
@@ -986,10 +1040,13 @@ export class IndexedDbRepository implements StorageRepository {
 			fileName,
 			options,
 			this.#transfer,
-			async (sha256) => this.getSource(sha256),
+			{
+				findSource: async (sha256) => this.getSource(sha256),
+				findMask: async (sha256) => this.getMask(sha256),
+			},
 		);
-		if (prepared.newSourceBytes > 0) {
-			await this.#requireQuota(prepared.newSourceBytes);
+		if (prepared.newBytes > 0) {
+			await this.#requireQuota(prepared.newBytes);
 		}
 
 		options.signal?.throwIfAborted();
@@ -1000,6 +1057,7 @@ export class IndexedDbRepository implements StorageRepository {
 			this.#db,
 			[
 				STORE_NAMES.sources,
+				STORE_NAMES.masks,
 				STORE_NAMES.projects,
 				STORE_NAMES.history,
 				STORE_NAMES.thumbnails,
@@ -1035,6 +1093,13 @@ export class IndexedDbRepository implements StorageRepository {
 					existingNames: others.map((other) => other.name),
 					now,
 				});
+				// Only those the project uses, so no blob is left without one.
+				for (const mask of prepared.contents.masks) {
+					if (project.referencedMaskHashes.includes(mask.sha256)) {
+						await storeOnce(tx, STORE_NAMES.masks, toMaskRecord(mask, now));
+					}
+				}
+
 				await requestToPromise(projectsStore.put(project));
 				for (const entry of history) {
 					await requestToPromise(historyStore.put(entry));
@@ -1073,6 +1138,7 @@ export class IndexedDbRepository implements StorageRepository {
 			[
 				STORE_NAMES.projects,
 				STORE_NAMES.sources,
+				STORE_NAMES.masks,
 				STORE_NAMES.history,
 				STORE_NAMES.thumbnails,
 				STORE_NAMES.presets,
@@ -1109,6 +1175,15 @@ export class IndexedDbRepository implements StorageRepository {
 					),
 				);
 
+				const masks = await readMasks(
+					tx,
+					new Set(
+						items.flatMap(({project, history}) =>
+							referencedMaskHashes(project, history ?? []),
+						),
+					),
+				);
+
 				const presets =
 					(options.includePresets ?? true)
 						? ((await requestToPromise(
@@ -1132,6 +1207,7 @@ export class IndexedDbRepository implements StorageRepository {
 					includesHistory,
 					projects: items,
 					sources,
+					masks,
 					presets,
 					settings,
 				};
@@ -1163,6 +1239,7 @@ export class IndexedDbRepository implements StorageRepository {
 	): Promise<BackupInspection> {
 		return inspectBackupArchive(file, options, this.#transfer, {
 			findSource: async (sha256) => this.getSource(sha256),
+			findMask: async (sha256) => this.getMask(sha256),
 			read: async () => this.getStartupSnapshot(),
 		});
 	}

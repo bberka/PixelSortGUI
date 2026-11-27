@@ -8,18 +8,21 @@ export type BackupImportErrorCode =
 	| 'newer-version'
 	| 'missing-source'
 	| 'damaged-source'
+	| 'missing-mask'
+	| 'damaged-mask'
 	| 'unreadable-image';
 
 export type BackupExportErrorCode =
 	| 'export-too-large'
 	| 'export-missing-source'
+	| 'export-missing-mask'
 	| 'export-invalid-project'
 	| 'export-invalid-record';
 
 export type BackupErrorCode = BackupImportErrorCode | BackupExportErrorCode;
 
 export type BackupImportErrorDetail = {
-	// The archive path of the entry, for the two image data errors.
+	// The archive path of the entry, for the image and mask data errors.
 	path?: string;
 	// The version the file declares, for `newer-version`.
 	version?: unknown;
@@ -55,13 +58,21 @@ export function backupImportMessage(
 			return `${prefix} image data is damaged (${path}).`;
 		}
 
+		case 'missing-mask': {
+			return `${prefix} missing mask data (${path}).`;
+		}
+
+		case 'damaged-mask': {
+			return `${prefix} mask data is damaged (${path}).`;
+		}
+
 		case 'unreadable-image': {
 			return `${prefix} embedded image is unreadable or exceeds 16,384 px.`;
 		}
 	}
 }
 
-// `projectName` names the project of the two codes that blame one.
+// `projectName` names the project of the codes that blame one.
 export function backupExportMessage(
 	code: BackupExportErrorCode,
 	projectName = '',
@@ -74,6 +85,10 @@ export function backupExportMessage(
 
 		case 'export-missing-source': {
 			return `${prefix} the image data of ${projectName} is missing.`;
+		}
+
+		case 'export-missing-mask': {
+			return `${prefix} the mask data of ${projectName} is missing.`;
 		}
 
 		case 'export-invalid-project': {

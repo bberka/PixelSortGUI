@@ -19,6 +19,7 @@ import {
 	type ExportProjectOptions,
 	type HistoryEntryRecord,
 	type ImportProjectOptions,
+	type MaskRecord,
 	type ProjectRecord,
 	type SourceRecord,
 	type ThumbnailRecord,
@@ -40,6 +41,8 @@ export type ProjectSnapshot = {
 	project: ProjectRecord;
 	// The stored ones among those the file needs.
 	sources: SourceRecord[];
+	// The stored ones among the painted masks the file needs.
+	masks: MaskRecord[];
 	// `undefined` leaves undo history out of the file.
 	history: HistoryEntryRecord[] | undefined;
 	thumbnail: ThumbnailRecord | undefined;
@@ -53,13 +56,13 @@ export type ImportedThumbnail = Pick<
 // A file that passed every check but the quota one.
 export type PreparedImport = {
 	contents: ProjectFileContents;
-	// Bytes of the sources that are not stored yet.
-	newSourceBytes: number;
+	// Bytes of the sources and masks that are not stored yet.
+	newBytes: number;
 	thumbnail: ImportedThumbnail | null;
 };
 
 export async function writeProjectArchive(
-	{project, sources, history, thumbnail}: ProjectSnapshot,
+	{project, sources, masks, history, thumbnail}: ProjectSnapshot,
 	{signal, onProgress}: ExportProjectOptions,
 	{projectArchive}: ProjectTransferDependencies,
 ): Promise<ProjectFileOutput> {
@@ -68,6 +71,7 @@ export async function writeProjectArchive(
 		{
 			project,
 			sources,
+			masks,
 			history,
 			thumbnail: thumbnail?.blob,
 			appVersion: getAppVersionLabel(),
@@ -87,14 +91,20 @@ export async function prepareProjectImport(
 		projectArchive,
 		probeImage = probeImageDimensions,
 	}: ProjectTransferDependencies,
-	findSource: (sha256: string) => Promise<SourceRecord | undefined>,
+	{
+		findSource,
+		findMask,
+	}: {
+		findSource(sha256: string): Promise<SourceRecord | undefined>;
+		findMask(sha256: string): Promise<MaskRecord | undefined>;
+	},
 ): Promise<PreparedImport> {
 	const open = projectArchive?.open ?? (await loadArchive()).openProjectFile;
 	const contents = await open(file, fileName, {signal, onProgress});
 	const openError = (code: 'invalid-metadata' | 'unreadable-image') =>
 		new ProjectFileError(code, projectOpenMessage(code, fileName));
 
-	let newSourceBytes = 0;
+	let newBytes = 0;
 	for (const source of contents.sources) {
 		const stored = await findSource(source.sha256);
 		let size: {width: number; height: number};
@@ -108,11 +118,17 @@ export async function prepareProjectImport(
 			}
 
 			size = probed.value;
-			newSourceBytes += source.byteLength;
+			newBytes += source.byteLength;
 		}
 
 		if (size.width !== source.width || size.height !== source.height) {
 			throw openError('invalid-metadata');
+		}
+	}
+
+	for (const mask of contents.masks) {
+		if (!(await findMask(mask.sha256))) {
+			newBytes += mask.byteLength;
 		}
 	}
 
@@ -128,7 +144,7 @@ export async function prepareProjectImport(
 		}
 	}
 
-	return {contents, newSourceBytes, thumbnail};
+	return {contents, newBytes, thumbnail};
 }
 
 export function toSourceRecord(
@@ -149,6 +165,20 @@ export function toSourceRecord(
 		byteLength,
 		width,
 		height,
+		createdAt: now,
+	};
+}
+
+export function toMaskRecord(
+	{sha256, width, height, blob}: ProjectFileContents['masks'][number],
+	now: number,
+): MaskRecord {
+	return {
+		sha256,
+		width,
+		height,
+		blob,
+		byteLength: blob.size,
 		createdAt: now,
 	};
 }

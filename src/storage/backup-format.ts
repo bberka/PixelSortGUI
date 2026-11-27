@@ -8,13 +8,14 @@ import {
 	fileTimestamp,
 	hashValue,
 	integerValue,
+	maskEntriesValue,
 	objectValue,
 	oneOf,
 	sourceEntryValue,
 	stackValue,
 	stringValue,
 	timestamp,
-	PROJECT_FORMAT_VERSION,
+	type ArchiveMaskEntry,
 	type ArchiveSourceEntry,
 	type ProjectFilePayload,
 } from './project-format.ts';
@@ -23,13 +24,16 @@ import {
 	MAX_PROJECT_NAME_LENGTH,
 	type CompareMode,
 	type HistoryEntryRecord,
+	type MaskRecord,
 	type ProjectRecord,
 	type SourceRecord,
 	type ThemePreference,
 	type UserPresetRecord,
 } from './types.ts';
 
-export const BACKUP_FORMAT_VERSION = 1;
+// The newest version read. A backup with no mask is written as version 1
+// (persistence.md section 8.6).
+export const BACKUP_FORMAT_VERSION = 2;
 
 // Below 4 GiB, so a backup never needs ZIP64 records (decisions.md D44).
 export const MAX_BACKUP_BYTES = 4_000_000_000;
@@ -59,9 +63,9 @@ export type BackupProjectEntry = {
 
 export type BackupManifest = {
 	kind: 'backup';
-	backupVersion: 1;
+	backupVersion: 1 | 2;
 	// Of every `project.json` and `history.json` inside.
-	projectFormatVersion: 1;
+	projectFormatVersion: 1 | 2;
 	appVersion: string;
 	exportedAt: string;
 	scope: 'library' | 'selection';
@@ -70,6 +74,8 @@ export type BackupManifest = {
 	includesSettings: boolean;
 	// Each source the projects use, once.
 	sources: ArchiveSourceEntry[];
+	// Each painted mask the projects use, once. Present exactly in version 2.
+	masks?: ArchiveMaskEntry[];
 	projects: BackupProjectEntry[];
 	presetCount: number;
 };
@@ -87,6 +93,8 @@ export type BackupInput = {
 	projects: readonly BackupProjectInput[];
 	// Every source the projects refer to.
 	sources: readonly SourceRecord[];
+	// Every painted mask the written stacks refer to.
+	masks?: readonly MaskRecord[];
 	// Omitted leaves presets out.
 	presets?: readonly UserPresetRecord[];
 	// Omitted leaves settings out.
@@ -110,6 +118,8 @@ export type BackupContents = {
 	projects: BackupProjectContents[];
 	// Verified against their hashes.
 	sources: Array<ArchiveSourceEntry & {blob: Blob}>;
+	// Verified too.
+	masks: Array<ArchiveMaskEntry & {blob: Blob}>;
 	// `null` when the backup leaves them out.
 	presets: UserPresetRecord[] | null;
 	settings: BackupSettingsPayload | null;
@@ -265,10 +275,11 @@ export function backupManifestValue(
 	unique(projectEntries, (entry) => entry.id, 'projects');
 	const exportedAt = stringValue(value.exportedAt, 'exportedAt');
 	ensure(!Number.isNaN(Date.parse(exportedAt)), 'exportedAt');
+	const backupVersion = value.backupVersion === 2 ? 2 : 1;
 	return {
 		kind: 'backup',
-		backupVersion: BACKUP_FORMAT_VERSION,
-		projectFormatVersion: PROJECT_FORMAT_VERSION,
+		backupVersion,
+		projectFormatVersion: value.projectFormatVersion === 2 ? 2 : 1,
 		appVersion: stringValue(value.appVersion, 'appVersion'),
 		exportedAt,
 		scope: oneOf(value.scope, ['library', 'selection'], 'scope'),
@@ -276,6 +287,7 @@ export function backupManifestValue(
 		includesPresets,
 		includesSettings: booleanValue(value.includesSettings, 'includesSettings'),
 		sources: sourceEntries,
+		...(backupVersion === 2 && {masks: maskEntriesValue(value.masks)}),
 		projects: projectEntries,
 		presetCount: integerValue(
 			value.presetCount,

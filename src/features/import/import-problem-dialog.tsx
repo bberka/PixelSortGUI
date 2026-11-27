@@ -1,7 +1,7 @@
 import {problemDialogTitle, type ImportProblem} from './import-problems.ts';
 import {
 	AlertDialog,
-	AlertDialogAction,
+	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
 	AlertDialogFooter,
@@ -53,7 +53,10 @@ export function ImportProblemDialog({
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogAction onClick={onDismiss}>Dismiss</AlertDialogAction>
+					{/* The cancel part, because that is what takes the focus. */}
+					<AlertDialogCancel variant="default" onClick={onDismiss}>
+						Dismiss
+					</AlertDialogCancel>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>

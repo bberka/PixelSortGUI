@@ -378,13 +378,14 @@ test('dismissing a dropped file error returns the focus', async ({page}) => {
 		(globalThis.document.activeElement as HTMLElement | null)?.blur();
 	});
 	await dropImages(page, [BROKEN_IMAGE]);
+	await expect(dismiss).toBeFocused();
 	await dismiss.click();
 	await expect(main).toBeFocused();
 
 	await button(page, 'Transform').focus();
 	await expect(main).not.toHaveAttribute('tabindex');
 	await dropImages(page, [BROKEN_IMAGE]);
-	await expect(dismiss).toBeVisible();
+	await expect(dismiss).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(button(page, 'Transform')).toBeFocused();
 });

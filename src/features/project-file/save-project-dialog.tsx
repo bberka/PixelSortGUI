@@ -1,8 +1,7 @@
-import {useEffect, useId, useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Button} from '@/components/ui/button';
-import {Checkbox} from '@/components/ui/checkbox';
 import {
 	Dialog,
 	DialogContent,
@@ -11,7 +10,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog';
-import {Label} from '@/components/ui/label';
 import {Progress} from '@/components/ui/progress';
 import {
 	Sheet,
@@ -21,6 +19,7 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from '@/components/ui/sheet';
+import {CheckRow} from '@/features/backup/check-row.tsx';
 import {downloadBlob} from '@/features/export/export-helpers.ts';
 import {problemForStorageError} from '@/features/import/import-problems.ts';
 import {formatDimensions} from '@/features/library/library-format.ts';
@@ -53,7 +52,6 @@ export function SaveProjectDialog({
 }: SaveProjectDialogProps) {
 	const exportProjectFile = useAppStore((state) => state.exportProjectFile);
 	const isPhone = usePhoneLayout();
-	const historyId = useId();
 	const [includeHistory, setIncludeHistory] = useState(true);
 	// 0 to 1 while a file is being written.
 	const [progress, setProgress] = useState<number | null>(null);
@@ -142,18 +140,15 @@ export function SaveProjectDialog({
 					{formatDimensions(project.effectiveWidth, project.effectiveHeight)}
 				</p>
 			</div>
-			<div className="flex items-center gap-2">
-				<Checkbox
-					id={historyId}
+			{/* The row's padding hangs out, so the box lines up with the text. */}
+			<div className="-mx-2">
+				<CheckRow
 					checked={includeHistory}
 					disabled={saving}
-					onCheckedChange={(checked) => {
-						setIncludeHistory(checked === true);
-					}}
-				/>
-				<Label htmlFor={historyId} className="pointer-coarse:min-h-11">
+					onCheckedChange={setIncludeHistory}
+				>
 					Include undo history
-				</Label>
+				</CheckRow>
 			</div>
 			{saving ? (
 				<div className="space-y-1.5 rounded-md border border-border bg-card p-3">

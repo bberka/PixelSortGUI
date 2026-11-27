@@ -11,6 +11,7 @@ Updated with the project file reader, save errors and archive modules (section 8
 Updated with single-project save and import in the repository and app store (section 8.3.5) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 Updated with the backup size limit, validation, commit rules and modules (section 8.4) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with database version 3 and reference-counted extra sources (section 8.5) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with database version 4 and mask storage (`F29`, section 8.6) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 
 # Drift persistence spec
 
@@ -30,14 +31,15 @@ Origin Private File System (OPFS) and the File System Access API are not used as
 
 ## 2. Database and object stores
 
-Database name: `drift`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1 and `3` for `v0.3.0` per section 8.5).
+Database name: `drift`. Initial schema version: `1` (bumped to `2` in `v0.2.0` per section 8.1, `3` for `v0.3.0` per section 8.5 and `4` with masks per section 8.6).
 
 | Store | Key path | Indexes | Contents and sizing notes |
 |---|---|---|---|
 | `sources` | `sha256` | `byCreatedAt` (`createdAt`) | Original compressed image `Blob`s, deduplicated by SHA-256 hex digest. Project sources and extra blend sources share the store (section 8.5). Never modified after insert. |
-| `projects` | `id` | `byOpenedAt` (`openedAt`), `bySourceHash` (`sourceHash`), `byReferencedSourceHash` (`referencedSourceHashes`, `multiEntry`) | Lightweight project records (metadata, current `EffectStack`, `viewState`, `exportSettings`, history pointer). Kept under ~10 KB each so 100 projects load in one fast read. |
+| `projects` | `id` | `byOpenedAt` (`openedAt`), `bySourceHash` (`sourceHash`), `byReferencedSourceHash` (`referencedSourceHashes`, `multiEntry`), `byReferencedMaskHash` (`referencedMaskHashes`, `multiEntry`) | Lightweight project records (metadata, current `EffectStack`, `viewState`, `exportSettings`, history pointer). Kept under ~10 KB each so 100 projects load in one fast read. |
 | `thumbnails` | `projectId` | none | Rendered result thumbnails (longest side ≤ 512 px, ~20 to 60 KB each). Separated from `projects` so library load and scroll decode thumbnails lazily (AC-F2.6). |
 | `history` | `['projectId', 'seq']` | `byProjectId` (`projectId`) | Per-project committed `EffectStack` snapshots. Separated from `projects` so opening the library never reads history rows (AC-F3.7). |
+| `masks` | `sha256` | `byCreatedAt` (`createdAt`) | Version 4 (section 8.6). Painted mask assets, deduplicated by mask hash, compressed. Never modified after insert. |
 | `presets` | `id` | `byNameLower` (`nameLower`) | User-created global presets (`id` prefixed `user:`). Built-in presets (`builtin:<slug>`) ship in code and are never stored here. |
 | `meta` | `key` | none | Singleton app-level records (`'appState'`, `'schemaInfo'`). |
 
@@ -83,6 +85,7 @@ type ProjectRecord = {
 	name: string; // trimmed, 1..120 characters
 	sourceHash: string; // foreign key to sources.sha256
 	referencedSourceHashes: string[]; // every source this project and its history use, sorted (section 8.5)
+	referencedMaskHashes: string[]; // every painted mask this project and its history use, sorted (section 8.6)
 	sourceWidth: number; // copied from SourceRecord for fast library card rendering
 	sourceHeight: number; // copied from SourceRecord for fast library card rendering
 	transform: SourceTransform; // crop, rotation, flip and resize (engine.md section 16.3, section 8.1)
@@ -141,11 +144,21 @@ type AppStateRecord = {
 	theme: ThemePreference; // default 'system'
 	compareMode: CompareMode; // default 'toggle'
 	welcomeDismissed?: boolean; // F27 effect introduction dismissed; absent means false
+	brush?: BrushSettings; // F29, this device only, never in files or backups; absent means the defaults
+};
+
+type BrushSettings = {
+	size: number; // diameter in effective-image px, integer 1..2000, default 100
+	hardness: number; // integer 0..100, default 50
+	strength: number; // integer 1..100, default 100
+	penPressure: boolean; // default true
+	showMask: boolean; // overlay, default true
+	overlayOpacity: number; // integer 10..100, default 50
 };
 
 type SchemaInfoRecord = {
 	key: 'schemaInfo';
-	dbVersion: number; // 3
+	dbVersion: number; // 4
 	migratedAt: number; // Unix epoch ms
 };
 ```
@@ -174,6 +187,8 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Import image(s) (F1) | `sources`, `projects`, `history`, `meta` | Immediate per accepted file | Hash bytes via `crypto.subtle.digest('SHA-256', buf)`. Check quota (section 7). In one `readwrite` transaction: insert `sources` only if `sha256` does not exist (AC-F1.7); insert `projects` with empty `EffectStack`, the identity `transform`, effective size equal to the source size, `historyHeadSeq: 0`, and default `viewState` (`fitMode: 'fit'`, `zoom: 1`, centred at `(width / 2, height / 2)`, `splitPosition: 0.5`); insert `history` entry `(projectId, 0)` with label `"Initial"`; in a multi-file import, set `meta.appState.activeProjectId` to the first imported project. |
 | Drag slider / dial / divider | none | Never during drag | Transient value updates worker preview only. |
 | Commit stack change (F4, F5, F10) | `projects`, `history` (reads `sources`) | Immediate (0 ms debounce) | Triggered on slider release, numeric input Enter/blur, 500 ms idle after keyboard arrow burst (AC-F5.4), add/remove/duplicate/reorder/toggle, reset, randomize, or preset apply. One `readwrite` transaction: (1) delete all `history` entries for `projectId` with `seq > historyHeadSeq` (discards redo branch); (2) insert new entry at `seq = historyHeadSeq + 1`; (3) if entry count exceeds 201, delete oldest entries until count is 201 and advance `historyMinSeq`; (4) update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `historyMaxSeq`, `referencedSourceHashes`, `updatedAt`). The commit is refused, with nothing written, when it breaks an extra-source rule of section 8.5. Every entry snapshots both sides and the transform, so one history covers all of them. A stack commit keeps the project's transform, which includes applying a preset (AC-F20.6). Satisfies AC-F3.6 (committed ≥ 1 s before tab kill is never lost). |
+| Commit mask edit (F29: stroke, Fill, Clear, mask setting, add or remove) | `projects`, `history`, `masks` (reads `sources`) | Immediate | The stack commit transaction, storing any new asset with it (section 8.6). A slider drag writes nothing until release. |
+| Change brush setting (F29) | `meta` | Debounced 200 ms | Writes `meta.appState.brush`. |
 | Commit geometry change (F20) | `projects`, `history` | Immediate | The stack commit transaction with a new `transform` and the stacks unchanged: one history entry labelled per section 8.2. |
 | Undo / Redo (F9) | `projects` | Immediate (0 ms debounce) | Read target `HistoryEntryRecord` at `historyHeadSeq - 1` (undo) or `historyHeadSeq + 1` (redo). Update `ProjectRecord` (`stack`, `selectedInstanceId`, `stackA`, `selectedInstanceIdA`, `transform`, `effectiveWidth`, `effectiveHeight`, `historyHeadSeq`, `updatedAt`); an entry without `stackA` empties side A. Never alters `viewState`, `theme`, or library selection (AC-F9.4). |
 | Jump to history entry (F23) | `projects` | Immediate (0 ms debounce) | Read the `HistoryEntryRecord` at the chosen `seq` and update `ProjectRecord` as undo does; later entries stay until the next commit (section 8.2). |
@@ -222,7 +237,7 @@ If a `sources` record has no referencing project (an interrupted run, or an extr
 
 Three independent version numbers govern stored data:
 
-1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `3`):**
+1. **IndexedDB schema version (`dbVersion`, started at `1`, currently `3`, `4` with section 8.6):**
    - Managed inside `IDBOpenDBRequest.onupgradeneeded`.
    - Each bump from `v` to `v + 1` runs a sequential upgrade function `dbMigrations[v]` inside the versionchange transaction, updating `meta.schemaInfo` at the end. A migration that rewrites records returns a step, and the next migration starts only when that step has finished, so two migrations never rewrite a record at once.
    - An upgrade is all or nothing: when any request or migration fails, the transaction aborts, the database stays at its old version with its old data, and the app falls back as in section 5.1.
@@ -231,8 +246,9 @@ Three independent version numbers govern stored data:
 
    - Adding an optional field that older builds can ignore (such as `exportSettings.maxFileSizeKb`, `stackA`, or `viewState.splitOrientation`) needs no version bump and no migration: records without the field read as the default. An older build keeps `stackA` on the project record when it rewrites it, but its new history entries omit side A.
 
-2. **Effect stack schema version (`EffectStack.schemaVersion`, currently `1`):**
-   - Defined in [engine.md section 2.2](engine.md#22-effect-stack). Increments only when the envelope shape of `EffectStack` or `EffectInstance` changes (for example, `schemaVersion: 2` when optional `maskId` arrives in later work per [engine.md section 5.6](engine.md#56-masks-later-semantics-fixed-now)).
+2. **Effect stack schema version (`EffectStack.schemaVersion`, `1`, or `2` for a stack with a mask):**
+   - Defined in [engine.md section 2.2](engine.md#22-effect-stack). Increments only when the envelope shape of `EffectStack` or `EffectInstance` changes.
+   - Versions 1 and 2 are both current. Version 2 adds `EffectInstance.mask` ([engine.md section 16.6](engine.md#166-masks-f29)). Every write stores 2 when some instance of that stack has a mask and 1 otherwise, so no envelope migration runs.
    - On load, `migrateStackEnvelope(stack)` upgrades older envelopes sequentially in memory. Stacks with `schemaVersion` newer than supported are preserved untouched and warn the user.
 
 3. **Per-effect parameter version (`EffectInstance.version`, starts at `1`):**
@@ -401,7 +417,7 @@ export type ArchiveSourceEntry = {
 
 export type ProjectFileManifest = {
 	kind: 'project';
-	formatVersion: 1;
+	formatVersion: 1; // 2 when the file holds a mask, section 8.6
 	appVersion: string; // stamped at build time (e.g. '0.2.0', or '0.x (dev)')
 	exportedAt: string; // ISO 8601 UTC timestamp
 	includesHistory: boolean;
@@ -559,7 +575,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 
 export type BackupManifest = {
 	kind: 'backup';
-	backupVersion: 1;
+	backupVersion: 1; // 2 when the backup holds a mask, section 8.6
 	projectFormatVersion: 1; // matches PROJECT_FORMAT_VERSION for every project.json inside
 	appVersion: string; // stamped at build time, e.g. '0.2.0'
 	exportedAt: string; // ISO 8601 UTC timestamp
@@ -718,7 +734,7 @@ When mobile/Safari acceptance is added, WebKit's 7-day ITP eviction rule applies
 
 A project can use up to **8** extra `SourceRecord`s beside its primary `sourceHash` in its current `stack` and `stackA`, and its retained `history` entries can use more. Extra sources live in the existing `sources` store (no new object store) and share SHA-256 deduplication with primary sources. The rules are in `src/storage/extra-sources.ts`, and both adapters use them.
 
-**What counts as a reference.** Every effect parameter whose value is a string of 64 lowercase hex digits, in any instance, enabled or not. A `kind: 'image'` parameter holds exactly that or `''` ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)), and no other parameter kind stores such a string. The rule does not consult the effect registry, so an effect this build does not know, or knows only in an older version, still keeps its images.
+**What counts as a reference.** Every effect parameter whose value is a string of 64 lowercase hex digits, and the `source` of every image mask (section 8.6), in any instance, enabled or not. A `kind: 'image'` parameter holds exactly that or `''` ([engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26)), and no other parameter kind stores such a string. The rule does not consult the effect registry, so an effect this build does not know, or knows only in an older version, still keeps its images.
 
 **Database version 3 (`dbMigrations[2]` in `src/storage/db.ts`):**
 
@@ -733,7 +749,7 @@ The upgrade is one-way: a build that knows only version 2 cannot open a version 
 
 **Rules a stack write must meet** (`commitStack` and `saveProjectStack`; a refused write throws `StorageValidationError` and changes nothing):
 
-- **Cap:** `stack` and `stackA` together name at most 8 distinct extra sources; `sourceHash` does not count. The write is refused with `"A project can use at most 8 extra blend images."` when the result is over 8 and adds a source the current stacks did not name. Removing one is always possible.
+- **Cap:** `stack` and `stackA` together name at most 8 distinct extra sources, mask images included (section 8.6); `sourceHash` does not count. The write is refused with `"A project can use at most 8 extra blend and mask images."` when the result is over 8 and adds a source the current stacks did not name. Removing one is always possible.
 - **Stored:** a source the project did not refer to before must be in `sources`. A reference the project already holds is not checked again, so a project with a missing image stays editable.
 
 **Storing a picked image** ([product.md F26](product.md#f26-blending-multiple-images-imageblend)). A source that no project refers to yet may be deleted at any moment by another tab's startup cleanup. So an image picked from the device is never stored on its own: its `SourceRecord` is written by the same `readwrite` transaction as the commit that first refers to it. `commitStack` takes it as `newSource` (`{sha256, blob, mimeType, width, height}`, with `sha256` the SHA-256 of the blob) and:
@@ -750,9 +766,70 @@ Writing the record also restores a source that a project refers to but that has 
 - `cleanupOrphanedSources()` deletes only unreferenced sources, so extra images used only by `imageBlend` or by undo history are never evicted.
 - A commit that drops the last history entry using a source (a discarded redo branch, or the 201-entry cap) updates `referencedSourceHashes` and leaves the blob for the cleanup at the next idle startup.
 
-**User presets:** `createPreset` sets every parameter that holds a reference to `''` before saving, so presets never pin source blobs or carry hashes to another device. Backup export and import do the same to presets.
+**User presets:** `createPreset` sets every parameter that holds a reference to `''` and removes painted and image masks (section 8.6) before saving, so presets never pin source blobs or carry hashes to another device. Backup export and import do the same to presets.
 
 **Project files (F25) and backups (F17):** an export collects `sourceHash` and the references of `stack`, `stackA` and, when history is included, the history entries, and writes each source once into `sources/<sha256>.<ext>` and `manifest.sources`. An export without history leaves out sources that only history uses. An import stores the sources in the transaction (`.glproj`) or phases (backup) it already uses, and computes `referencedSourceHashes` for the records it writes.
+
+### 8.6 Database version 4 (masks, F29)
+
+Painted masks ([engine.md section 16.6](engine.md#166-masks-f29)) are stored as separate content-addressed assets, so a stack, and every history snapshot of it, holds a 64-character hash instead of pixels. The rules are in `src/storage/masks.ts`, and both adapters use them. Image masks store nothing new: their `source` is an extra source (section 8.5).
+
+```ts
+type MaskRecord = {
+	sha256: string; // mask hash: SHA-256 of the canonical bytes, 64 lowercase hex characters
+	width: number; // grid size, width * height <= 4,194,304
+	height: number;
+	blob: Blob; // the canonical bytes, compressed with CompressionStream('deflate-raw')
+	byteLength: number; // blob.size
+	createdAt: number; // Unix epoch ms
+};
+
+type NewMask = Omit<MaskRecord, 'byteLength' | 'createdAt'>;
+```
+
+**Database version 4 (`dbMigrations[3]` in `src/storage/db.ts`).** If the cloud stores of section 11 ship first and take version 4, this migration takes the next number, and the same applies to them.
+
+1. Create the `masks` store with the `byCreatedAt` index.
+2. `ProjectRecord` adds `referencedMaskHashes: string[]`: sorted, without repeats, holding every non-empty painted `asset` of `stack`, `stackA` and all retained history entries.
+3. Create the `multiEntry` index `byReferencedMaskHash` on `projects`.
+4. Backfill every project from its stacks and history inside the versionchange transaction (a version 3 build can hold a stack with a mask from a hand-made file). A damaged stack is skipped, never fatal.
+5. Update `meta.schemaInfo` to `dbVersion: 4`. Other stores are untouched. `MemoryStorageAdapter` writes the same data.
+
+The upgrade is one-way: a version 3 build cannot open a version 4 database (section 6). Starting step 3 of section 9 opens `DB_VERSION` 4.
+
+**Writing.** A new asset is never stored on its own. `commitStack` takes `newMasks?: readonly NewMask[]` and, in its `readwrite` transaction, now including `masks`:
+
+- checks quota for the new blob bytes before the transaction (`StorageQuotaError`, nothing written);
+- adds each record only when `stack` or `stackA` of the result names its hash and no record with that hash exists;
+- refuses the commit (`StorageValidationError`, nothing written) when a hash the project did not refer to before is neither stored nor in `newMasks`. A reference the project already holds is not checked again, so a project with a missing mask stays editable;
+- recomputes `referencedMaskHashes` from the resulting stacks and retained history, as section 8.5 does for sources. `createProject`, `duplicateProject`, `saveProjectStack` and both imports do the same. `undo`, `redo` and `jumpToHistory` leave it alone.
+
+The repository checks the record's shape, not its hash; the mask worker that made it computes the hash, and every reader verifies it. A hash that is already stored is trusted.
+
+**Reading.** `getMask(sha256)` returns the record or `undefined`. Opening a project reads only the masks of the current stacks; undo, redo and jump read the masks of the entry applied.
+
+**History.** One commit per stroke, Fill, Clear, mask setting or mask removal. A snapshot holds only hashes: the history of 200 strokes adds about 20 KB of JSON, and each stroke's asset is stored once. A painted mask usually compresses to tens of kilobytes; the worst case is the grid size, 4 MiB. Dropping history entries (a discarded redo branch or the 201-entry cap) updates the references and leaves the blobs to cleanup.
+
+**Deletion and cleanup.** `deleteProject` deletes each mask of `referencedMaskHashes` that no remaining project refers to, in the same transaction. `cleanupOrphanedMasks()` runs with the source cleanup of section 5.3 and deletes only unreferenced masks.
+
+**Presets.** `createPreset`, backup export and backup import remove masks of kind `paint` and `image` from preset stacks, because both belong to one photo. `luma` masks stay. A stripped stack with no mask left is written with `schemaVersion: 1`.
+
+**Project files and backups.**
+
+- Layout: `masks/<sha256>.mask` (STORE; the stored blob unchanged), in the root of a `.glproj` and once per hash in a backup. Manifests gain `masks: ArchiveMaskEntry[]` with `{sha256, path, width, height, byteLength}`.
+- A file written without history holds only the masks of the current stacks.
+- **Format versions:** when any stack or preset the writer writes has a mask, `manifest.formatVersion` is `2` (a backup writes `backupVersion: 2` and `projectFormatVersion: 2`) and has `masks`, possibly empty. Otherwise it writes version 1 exactly as before, so older builds still open unmasked files and refuse masked ones with the "newer than this app supports" message instead of dropping masks. The reader accepts 1 and 2; a version 1 file has no `masks`, and `projectFileMigrations[1]` adds nothing.
+- **Limits:** each mask entry is at most 8 MiB and its grid at most 4,194,304 px; decompression stops at `12 + width * height` bytes. Mask entries count toward the entry-count and size limits of sections 8.3.4 and 8.4.2. A backup of many painted strokes can reach the 65,534-entry limit; the existing message already says to leave out history.
+- **Validation:** a mask is verified by decompressing it and checking the header, size and hash, one at a time, before anything is written. A manifest entry, hash or grid size that breaks the rules, or a grid that is not the size [engine.md section 16.6](engine.md#166-masks-f29) gives for a project that uses it, is invalid metadata.
+
+| Condition | Project file message | Backup message |
+|---|---|---|
+| A stack or history entry names a mask the file lacks | `"Can't open <file name>: missing mask data (<path>)."` | `"Can't import backup: missing mask data (<path>)."` |
+| Hash, header or length mismatch, or decompression failure | `"Can't open <file name>: mask data is damaged (<path>)."` | `"Can't import backup: mask data is damaged (<path>)."` |
+
+- A save or export when a referenced mask is not stored fails with `"Can't save <project name>: its mask data is missing."` or `"Can't export backup: the mask data of <project name> is missing."`
+- Import writes new masks in the project-file transaction. A backup stages them in phase 2 beside the sources, includes them in the quota check, re-inserts a missing one in phase 3 and cleans them up with the sources.
+- **Cloud (section 11):** masks upload once to `v1/masks/<sha256>.mask`, are listed in `CloudHead.masks`, and follow the source rules for upload order, verification and the 7-day cleanup.
 
 ## 9. Restore sequence on startup
 
@@ -778,13 +855,14 @@ Startup is designed so that with 50 projects stored, the Library (or the reopene
    - **Library target:** Render the Library screen immediately with all project cards (metadata + aspect-ratio placeholders). An `IntersectionObserver` fetches and decodes each card's `ThumbnailRecord` blob from `thumbnails` only as it enters the viewport (AC-F2.6).
    - **Editor target:** Render the Editor shell immediately with the project's restored `stack`, `stackA`, both selections, `viewState` (zoom, pan, split position and orientation, edited side), `compareMode`, and the project's cached thumbnail (read in a single key lookup from `thumbnails`) as a crisp placeholder while the source image loads (AC-F3.7).
 7. **Step 6 (Async editor hydration, Editor target only):**
+   - Read the painted masks of both current stacks (section 8.6).
    - Read `sources[project.sourceHash]` and all `history` entries for `project.id` via `history.index('byProjectId')`.
    - Migrate any outdated `EffectInstance.version` in `project.stack` and `project.stackA` in memory (marked for write-back on next save, section 6).
    - Post `loadSource` to `preview.worker` ([engine.md section 11](engine.md#11-worker-protocol)), then dispatch a `settle` render of the restored `stack`. If the split view is on and `stackA` is not empty, the side A coordinator renders it too ([engine.md section 8.3](engine.md#83-scheduling)).
    - If restored `viewState` zooms past 1.25 device px per `settle` proxy pixel and proxy scale < 1, schedule the background `full` render per [engine.md section 8.3](engine.md#83-scheduling).
 8. **Step 7 (Idle housekeeping):**
    - Call `navigator.storage.estimate()` and `navigator.storage.persisted()` to populate Settings state.
-   - Run the orphaned-source cleanup sweep (section 5.3).
+   - Run the orphaned-source and orphaned-mask cleanup sweeps (sections 5.3 and 8.6).
 
 ## 10. Module layout and testing
 
@@ -796,6 +874,7 @@ src/storage/
   memory-adapter.ts    In-memory fallback when IndexedDB is unavailable
   quota.ts             estimate(), persist(), pre-flight quota check
   extra-sources.ts     Source references, the 8-image cap and preset stripping (section 8.5)
+  masks.ts             Mask references, asset checks and preset stripping (section 8.6)
   project-file.ts      .glproj writer and reader (section 8.3)
   project-format.ts    .glproj types, limits, validation and format migrations
   project-file-error.ts  Error codes and exact messages, free of fflate
@@ -924,6 +1003,7 @@ Sync builds on the backup format of section 8.4: the same payloads and validator
 
 ```
 v1/sources/<sha256>.<ext>                      original bytes, shared by all projects
+v1/masks/<sha256>.mask                         painted masks (section 8.6), shared
 v1/projects/<projectId>/<revision>/project.json    ProjectFilePayload (8.3.2)
 v1/projects/<projectId>/<revision>/history.json    optional
 v1/projects/<projectId>/<revision>/thumbnail.webp  optional, or .jpg
@@ -935,7 +1015,7 @@ v1/devices/<deviceId>.json                     one device's sync heads (phase 2)
 
 - A `revision` is the SHA-256 of the file's bytes (for a project, `project.json` followed by `history.json`).
 - Everything is written once and never changed, except a device's own `devices/<deviceId>.json`. No two devices write the same file with different content, so neither provider needs a compare-and-swap.
-- Upload order: sources, then revisions, then the backup or device file last. A reader sees only complete states.
+- Upload order: sources and masks, then revisions, then the backup or device file last. A reader sees only complete states.
 - After writing that last file, list again and upload any referenced file that is missing.
 
 ```ts
@@ -959,7 +1039,7 @@ A `cloudVersion` above the supported one is refused with "This cloud data was wr
 
 **Restore.** List `v1/backups/`. Download the chosen backup and its JSON files, validate them as in section 8.4.3 phase 2 (no database write), show the F17 preview, then download the missing sources of the checked projects one at a time, check `byteLength` and SHA-256, and run the four-phase commit of section 8.4.4. Errors reuse the section 8.4.4 texts with "Can't restore backup:" in place of "Can't import backup:".
 
-**Retention and cleanup.** Keep the 5 newest backups of each device. After a successful publish, delete files under `sources/`, `projects/`, `presets/` and `settings/` that no backup or device file references **and** that were last modified more than 7 days ago by the provider's clock. Skip cleanup if any backup or device file cannot be read.
+**Retention and cleanup.** Keep the 5 newest backups of each device. After a successful publish, delete files under `sources/`, `masks/`, `projects/`, `presets/` and `settings/` that no backup or device file references **and** that were last modified more than 7 days ago by the provider's clock. Skip cleanup if any backup or device file cannot be read.
 
 ### 11.8 Automatic sync and conflicts (phase 2)
 
@@ -975,6 +1055,7 @@ type CloudHead = {
 	vector: VersionVector;
 	updatedAt: number;
 	sources: string[]; // SHA-256 of every source the revision and its history use
+	masks: string[]; // mask hash of every painted mask they use
 };
 
 type CloudDeviceFile = {
@@ -1049,7 +1130,7 @@ frame-src {google-frame, else 'none'}
 - Check free space before uploading, and local quota before downloading (section 7.4). Dropbox `insufficient_space` and Drive `403 storageQuotaExceeded` show "Cloud storage is full" and pause sync.
 - On `429` wait as `Retry-After` says; on Drive `userRateLimitExceeded` and on `5xx` back off exponentially.
 
-**What leaves the device,** only after connecting: original source files unchanged (including EXIF and GPS data), project names, effect stacks, histories, export settings, thumbnails, user presets, theme and compare mode, and the device name. Nothing else, and nothing to Drift's developer. Files are not end-to-end encrypted.
+**What leaves the device,** only after connecting: original source files unchanged (including EXIF and GPS data), painted masks, project names, effect stacks, histories, export settings, thumbnails, user presets, theme and compare mode, and the device name. Nothing else, and nothing to Drift's developer. Files are not end-to-end encrypted.
 
 ### 11.11 What the owner registers
 

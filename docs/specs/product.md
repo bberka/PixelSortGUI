@@ -6,6 +6,7 @@ Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thoug
 Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and per-side effect stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with optional cloud backup and sync (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with masks and the on-canvas brush (F29) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 
 # Drift product spec
 
@@ -39,6 +40,7 @@ These names are used in all six spec files and should be used in code, UI copy a
 | Side | One half of the split view: side A (left or top) or side B (right or bottom). Side B is the main stack. |
 | Parameter | One typed, named value of an effect instance, declared by the effect type's parameter schema. |
 | Preset | A named, saved list of effect instances. Built-in presets ship with the app and are read-only; user presets are stored. |
+| Mask | A per-pixel weight that limits where one effect instance applies (F29). |
 | Commit | A completed change to the effect stack that creates one history entry (for example releasing a slider). |
 | History | The per-project list of committed effect stack snapshots used for undo and redo. |
 | Render level | The resolution at which the pipeline runs: `drag` (while a control is moving), `settle` (after it stops), `full` (source resolution). |
@@ -523,7 +525,7 @@ Acceptance criteria:
 - AC-F26.3: Picking an image already used by another project reuses its `SourceRecord` (storage usage grows by less than 1% of the file size); deleting the first project keeps the shared image intact for the second project, and deleting both removes the blob from `sources`.
 - AC-F26.4: Removing an `imageBlend` instance and clicking Undo restores the blended image cleanly (its source blob is retained while referenced by undo history).
 - AC-F26.5: Saving a project containing `imageBlend` to a `.glproj` file (`F25`) or backup (`F17`) and opening it on a fresh browser profile restores both the primary and secondary images and renders the exact same result.
-- AC-F26.6: Attempting to reference a 9th distinct extra image in one project is rejected with `"A project can use at most 8 extra blend images."`
+- AC-F26.6: Attempting to reference a 9th distinct extra image in one project is rejected with `"A project can use at most 8 extra blend images."` Once masks ship (F29), the message reads `"A project can use at most 8 extra blend and mask images."`
 - AC-F26.7: Saving a stack containing `imageBlend` as a user preset clears the `image` parameter to empty; applying that preset adds `imageBlend` with its blend/fit/transform parameters and `"No image selected"`.
 
 ### F27. In-app guide and first-launch welcome
@@ -609,12 +611,68 @@ Acceptance criteria, phase 2:
 - AC-F28.18: Changing only zoom, pan or selection uploads nothing.
 - AC-F28.19: With "Sync automatically" off, a connected app sends no request on start or after edits.
 
+### F29. Masks and on-canvas brush
+
+Any effect instance can have one mask that limits where it applies. Pixels where the mask is 0 keep the instance's input; 255 applies the effect fully (scaled by Mix); values between fade it. Exact rules are in [engine.md section 16.6](engine.md#166-masks-f29), storage in [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29), and controls in [DESIGN.md section 7.4](../../DESIGN.md#74-masks-and-the-brush-f29). Planned for [roadmap.md Milestone 10](roadmap.md#milestone-10-masks-and-on-canvas-brush).
+
+**Adding and removing.** The parameter panel has a "Mask" group for the selected instance with "Add mask": "Paint", "Brightness" or "Image". An instance has at most one mask. Changing its type replaces the mask (Undo brings the old one back). "Remove mask" returns the effect to the whole image. Every mask has "Invert mask" and "Mask feather" (0 to 256 px, default 0). Mix is the mask's overall strength. "Reset all" and "Randomize" leave the mask alone. Duplicate and "Copy to other side" copy it; the copies can then be edited separately.
+
+**Painted masks.** A new painted mask is empty, so the effect shows nowhere until the user paints or presses "Fill". Choosing "Paint" turns the brush on.
+
+- Tools: **Paint** adds to the mask, **Erase** removes from it. **Fill** and **Clear** set the whole mask.
+- Settings: size (1 to 2000 px of the edited image), hardness (0 to 100%), strength (1 to 100%, the most one stroke adds or removes), and "Pen pressure sets size" (on by default). Settings are kept per device.
+- One stroke, from press to release, is one history entry, "Paint mask" or "Erase mask". Overlapping parts of one stroke do not add up.
+- **Overlay:** "Show mask" tints the masked area over the photo, with adjustable opacity (10 to 100%). It is always shown while a stroke is being drawn. It is also available for brightness and image masks. It never appears in thumbnails or exports.
+- The effect preview updates when a stroke ends. During a stroke only the overlay follows the pointer.
+- **Mouse:** drag with the primary button paints. Middle-button drag or `Space` + drag pans, and wheel zoom works as always. A brush outline follows the pointer.
+- **Pen:** pressure scales the brush size when the setting is on.
+- **Touch:** one finger paints. A second finger cancels the stroke, leaving the mask unchanged, and the two fingers pan and zoom until both are lifted. While a pen is in use, touches are ignored. Contact width and height are not used for brush size.
+- **Keyboard:** with the brush on and the canvas focused, arrow keys move the brush cursor by a quarter of the brush size (`Shift`: one full size), `Enter` starts and ends a stroke, `Escape` cancels a stroke, and otherwise turns the brush off. `B` turns the brush on or off, `X` switches Paint and Erase, `[` and `]` change the size, `Shift+[` and `Shift+]` the hardness, and `M` shows or hides the mask.
+
+**Brightness masks** select by the brightness of the photo itself (after crop, rotation and resize, before any effect): a "Mask range" of two values (default 50% to 100%) and "Softness" (0 to 100%, default 10%) for a gradual edge. They store no pixels and work on any photo.
+
+**Image masks** use the brightness of another image: white applies the effect, black and transparent areas do not. The image comes from the device or the library, as for F26, with "Fit" (`Cover`, `Contain`, `Stretch`). It is fitted to the edited image's frame. It counts toward the 8 extra images per project.
+
+**With other features:**
+
+- **Crop, rotate, flip, resize (F20):** painted and brightness masks stay on the same parts of the photo. Cropped-out paint is kept and returns when the crop is reset. Feather and brush size are in edited-image pixels. Image masks stay fitted to the frame.
+- **Split view (F11):** each side's instances have their own masks. The brush edits the selected instance of the side being edited; the overlay is drawn only over that side, and dragging on the other side pans. The divider stays draggable.
+- **Compare, crop mode and history comparison** hide the overlay and suspend the brush until they end.
+- **Brush lifetime:** the brush turns off when another instance is selected, the mask is removed or changes type, the effect is removed, or the user leaves the editor. Undo, redo and history jumps cancel a stroke in progress and keep the brush on if the instance still has a painted mask.
+- **Presets (F10):** saving a preset removes painted and image masks and keeps brightness masks. Applying a preset replaces the instances, and with them their masks, in one undoable step.
+- **Undo and history (F9, F23):** every mask change is one commit and survives a reload.
+- **Project files and backups (F25, F17, F28):** masks travel with the project, including the history's masks when history is included. A file that holds a mask cannot be opened by an older app version, which says so.
+- **Missing mask:** if a painted mask or mask image cannot be read, the effect is skipped (not applied everywhere), and the panel says "Missing mask".
+
+Acceptance criteria:
+
+- AC-F29.1: Adding a painted mask to a pixel sort instance leaves the preview equal to the project with that instance off; "Fill" makes preview and export pixel-identical to the same project without a mask; "Remove mask" does the same. Each is one history entry.
+- AC-F29.2: After painting one area, exported pixels outside it equal the export with the instance off, and pixels inside the hard core equal the export without a mask (checked with an effect that moves no pixels between areas, such as `channelSwap`).
+- AC-F29.3: With "Invert mask" on, the painted area keeps the input and the rest is affected; turning it off restores the earlier pixels.
+- AC-F29.4: Erase over painted pixels removes the effect there. A strength of 50% on an empty mask gives mask values of 128 at the stroke core, however often the one stroke crosses itself.
+- AC-F29.5: With hardness 100% a stroke edge is at most about 2 mask pixels wide; with 0% it fades from the centre to the radius. Feather 32 px widens the edge in the preview and the export.
+- AC-F29.6: One press-drag-release is exactly one history entry. Undo removes exactly that stroke, redo restores it, and both work after a reload and from the History panel.
+- AC-F29.7: A pen stroke with rising pressure widens from about 20% to 100% of the set size when "Pen pressure sets size" is on, and is even when it is off. A mouse stroke is always even.
+- AC-F29.8: A second touch during a touch stroke leaves the mask and history unchanged and pans or zooms the canvas.
+- AC-F29.9: Using only the keyboard, a user can add a painted mask, turn on the brush, move, draw a stroke, switch to Erase, change size and hardness, toggle the overlay and leave the brush; each change is announced or visible in a labelled control.
+- AC-F29.10: A brightness mask with range 50% to 100% and softness 0 affects exactly the pixels whose brightness is 128 or more; changing an effect above the instance does not change which pixels are selected.
+- AC-F29.11: An image mask that is white on the left half and black on the right half, with fit `Stretch`, affects only the left half; the image appears once in storage and survives deleting the project it was picked from.
+- AC-F29.12: On a `pixelSort` instance, no run crosses an area where the mask is 0, and "Show selection" darkens that area.
+- AC-F29.13: After painting, rotating 90 degrees and cropping, the painted area covers the same photo content; resetting the crop shows the paint that was cropped away.
+- AC-F29.14: In split view, painting on side A changes only side A; the other side's pixels and masks do not change. "Copy to other side" then painting side B leaves side A unchanged.
+- AC-F29.15: Saving a preset from a stack with painted, image and brightness masks and applying it elsewhere yields only the brightness mask.
+- AC-F29.16: A `.glproj` and a backup of a masked project restore the same pixels and the same undo steps on a fresh profile; a changed or missing mask entry writes nothing and shows the message of persistence.md section 8.6. A project without masks still saves as format version 1.
+- AC-F29.17: A 4000 × 3000 px project upgraded from database version 3 opens with the same pixels and history. Two exports of a masked project are pixel-identical.
+- AC-F29.18: On the reference laptop with a 12 MP photo and the default brush, the overlay follows the pointer with p95 under 50 ms, no main-thread task over 50 ms occurs while painting, and the preview shows a finished stroke within 500 ms (p95).
+- AC-F29.19: At `390 × 844`, `820 × 1180` and `1440 × 900`, in Light and True Black, the mask controls and brush toolbar are reachable without horizontal scroll, targets are at least `44 × 44 px` on a coarse pointer, the phone canvas keeps at least `50%` of the height with one control shown, and axe reports no violations.
+- AC-F29.20: While the brush is on or a masked project is edited, the app makes no network request.
+
 ## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).
 
 1. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.4.5](persistence.md#845-safari-7-day-eviction-warning-later)).
-3. **Masks and on-canvas tools.** Brush-painted mask per effect instance (paint, erase, size, hardness, invert, clear, overlay opacity), region cutout if requested (Q11), mask from the image's own luminance, imported mask images, and interactive on-canvas tools using the reserved slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot-reserved-for-later) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later). Engine mask semantics are already specified in engine.md section 5.6.
+3. **More on-canvas tools.** Masks and the brush are specified in F29. Still later: region cutout if requested (Q11), combining several mask sources on one instance, turning a brightness or image mask into a painted one, selection tools (gradient, lasso), and drawing a sort path, using the slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot).
 4. **Remaining F22 effects and `pixelSort` v2.** The 6 lower-ranked effects from F22 (`bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert`, `jpegCrush`), per-channel pixel sort, interval transforms (mirror, splice, fold, grouping equal colours), and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density).
 5. **Editing comfort.** Compare against any history entry; paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.
 6. **Extended colour pipelines.** WebP export on Safari through a WebAssembly encoder; 16-bit PNG/TIFF processing kept at 16 bits; wide-gamut (Display P3) output.
@@ -629,7 +687,7 @@ These are out of scope for the first release and are not planned unless the owne
 
 - Accounts of its own, sharing links, collaboration, analytics, or any network call after the app is loaded other than the opt-in Dropbox and Google Drive backup and sync (F28).
 - Server-side processing of any kind, including a server that holds sign-in secrets or tokens for F28.
-- A general photo editor: no layers, text, drawing, retouching, RAW development, curves or colour grading beyond the listed effects.
+- A general photo editor: no layers, text, drawing on the photo (the F29 brush paints only effect masks), retouching, RAW development, curves or colour grading beyond the listed effects.
 - Loading effect plug-ins at runtime from files or URLs. New effects are added in source code (engine.md section 4).
 - Preserving EXIF, GPS or ICC metadata in exports.
 - Colour management beyond converting input to sRGB.

@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, type RefObject} from 'react';
-import {MoveHorizontalIcon, MoveVerticalIcon} from 'lucide-react';
+import {MoveHorizontalIcon, MoveVerticalIcon, XIcon} from 'lucide-react';
 import {
 	clampSplitPosition,
 	formatSplitPercent,
@@ -16,12 +16,48 @@ export type CompareOverlayProps = {
 	readonly orientation?: SplitOrientation;
 	readonly labelA?: string;
 	readonly labelB?: string;
+	readonly historyCompareLabel?: string | null;
+	readonly onExitHistoryCompare?: () => void;
 	readonly onDragSplit: (position: number) => void;
 	readonly onCommitSplit: (position: number) => void;
 };
 
 const PILL_CLASS =
 	'surface-overlay pointer-events-none absolute rounded-sm px-2 py-1 text-xs leading-4 font-medium';
+
+function HistoryComparePill({
+	label,
+	prefix,
+	slot,
+	onExit,
+}: {
+	readonly label: string;
+	readonly prefix?: string;
+	readonly slot: string;
+	readonly onExit?: () => void;
+}) {
+	return (
+		<div
+			data-slot={slot}
+			className="surface-overlay pointer-events-auto absolute top-2 left-2 z-20 flex max-w-[min(60vw,320px)] items-center gap-1 rounded-sm py-0.5 pr-1 pl-2 text-xs leading-4 font-medium"
+		>
+			<span className="min-w-0 truncate" title={label}>
+				{prefix ? `${prefix} ${label}` : label}
+			</span>
+			{onExit ? (
+				<button
+					type="button"
+					aria-label="Stop comparing history step"
+					title="Stop comparing"
+					className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+					onClick={onExit}
+				>
+					<XIcon aria-hidden="true" className="size-3.5" />
+				</button>
+			) : null}
+		</div>
+	);
+}
 
 /**
  On-canvas compare labels (one per split side) and the split-view divider.
@@ -36,6 +72,8 @@ export function CompareOverlay({
 	orientation = 'vertical',
 	labelA = 'Original',
 	labelB = 'Original',
+	historyCompareLabel = null,
+	onExitHistoryCompare,
 	onDragSplit,
 	onCommitSplit,
 }: CompareOverlayProps) {
@@ -75,6 +113,16 @@ export function CompareOverlay({
 	}, [splitPosition, splitActive, showingOriginal, syncDividerDom]);
 
 	if (showingOriginal) {
+		if (historyCompareLabel) {
+			return (
+				<HistoryComparePill
+					label={historyCompareLabel}
+					slot="compare-label-history"
+					onExit={onExitHistoryCompare}
+				/>
+			);
+		}
+
 		return (
 			<div
 				data-slot="compare-label-original"
@@ -86,6 +134,17 @@ export function CompareOverlay({
 	}
 
 	if (!splitActive) {
+		if (historyCompareLabel) {
+			return (
+				<HistoryComparePill
+					label={historyCompareLabel}
+					prefix="Comparing"
+					slot="compare-label-history"
+					onExit={onExitHistoryCompare}
+				/>
+			);
+		}
+
 		return null;
 	}
 
@@ -178,9 +237,20 @@ export function CompareOverlay({
 
 	return (
 		<>
-			<div data-slot="split-label-a" className={cn(PILL_CLASS, 'top-2 left-2')}>
-				{labelA}
-			</div>
+			{historyCompareLabel ? (
+				<HistoryComparePill
+					label={historyCompareLabel}
+					slot="split-label-a"
+					onExit={onExitHistoryCompare}
+				/>
+			) : (
+				<div
+					data-slot="split-label-a"
+					className={cn(PILL_CLASS, 'top-2 left-2')}
+				>
+					{labelA}
+				</div>
+			)}
 			<div
 				data-slot="split-label-b"
 				className={cn(
@@ -188,7 +258,7 @@ export function CompareOverlay({
 					horizontal ? 'right-2 bottom-2' : 'top-2 right-2',
 				)}
 			>
-				{labelB}
+				{historyCompareLabel ? 'Current' : labelB}
 			</div>
 			<div
 				ref={dividerRef}

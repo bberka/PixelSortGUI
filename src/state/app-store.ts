@@ -112,6 +112,7 @@ import {
 	otherSide,
 	projectInstanceIds,
 	selectEditingSide,
+	selectSplitChosen,
 	sideHistoryLabel,
 	sideLetter,
 	sideSelectedId,
@@ -223,6 +224,10 @@ export type AppState = {
 	activeThumbnail: ThumbnailRecord | null;
 	thumbnailVersions: Record<string, number>;
 	history: HistoryEntryRecord[];
+	// Transient pinned history step for F31 comparison (not persisted).
+	compareHistorySeq: number | null;
+	// The mode to return to when pinning a step turned the split view on.
+	compareHistoryRestoreMode: CompareMode | null;
 	stackNeedsWriteBack: boolean;
 	stackEnvelopeStatus: 'ok' | 'newer-version';
 	unsupportedInstances: UnsupportedInstanceInfo[];
@@ -355,6 +360,8 @@ export type AppState = {
 	undo(): Promise<boolean>;
 	redo(): Promise<boolean>;
 	jumpToHistory(projectId: string, seq: number): Promise<boolean>;
+	setCompareHistorySeq(seq: number | null): void;
+	clearCompareHistory(): void;
 
 	// Geometry. One history entry; `false` when nothing changed or the project
 	// is not the active one.
@@ -595,6 +602,18 @@ export function selectRedoLabel(state: AppState): string | null {
 	return next?.label ?? null;
 }
 
+export function selectCompareHistoryEntry(
+	state: Pick<AppState, 'history' | 'compareHistorySeq'>,
+): HistoryEntryRecord | null {
+	if (state.compareHistorySeq === null) {
+		return null;
+	}
+
+	return (
+		state.history.find((entry) => entry.seq === state.compareHistorySeq) ?? null
+	);
+}
+
 type PendingKeyboardCommit =
 	| {
 			kind: 'param';
@@ -659,21 +678,100 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		},
 	});
 
+	// The state change that unpins a history step.
+	const releaseHistoryCompare = () => {
+		const restoreMode = store.getState().compareHistoryRestoreMode;
+		return {
+			compareHistorySeq: null,
+			compareHistoryRestoreMode: null,
+			...(restoreMode !== null && {compareMode: restoreMode}),
+		};
+	};
+
 	// Side A follows the state, so every path that changes it is covered.
+	// When a history step is pinned (F31), sideRenderer renders that snapshot
+	// instead of side A's stack.
 	const syncSideA = () => {
-		const {activeProject, activeSource, compareMode, debugView} =
-			store.getState();
-		const stack = activeProject?.stackA;
-		const {activeDrag} = transientStore.getState();
-		const drag =
-			stack && stackHas(stack, activeDrag?.instanceId) ? activeDrag : null;
+		const {
+			activeProject,
+			activeSource,
+			compareMode,
+			debugView,
+			history,
+			compareHistorySeq,
+		} = store.getState();
 		const source =
 			activeSource && activeSource.sha256 === activeProject?.sourceHash
 				? activeSource
 				: null;
+
+		const pinnedEntry =
+			compareHistorySeq === null
+				? null
+				: (history.find((entry) => entry.seq === compareHistorySeq) ?? null);
+		if (pinnedEntry) {
+			const pinnedTransform =
+				activeProject &&
+				resolveStoredGeometry(
+					activeProject.sourceWidth,
+					activeProject.sourceHeight,
+					pinnedEntry.transform,
+				).transform;
+			const sameTransform =
+				activeProject !== null &&
+				pinnedTransform !== null &&
+				transformKey(pinnedTransform) === transformKey(activeProject.transform);
+			const needsRender =
+				pinnedEntry.stack.instances.length > 0 || !sameTransform;
+			const inputs = [
+				'history',
+				pinnedEntry.seq,
+				pinnedEntry.stack,
+				pinnedEntry.transform,
+				source,
+				activeProject?.transform,
+			];
+			if (inputs.every((value, index) => value === lastSideInputs[index])) {
+				return;
+			}
+
+			lastSideInputs = inputs;
+			if (!source || !pinnedTransform || !needsRender) {
+				sideRenderer.sync(null);
+				return;
+			}
+
+			sideRenderer.sync({
+				source: {
+					key: source.sha256,
+					blob: source.blob,
+					width: source.width,
+					height: source.height,
+					transform: pinnedTransform,
+				},
+				request: {
+					stack: pinnedEntry.stack,
+				},
+				dragging: false,
+			});
+			return;
+		}
+
+		const stack = activeProject?.stackA;
+		const {activeDrag} = transientStore.getState();
+		const drag =
+			stack && stackHas(stack, activeDrag?.instanceId) ? activeDrag : null;
 		const visible = compareMode === 'split';
 		const transform = activeProject?.transform;
-		const inputs = [stack, source, visible, debugView, drag, transform];
+		const inputs = [
+			'sideA',
+			stack,
+			source,
+			visible,
+			debugView,
+			drag,
+			transform,
+		];
 		if (inputs.every((value, index) => value === lastSideInputs[index])) {
 			return;
 		}
@@ -714,8 +812,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	let lastCropInputs: readonly unknown[] = [];
 
 	const syncCropPreview = () => {
-		const {activeProject, activeSource} = store.getState();
+		const {activeProject, activeSource, compareHistorySeq} = store.getState();
 		const {cropping} = transientStore.getState().geometry;
+		if (cropping && compareHistorySeq !== null) {
+			store.getState().clearCompareHistory();
+		}
+
 		const inputs = [cropping, activeSource, activeProject?.transform];
 		if (inputs.every((value, index) => value === lastCropInputs[index])) {
 			return;
@@ -919,6 +1021,10 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 			// The new stack lands before the drag overlay goes, so no render ever
 			// sees the old committed value.
+			const pinnedDropped =
+				currentState.compareHistorySeq !== null &&
+				(currentState.compareHistorySeq > active.historyHeadSeq ||
+					currentState.compareHistorySeq < project.historyMinSeq);
 			store.setState((state) => {
 				// The open project's view state lives here: a save that started
 				// during the commit leaves the stored copy older.
@@ -930,11 +1036,15 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					activeProject: nextProject,
 					projects: upsertProject(state.projects, nextProject),
 					history: trimmedHistory,
+					...(pinnedDropped && releaseHistoryCompare()),
 					stackNeedsWriteBack: false,
 					debugView: nextDebugView,
 				};
 			});
-			transientStore.setState({activeDrag: null});
+			transientStore.setState({
+				activeDrag: null,
+				...(pinnedDropped && {compareLatched: false, compareHolding: false}),
+			});
 			if (transform) {
 				renderGeometry();
 			}
@@ -987,7 +1097,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		assertStackCapacity(nextStack.instances.length);
 		return commitSides(
 			withSide(active, side, nextStack, selectedInstanceId),
-			sideHistoryLabel(label, side, store.getState().compareMode === 'split'),
+			sideHistoryLabel(label, side, selectSplitChosen(store.getState())),
 			side === 'b',
 			undefined,
 			newSource,
@@ -1044,10 +1154,15 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		const wasDragging = transientStore.getState().activeDrag !== null;
 		const notice = geometryNotice(active, result.entry.transform);
 
-		transientStore.setState({activeDrag: null});
+		const hadCompareHistory = store.getState().compareHistorySeq !== null;
+		transientStore.setState({
+			activeDrag: null,
+			...(hadCompareHistory && {compareLatched: false, compareHolding: false}),
+		});
 		store.setState((state) => ({
 			activeProject: nextProject,
 			projects: upsertProject(state.projects, nextProject),
+			...(hadCompareHistory && releaseHistoryCompare()),
 			stackNeedsWriteBack: resolved.needsWriteBack,
 			stackEnvelopeStatus: resolved.envelopeStatus,
 			unsupportedInstances: resolved.unsupportedInstances,
@@ -1262,6 +1377,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			activeSource: null,
 			activeThumbnail: null,
 			history: [],
+			...releaseHistoryCompare(),
 			stackNeedsWriteBack: false,
 			stackEnvelopeStatus: 'ok',
 			unsupportedInstances: [],
@@ -1283,6 +1399,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		activeThumbnail: null,
 		thumbnailVersions: {},
 		history: [],
+		compareHistorySeq: null,
+		compareHistoryRestoreMode: null,
 		stackNeedsWriteBack: false,
 		stackEnvelopeStatus: 'ok',
 		unsupportedInstances: [],
@@ -1428,6 +1546,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						activeSource: result.source,
 						activeThumbnail: null,
 						history: [initialEntry],
+						...releaseHistoryCompare(),
 						stackNeedsWriteBack: false,
 						stackEnvelopeStatus: 'ok',
 						unsupportedInstances: [],
@@ -1472,12 +1591,19 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				}
 
 				const libraryRoute: AppRoute = {screen: 'library'};
+				transientStore.setState({
+					activeDrag: null,
+					splitPosition: null,
+					compareLatched: false,
+					compareHolding: false,
+				});
 				set({
 					activeProjectId: null,
 					activeProject: null,
 					activeSource: null,
 					activeThumbnail: null,
 					history: [],
+					...releaseHistoryCompare(),
 					debugView: null,
 					route: libraryRoute,
 					notice: MISSING_PROJECT_NOTICE,
@@ -1504,6 +1630,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeProjectId: opened.id,
 				activeProject: opened,
 				activeThumbnail: null,
+				...releaseHistoryCompare(),
 				debugView: null,
 				route: nextRoute,
 				// A notice still waiting to be shown stays.
@@ -1546,6 +1673,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeSource: null,
 				activeThumbnail: null,
 				history: [],
+				...releaseHistoryCompare(),
 				stackNeedsWriteBack: false,
 				stackEnvelopeStatus: 'ok',
 				unsupportedInstances: [],
@@ -2392,6 +2520,49 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			});
 		},
 
+		setCompareHistorySeq(seq) {
+			if (seq === null) {
+				const hadPin = get().compareHistorySeq !== null;
+				set(releaseHistoryCompare());
+				if (hadPin) {
+					const {compareLatched, compareHolding} = transientStore.getState();
+					if (compareLatched || compareHolding) {
+						transientStore.setState({
+							compareLatched: false,
+							compareHolding: false,
+						});
+					}
+				}
+
+				return;
+			}
+
+			const state = get();
+			if (
+				!state.activeProject ||
+				transientStore.getState().geometry.cropping ||
+				state.history.every((entry) => entry.seq !== seq)
+			) {
+				return;
+			}
+
+			transientStore.setState({compareLatched: false, compareHolding: false});
+			if (state.compareMode === 'toggle') {
+				set({
+					compareHistorySeq: seq,
+					compareHistoryRestoreMode: 'toggle',
+					compareMode: 'split',
+				});
+				return;
+			}
+
+			set({compareHistorySeq: seq});
+		},
+
+		clearCompareHistory() {
+			get().setCompareHistorySeq(null);
+		},
+
 		async setTransform(projectId, transform, label) {
 			return editInOrder(async () => {
 				const active = get().activeProject;
@@ -2627,7 +2798,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		flushViewState: flushViewStateImpl,
 
 		async setCompareMode(mode) {
-			set({compareMode: mode});
+			set({compareMode: mode, compareHistoryRestoreMode: null});
 			try {
 				await repository.updateAppState({compareMode: mode});
 			} catch (error) {

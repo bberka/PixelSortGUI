@@ -15,6 +15,8 @@ export const EMPTY_STACK: EffectStack = {
 type SplitState = {
 	readonly compareMode: CompareMode;
 	readonly activeProject: ProjectRecord | null;
+	readonly compareHistorySeq?: number | null;
+	readonly compareHistoryRestoreMode?: CompareMode | null;
 };
 
 export function otherSide(side: SplitSide): SplitSide {
@@ -61,11 +63,25 @@ export function projectInstanceIds(project: ProjectRecord): Set<string> {
 }
 
 /**
+ Whether the user chose the split view. Pinning a history step from toggle
+ compare shows the split only while the step stays pinned.
+ */
+export function selectSplitChosen(
+	state: Pick<SplitState, 'compareMode' | 'compareHistoryRestoreMode'>,
+): boolean {
+	return (
+		state.compareMode === 'split' &&
+		(state.compareHistoryRestoreMode ?? 'split') === 'split'
+	);
+}
+
+/**
  The side the effects panel and presets act on. The stored choice counts only
  while the split view is on; otherwise it is the main stack, side B.
  */
 export function selectEditingSide(state: SplitState): SplitSide {
-	return state.compareMode === 'split'
+	return state.compareMode === 'split' &&
+		(state.compareHistorySeq ?? null) === null
 		? (state.activeProject?.viewState.editSide ?? 'b')
 		: 'b';
 }

@@ -6,6 +6,7 @@ Updated with post-v0.1.0 specs (F20 to F24) by Gemini 4 Neon (Antigravity, thoug
 Updated with project files (F25), full backup and restore (F17), and multi-image blending (F26) specs by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with split orientation and per-side effect stacks (F11) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with optional cloud backup and sync (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
 Updated `F6` with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift product spec
@@ -613,6 +614,34 @@ Acceptance criteria, phase 2:
 - AC-F28.18: Changing only zoom, pan or selection uploads nothing.
 - AC-F28.19: With "Sync automatically" off, a connected app sends no request on start or after edits.
 
+### F31. Compare against any history step
+
+The user can pin any entry in the project's History panel (F23) as the reference image for Compare and Split view (F11), inspecting an earlier or redo-branch snapshot beside or in place of the current edit without jumping the history head or modifying any saved stack.
+
+- **Non-destructive and transient:** Pinning a history step never modifies `historyHeadSeq`, `history`, `stack`, `stackA`, `transform`, or IndexedDB schema/records. Reloading the page starts without a pinned history step.
+- **Entry point:** Every row in the History panel has a `"Compare with this"` toggle action (`aria-pressed`, reachable by pointer and keyboard, at least `44 × 44 CSS px` under `@media (pointer: coarse)`). Activating it pins that history entry (`seq`) for comparison; activating it again unpins it. On phone widths, pinning a step closes the History sheet so the comparison is immediately visible on the canvas.
+- **Interaction with Compare and Split view:**
+  - Pinning a step while Split view is off enters Split view transiently so the pinned snapshot is immediately visible beside the current edit; exiting history compare restores the previous compare mode unless the user explicitly changed compare mode meanwhile.
+  - In **Split view** (vertical left/right or horizontal top/bottom, `Shift+S`), side A (left or top) renders the pinned history entry's `stack` and `transform`, and side B (right or bottom) renders the current edit. Side A's split-side editing switcher is hidden while a history step is pinned, and edits continue to act on the main stack (side B).
+  - In **Toggle Compare** (button or `\`, tap or hold > 300 ms), the comparison shows the pinned history snapshot instead of the raw original.
+- **Indicators and exit:**
+  - The canvas displays a clear pill naming the pinned step (`"Step #<seq>: <label>"`, truncated for long labels) with a one-click `"Stop comparing history step"` exit button. In Split view, side B is labelled `"Current"`.
+  - The History panel marks the pinned row with a `"Comparing"` badge and `aria-pressed="true"` on its compare button.
+  - Exiting works in one click on the canvas pill's exit button, by toggling the History row's compare button off, or by pressing `Escape` (when no modal dialog, sheet, menu, or editable field has focus and crop mode is off).
+- **Clean teardown:** The pinned history step clears automatically when the user switches or closes the project, enters crop mode (F20), triggers Undo, Redo, or a History jump, or makes a commit that trims the pinned entry from `history` (for example, committing while a redo-branch step is pinned).
+- **Different geometry transforms (`transform`):** If the pinned history entry has a different `SourceTransform` (F20) from the current project transform, the pinned snapshot is rendered with its own `transform` (so rotation, flips, crop, and resize match what that step actually looked like). When its effective dimensions match the current effective dimensions, it aligns 1:1 with the current image; when its effective dimensions differ, it is uniformly contain-fitted and centered inside the current image's canvas rectangle without stretching or distortion (letterboxed/pillarboxed over the canvas stage).
+
+Acceptance criteria:
+
+- AC-F31.1: Clicking `"Compare with this"` on an earlier history entry enters comparison view showing that entry's rendered pixels against the current edit without changing `historyHeadSeq`, `history`, `stack`, or `stackA`.
+- AC-F31.2: The canvas displays a pill naming the pinned step (`"Step #<seq>: <label>"`) with a one-click exit button, and the History panel marks the pinned row as comparing.
+- AC-F31.3: Both vertical and horizontal Split view (`Shift+S`) and toggle Compare (`\` tap and hold) show the pinned history snapshot rather than the raw original.
+- AC-F31.4: Activating the canvas exit button, toggling the History row's compare button off, or pressing `Escape` exits history compare and returns cleanly to the normal view with the side worker disposed when not otherwise needed.
+- AC-F31.5: Switching or closing projects, entering crop mode, or running Undo / Redo / History jump clears the pinned history comparison cleanly.
+- AC-F31.6: Pinning a history entry whose `transform` differs from the current `transform` (for example before a 90° rotation or crop) renders the pinned snapshot with its own transform contain-fitted and centered inside the current image bounds without stretching in both Split and toggle Compare views.
+- AC-F31.7: Pinning a redo-branch entry and then making a new commit (which discards redo entries) automatically clears the pinned comparison without errors.
+- AC-F31.8: The `"Compare with this"` action and canvas exit control are operable by keyboard alone, meet the `44 × 44 px` coarse-pointer target rule, lay out without horizontal overflow at `390 × 844`, `820 × 1180`, and `1440 × 900`, and pass axe in both Light and True Black themes.
+
 ## 7. Later (beyond v0.2.0)
 
 Grouped by likely order. Each needs its own spec before work starts (moved first-release features keep their original IDs and existing spec text under the "Later" sections of `engine.md` and `persistence.md`).
@@ -620,7 +649,7 @@ Grouped by likely order. Each needs its own spec before work starts (moved first
 1. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.4.5](persistence.md#845-safari-7-day-eviction-warning-later)).
 3. **Masks and on-canvas tools.** Brush-painted mask per effect instance (paint, erase, size, hardness, invert, clear, overlay opacity), region cutout if requested (Q11), mask from the image's own luminance, imported mask images, and interactive on-canvas tools using the reserved slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot-reserved-for-later) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later). Engine mask semantics are already specified in engine.md section 5.6.
 4. **Further `pixelSort` paths and grouping.** Grouping equal colours (`smooth`) and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density). (The 6 remaining F22 effects, per-channel pixel sort, and the `reverse`, `mirror`, `splice` and `fold` interval transforms are shipped.)
-5. **Editing comfort.** Compare against any history entry; paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.
+5. **Editing comfort.** Paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.
 6. **Extended colour pipelines.** WebP export on Safari through a WebAssembly encoder; 16-bit PNG/TIFF processing kept at 16 bits; wide-gamut (Display P3) output.
 7. **Speed.** WebGPU acceleration for axis-aligned pixel sort; multi-worker splitting; WebAssembly SIMD kernels. See engine.md section 12.
 8. **Motion.** Parameter animation to GIF and video, and video input frame by frame.

@@ -5,6 +5,7 @@ Updated for spike results by Gemini 4 Neon (Antigravity, thought level low), doc
 Updated with Milestone 7 (v0.2.0: F20 to F24) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with Milestone 8 (v0.3.0: F25, F17, F26) by Gemini 4 Neon (Antigravity, thought level medium), specification subagent.
 Updated with Milestone 9 (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
+Updated with Milestone 10 (F29) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 
 # Drift roadmap
 
@@ -228,12 +229,31 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 
 ---
 
+## Milestone 10: Masks and on-canvas brush
+
+**Goal:** Limit any effect to part of the photo with a painted, brightness or image mask (`F29`, [engine.md section 16.6](engine.md#166-masks-f29), [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29)). It does not depend on Milestone 9 (Q30). No UI ships before `T10.4`, so a mask the user makes is never lost by saving a file.
+
+**Order:** `T10.1` and `T10.2` together; then `T10.3` and `T10.5`; then `T10.4`; then `T10.6`, `T10.7`, `T10.8`.
+
+| ID | Task | Spec sections | Depends on | Parallel with | Model tier | Verification |
+|---|---|---|---|---|---|---|
+| `T10.1` | Engine masks: `InstanceMask` types and validation, conditional stack `schemaVersion` 2, brightness and image bases, grid fitting, feather, invert, masked composite, pipeline `masks`/`geometry` options, `missing-mask`, `ctx.mask`, `pixelSort` selection. No UI or storage. | `engine.md §2.2, §4.3, §4.5, §5.6, §16.6` | Q29, Q30 answered or defaulted | `T10.2` | Claude Fable (low) *(justified: run and interval semantics and the pipeline contract, which every later task depends on)* | Unit, property and golden tests of §16.6; every existing golden unchanged; `validateMask` rejects a newer kind without applying the effect. |
+| `T10.2` | Engine brush and asset bytes: canvas-to-mask coordinates, dab placement and stamping, stroke apply, Fill, canonical bytes, mask hash, compression and capped decompression. | `engine.md §16.6` | none | `T10.1` | Gemini 4 Neon (Antigravity, medium) | Hand-computed dabs, determinism and stroke properties of §16.6; coordinate round trip for every rotation, flip, crop and resize; capped decompression rejects an oversized stream. |
+| `T10.3` | Storage version 4: `masks` store, `referencedMaskHashes`, `newMasks` in `commitStack`, reads, deletion and cleanup, preset stripping, mask-image source references and the shared cap message, both adapters. | `persistence.md §3, §4, §8.5, §8.6` | `T10.1`, `T10.2` | `T10.5` | Gemini 4 Neon (Antigravity, medium) | `fake-indexeddb` version 3 to 4 upgrade and rollback; reference counting across duplicate, undo, redo-branch discard and delete; nothing written on a refused commit (AC-F29.15, AC-F29.17). |
+| `T10.4` | Project files, backups and presets in archives: `masks/` entries, format version 2 only when masked, limits, validation and exact errors, backup phases. Add the cloud fields of §8.6 if Milestone 9 has landed. | `persistence.md §8.3, §8.4, §8.6, §11.6` | `T10.3` | `T10.5` | Gemini 4 Neon (Antigravity, medium) | Round trips on both adapters, with and without history; unmasked output still version 1; tampered, missing and oversized mask entries write nothing (AC-F29.16). |
+| `T10.5` | Preview and export workers and coordinator: `loadMask`, `unloadMask`, `renderMask`, `masks` and `geometry` on render and export, mask images as extra sources, pending and missing handling, both split sides. | `engine.md §8.3, §11, §16.6` | `T10.1`, `T10.2` | `T10.3`, `T10.4` | Gemini 4 Neon (Antigravity, medium) | Worker and coordinator tests: render before and after a mask loads, restart, export equals a full-size render, stage cache never reuses a missing-mask frame. |
+| `T10.6` | Mask controls: the Mask group for all three kinds, app-store mask commits and labels, overlay for any mask, stack-row badge, `M` shortcut. The "Paint" type and its Fill and Clear ship here; "Edit with brush" arrives in `T10.7`. | `product.md F29`, `DESIGN.md §7.4` | `T10.4`, `T10.5` | none | Gemini 4 Neon (Antigravity, medium) | Playwright for AC-F29.1, F29.3, F29.10 to F29.12, F29.15; 3 viewports × 2 themes with axe and screenshots. |
+| `T10.7` | Brush tool: mask worker, tool slot binding under `src/features/canvas/tools/`, toolbar, overlay and cursor, mouse, pen and touch input, keyboard painting, settings in `appState`, split, crop and compare rules, guide text. | `product.md F29`, `engine.md §4.7, §16.6`, `DESIGN.md §7.1, §7.4, §8` | `T10.6` | none | Gemini 4 Neon (Antigravity, medium) | Playwright with synthetic mouse, pen and two-finger pointer events for AC-F29.2, F29.4 to F29.9, F29.13, F29.14; 3 viewports × 2 themes screenshots and a stroke recording; real pen and touch hardware reported as not run if none is available. |
+| `T10.8` | Acceptance and release: remaining criteria, performance run, README, guide, changelog, `CONTEXT.md` ("Masks are later work"), independent review, release at the next version. | `product.md F29` | `T10.7` | none | Gemini 4 Neon (Antigravity, medium) + GPT Luna (review) | Every AC-F29 mapped to a test or checklist item; AC-F29.18 measured and AC-F29.19, F29.20 pass; CI green on Chromium and Firefox. |
+
+---
+
 ## Later work (beyond v0.5.0)
 
 Each item below requires its own spec in `docs/specs/` (or `docs/specs/effects/`) before implementation starts (moved items retain their existing spec sections under "Later"). Ordered roughly by user value and architectural sequence:
 
 1. **Mobile, tablet, and Safari acceptance (formerly `S2`):** Real-device acceptance on phones, tablets, and Safari; the iOS > 16.78 MP decode/export path (tiled decode, `fflate` streaming PNG writer, on-demand Wasm JPEG encoder, 24 MP mobile limit, [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings ([persistence.md section 8.4.5](persistence.md#845-safari-7-day-eviction-warning-later)).
-3. **Masks and on-canvas tools (`EffectStack` `schemaVersion: 2`):** Per-instance 8-bit brush/luminance/imported masks following [engine.md section 5.6](engine.md#56-masks-later-semantics-fixed-now), using the reserved on-canvas tool slot ([engine.md section 4.7](engine.md#47-on-canvas-tool-slot-reserved-for-later), [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later)). Adds a `masks` IndexedDB store. Also covers region cutout if requested in Q11.
+3. **More on-canvas tools:** region cutout if requested (Q11), several mask sources per instance, gradient and lasso selection, and drawing a sort path, on the tool slot that Milestone 10 builds ([engine.md section 4.7](engine.md#47-on-canvas-tool-slot)).
 4. **`pixelSort` extensions:** smooth grouping and non-linear paths (concentric rectangles, circles, spirals, random walks, tiles).
 5. **Editing comfort & extended colour pipelines:** Clipboard paste, batch export, Safari WebP export via Wasm, 16-bit / Display P3 pipelines.
 6. **WebGPU acceleration:** Plug into `src/engine/gpu/` per [engine.md section 12](engine.md#12-where-webgpu-plugs-in-later). First target: axis-aligned `pixelSort` for lines ≤ 4,096 px using per-line workgroups, parallel prefix/suffix scan selection and interval splitting, and bitonic sorting network in 16 KiB workgroup memory (clean-room or MIT-attributed port of `ruccho/BitonicPixelSorter` with notice in `THIRD-PARTY-NOTICES.md`). Must pass bit-exact golden tests before enabling for `settle`/`full`; startup smoke test and CPU fallback on device loss remain mandatory.

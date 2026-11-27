@@ -1130,7 +1130,7 @@ Extend `ParamSpec` (`src/engine/types.ts`) with an 8th kind:
 
 - `ParamValue` already includes `string`, so `EffectStack` JSON and `canonicalStackJson` require no changes.
 - `validateParams` (`src/engine/params.ts`): accepts `''` or a string matching `/^[0-9a-f]{64}$/`; any other value falls back to `''`.
-- UI (`src/features/params/`): add `ImageSpec` to `format.ts` (`isDefaultParamValue` returns `value === ''`), add `ImageControl` (`src/features/params/image-control.tsx`), and add `case 'image'` to `ParamControl` (`src/features/params/param-control.tsx`).
+- UI (`src/features/params/`): `ImageSpec` in `format.ts` (`isDefaultParamValue` returns `value === ''`), `ImageControl` (`src/features/params/image-control.tsx`) and `case 'image'` in `ParamControl` (`src/features/params/param-control.tsx`). The file reading, its dialogs and the commit live above the parameter panel (`image-pick.tsx`), so a layout change while a file is being read does not lose it.
 
 #### `imageBlend` effect definition (`src/engine/effects/image-blend.ts`)
 
@@ -1147,7 +1147,7 @@ Extend `ParamSpec` (`src/engine/types.ts`) with an 8th kind:
 | `offsetY` | Offset Y | `number` (`percent`) | `0` | `-1..1`, step `0.01` | Placement | always |
 | `rotation` | Rotation | `angle` | `0` | `[0, 360)`, step `0.1`; snaps `0, 45, 90, 135, 180, 225, 270, 315`; degrees clockwise on screen | Placement | always |
 
-Until `ImageControl` exists (roadmap task `T8.10`) nothing in the app can set `image`, so the definition has `unlisted: true`: the add-effect list and the guide's effects reference leave it out. `T8.10` removes the flag. An instance that is already stored renders, and the parameter panel shows no control for `image`.
+`image` is set by `ImageControl` ([DESIGN.md section 7.2](../../DESIGN.md#72-post-v010-ui-specifications-f20-f23-f24)), so the effect is offered like any other. **Randomize** keeps the current value of every `image` parameter, because only the user can choose an image. **Reset all** returns it to `''` like every other default.
 
 With `image` empty, or naming a source `ctx.getSource` cannot resolve, `render` copies `input` to `output` byte for byte, whatever the other parameters are. It calls `ctx.checkpoint()` at least once per 16,384 pixels on that path too. It has no selection debug view and no seed.
 

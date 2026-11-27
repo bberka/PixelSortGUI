@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vite-plus/test';
+import {describe, expect, it, vi} from 'vite-plus/test';
 import {imageBlendSpec} from '../../src/engine/effects/image-blend-spec.ts';
 import {defaultParams} from '../../src/engine/params.ts';
 import type {EffectStack} from '../../src/engine/types.ts';
@@ -7,8 +7,10 @@ import {
 	type CoordinatorEnv,
 	type Frame,
 } from '../../src/render/coordinator.ts';
-import {createAppStore} from '../../src/state/app-store.ts';
+import {createAppStore, type ImageChoice} from '../../src/state/app-store.ts';
+import {hashBlobSha256} from '../../src/storage/helpers.ts';
 import {MemoryStorageAdapter} from '../../src/storage/memory-adapter.ts';
+import {StorageQuotaError} from '../../src/storage/types.ts';
 import type {PreviewRequest} from '../../src/worker/protocol.ts';
 import {
 	createFakeRouterEnv,
@@ -167,5 +169,177 @@ describe('app store extra sources (engine.md section 8.3)', () => {
 		coordinator.emit({type: 'frame', frame: frame(2)});
 		await flushMicrotasks();
 		expect(thumbnailCalls).toEqual([2]);
+	});
+});
+
+// The stack of `blendStack('')`, ready for a choice.
+async function blendProject(
+	options: Parameters<typeof createTestStore>[0] = {},
+) {
+	const context = createTestStore(options);
+	const images = await importThree(context.store);
+	await context.store.getState().applyStack(blendStack(''), 'Add Image blend');
+	const state = () => context.store.getState();
+	// `applyStack` gives the instance a new id.
+	const {id} = state().activeProject!.stack.instances[0];
+	const chosen = () => state().activeProject!.stack.instances[0].params.image;
+	const head = () => state().activeProject!.historyHeadSeq;
+	const choose = async (choice: ImageChoice) =>
+		state().commitImageParam(images.projectId, id, 'image', choice);
+	return {...context, ...images, instanceId: id, chosen, head, choose};
+}
+
+function deviceImage(label: string): ImageChoice {
+	return {
+		image: {
+			blob: makeTestBlob(label),
+			mimeType: 'image/png',
+			width: 32,
+			height: 24,
+		},
+	};
+}
+
+describe('app store commitImageParam (product.md F26)', () => {
+	it('stores a device image as one history entry and renders it', async () => {
+		const {choose, chosen, head, repository, coordinator, store} =
+			await blendProject();
+		const before = head();
+		const sha256 = await hashBlobSha256(makeTestBlob('green'));
+
+		await expect(choose(deviceImage('green'))).resolves.toBe(true);
+
+		expect(chosen()).toBe(sha256);
+		expect(head()).toBe(before + 1);
+		expect(store.getState().history.at(-1)?.label).toBe('Blend image chosen');
+		expect(await repository.getSource(sha256)).toMatchObject({
+			width: 32,
+			height: 24,
+		});
+		expect(coordinator.calls.at(-1)).toMatchObject({
+			type: 'setStack',
+			request: {stack: {instances: [{params: {image: sha256}}]}},
+		});
+	});
+
+	it('reuses a stored image, clears it, and undoes and redoes both', async () => {
+		const {choose, chosen, red, blue, repository, store} = await blendProject();
+		const sizes = await repository.getSourceSizes();
+
+		await choose({sha256: red});
+		await choose({sha256: blue});
+		await choose({sha256: ''});
+
+		expect(chosen()).toBe('');
+		expect(store.getState().history.at(-1)?.label).toBe('Blend image cleared');
+		expect(await repository.getSourceSizes()).toStrictEqual(sizes);
+		await store.getState().undo();
+		expect(chosen()).toBe(blue);
+		await store.getState().undo();
+		expect(chosen()).toBe(red);
+		await store.getState().redo();
+		expect(chosen()).toBe(blue);
+	});
+
+	it('writes nothing for the image it already shows', async () => {
+		const {choose, head, red} = await blendProject();
+		await choose(deviceImage('green'));
+		const before = head();
+
+		await expect(choose(deviceImage('green'))).resolves.toBe(false);
+		await choose({sha256: red});
+		await expect(choose({sha256: red})).resolves.toBe(false);
+
+		expect(head()).toBe(before + 1);
+	});
+
+	it('keeps the chosen image when another edit was asked for first', async () => {
+		const {choose, chosen, store, instanceId} = await blendProject();
+
+		await Promise.all([
+			store.getState().commitParam(instanceId, 'opacity', 0.5),
+			choose(deviceImage('green')),
+		]);
+
+		expect(chosen()).not.toBe('');
+		expect(
+			store.getState().activeProject!.stack.instances[0].params.opacity,
+		).toBe(0.5);
+	});
+
+	it('stores nothing for another project, instance or parameter', async () => {
+		const {head, store, projectId, repository, instanceId} =
+			await blendProject();
+		const sizes = await repository.getSourceSizes();
+		const before = head();
+		const {commitImageParam} = store.getState();
+		const choice = deviceImage('green');
+
+		for (const [project, instance, key] of [
+			['other', instanceId, 'image'],
+			[projectId, 'gone', 'image'],
+			[projectId, instanceId, 'opacity'],
+		]) {
+			await expect(
+				commitImageParam(project, instance, key, choice),
+			).resolves.toBe(false);
+		}
+
+		expect(head()).toBe(before);
+		expect(await repository.getSourceSizes()).toStrictEqual(sizes);
+	});
+
+	it('refuses a ninth image with the message and stores no blob', async () => {
+		const {head, store, projectId, repository} = await blendProject();
+		const stack: EffectStack = {
+			schemaVersion: 1,
+			instances: [],
+		};
+		for (let index = 0; index < 8; index++) {
+			const {source} = await store.getState().importImage({
+				name: `extra ${index}.png`,
+				blob: makeTestBlob(`extra-${index}`),
+				width: 8,
+				height: 8,
+				setActive: false,
+			});
+			stack.instances.push({
+				...blendStack(source.sha256).instances[0],
+				id: `blend00${index}`,
+			});
+		}
+
+		stack.instances.push({...blendStack('').instances[0], id: 'ninth000'});
+		await store.getState().openProject(projectId);
+		await store.getState().applyStack(stack, 'Eight images');
+		const ninth = store.getState().activeProject!.stack.instances.at(-1)!.id;
+		const sizes = await repository.getSourceSizes();
+		const before = head();
+
+		await expect(
+			store
+				.getState()
+				.commitImageParam(projectId, ninth, 'image', deviceImage('ninth')),
+		).rejects.toThrow('A project can use at most 8 extra blend images.');
+
+		expect(head()).toBe(before);
+		expect(await repository.getSourceSizes()).toStrictEqual(sizes);
+	});
+
+	it('opens the storage-full dialog when the device image does not fit', async () => {
+		const timerEnv = createFakeTimerEnv();
+		const repository = new MemoryStorageAdapter({now: () => timerEnv.now()});
+		const {choose, store, head} = await blendProject({repository});
+		const before = head();
+		vi.spyOn(repository, 'commitStack').mockRejectedValueOnce(
+			new StorageQuotaError(),
+		);
+
+		await expect(choose(deviceImage('green'))).rejects.toThrow(
+			StorageQuotaError,
+		);
+
+		expect(store.getState().storage.quotaFull).toBe(true);
+		expect(head()).toBe(before);
 	});
 });

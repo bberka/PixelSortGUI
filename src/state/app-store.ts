@@ -41,7 +41,11 @@ import {
 	repairProjectGeometry,
 	resolveStoredGeometry,
 } from '../storage/geometry.ts';
-import {normalizeViewState, withSideA} from '../storage/helpers.ts';
+import {
+	hashBlobSha256,
+	normalizeViewState,
+	withSideA,
+} from '../storage/helpers.ts';
 import {
 	resolveProjectStacks,
 	type UnsupportedInstanceInfo,
@@ -63,6 +67,7 @@ import {
 	type ExportSettings,
 	type HistoryEntryRecord,
 	type ImportProjectOptions,
+	type NewSource,
 	type ProjectRecord,
 	type SourceRecord,
 	type SplitOrientation,
@@ -201,6 +206,11 @@ export type AppStoreDependencies = {
 	syncTheme?: (theme: ThemePreference) => void;
 };
 
+// What an `image` parameter is set to: a stored source (`''` for none), or an
+// image from the device that the same commit stores.
+export type ImageChoice =
+	{readonly sha256: string} | {readonly image: Omit<NewSource, 'sha256'>};
+
 export type AppState = {
 	bootStatus: BootStatus;
 	route: AppRoute;
@@ -329,6 +339,15 @@ export type AppState = {
 		params: Readonly<Record<string, ParamValue>>,
 		label: string,
 	): Promise<void>;
+	// Sets an `image` parameter as one history entry. `false` when nothing
+	// changed or the project or the instance is gone. Rejects as `commitStack`
+	// does, and then nothing was stored.
+	commitImageParam(
+		projectId: string,
+		instanceId: string,
+		paramKey: string,
+		choice: ImageChoice,
+	): Promise<boolean>;
 	cancelDrag(): void;
 	flushPendingCommit(): Promise<void>;
 
@@ -870,6 +889,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		label: string,
 		changesMain: boolean,
 		transform?: SourceTransform,
+		newSource?: NewSource,
 	): Promise<ProjectRecord> => {
 		const active = requireActiveProject();
 
@@ -882,6 +902,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				selectedInstanceIdA: next.selectedInstanceIdA ?? null,
 				transform,
 				label,
+				newSource,
 			});
 
 			const currentState = store.getState();
@@ -960,6 +981,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		nextStack: EffectStack,
 		selectedInstanceId: string | null,
 		label: string,
+		newSource?: NewSource,
 	): Promise<ProjectRecord> => {
 		const active = requireActiveProject();
 		assertStackCapacity(nextStack.instances.length);
@@ -967,6 +989,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			withSide(active, side, nextStack, selectedInstanceId),
 			sideHistoryLabel(label, side, store.getState().compareMode === 'split'),
 			side === 'b',
+			undefined,
+			newSource,
 		);
 	};
 
@@ -2260,6 +2284,64 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					),
 				};
 				await commitNextStack(found.side, nextStack, found.selectedId, label);
+			});
+		},
+
+		async commitImageParam(projectId, instanceId, paramKey, choice) {
+			return editInOrder(async () => {
+				const newSource =
+					'image' in choice
+						? {
+								...choice.image,
+								sha256: await hashBlobSha256(choice.image.blob),
+							}
+						: undefined;
+				const sha256 = 'image' in choice ? newSource!.sha256 : choice.sha256;
+				// A picked file that is already stored changes nothing by itself.
+				const stores = newSource && !(await repository.hasSource(sha256));
+				const active = get().activeProject;
+				if (active?.id !== projectId) {
+					return false;
+				}
+
+				const found = locateInstance(active, instanceId);
+				const definition = found ? registry.get(found.target.type) : undefined;
+				const spec = definition?.params[paramKey];
+				if (!found || !definition || spec?.kind !== 'image') {
+					return false;
+				}
+
+				const {side, stack, target} = found;
+				const params = validateSingleParam(
+					definition,
+					target.params,
+					paramKey,
+					sha256,
+				);
+				const nextStack: EffectStack = {
+					schemaVersion: stack.schemaVersion,
+					instances: stack.instances.map((item) =>
+						item.id === instanceId
+							? {...item, version: definition.version, params}
+							: item,
+					),
+				};
+				if (
+					!stores &&
+					!get().stackNeedsWriteBack &&
+					canonicalStackJson(nextStack) === canonicalStackJson(stack)
+				) {
+					return false;
+				}
+
+				await commitNextStack(
+					side,
+					nextStack,
+					found.selectedId,
+					formatParamCommitLabel(spec, params[paramKey]),
+					newSource,
+				);
+				return true;
 			});
 		},
 

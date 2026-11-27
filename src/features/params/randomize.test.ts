@@ -290,6 +290,16 @@ describe('randomizeParams values', () => {
 		expect([0, 0.5, 0.999999].map((r) => one(spec, [r]))).toEqual(['', '', '']);
 	});
 
+	it('keeps the chosen image', () => {
+		const spec: ParamSpec = {...meta, kind: 'image', default: ''};
+		const image = 'a'.repeat(64);
+		expect(
+			[0, 0.999999].map(
+				(r) => randomizeParams({p: spec}, sequence([r]), {p: image}).p,
+			),
+		).toEqual([image, image]);
+	});
+
 	it('is valid for every registered effect, including parameters hidden by visibleWhen', () => {
 		fc.assert(
 			fc.property(randomValues, (values) => {

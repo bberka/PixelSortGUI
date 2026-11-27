@@ -21,6 +21,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - Bayer dither effect: ordered dithering with a 2×2, 4×4 or 8×8 pattern, 2 to 16 levels per channel, a spread amount, a pattern scale and an optional monochrome output.
 - Threshold invert effect: invert all channels or one of them for pixels whose luma, lightness, value, saturation, hue, red, green or blue lies in a range, or outside it, with a selection view.
 - Pixel smear effect: drag the colour of selected pixels along any angle in fading trails, with a selection key and threshold range, invert, trail decay, a maximum trail length and a "Show selection" view.
+- Image blend effect: mix a second picture into the stack with one of ten blend modes, opacity, fit (cover, contain, stretch, tile or original size), scale, offset and rotation. Pick the picture from your device, under the same import rules as a photo, or take the original photo of another project; it is stored once, and picking and clearing can be undone. Effects above it change the photo only, effects below it the blended result. A project can use up to 8 extra pictures, project files carry them, and presets leave them out.
 - Scanline wave effect: displace rows or columns along a sine, triangle, square or sawtooth wave, with amplitude, wavelength, phase, per-line jitter with a seed, and wrap or stretch at the edges.
 - RGB noise effect: add colour or monochrome noise with an amount, a grain size, a chance of dead or hot pixels, and a seed.
 - JPEG crush effect: crush 4 to 64 px blocks like a badly saved JPEG, with a quality level, optional chroma subsampling, and seeded block corruption that bends colours. It gives the same output in every browser.
@@ -43,7 +44,6 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 These are planned and not in the app.
 
 - More effects.
-- Blending a second image into a project.
 - Masks and painting on the canvas.
 - Animation and video.
 

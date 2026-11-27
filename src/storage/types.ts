@@ -177,6 +177,13 @@ export type CreateProjectResult = {
 	deduplicated: boolean;
 };
 
+// An image stored by the commit that first refers to it (persistence.md section
+// 8.5). `sha256` is the hash of `blob`.
+export type NewSource = Pick<
+	SourceRecord,
+	'sha256' | 'blob' | 'mimeType' | 'width' | 'height'
+>;
+
 export type CommitStackInput = {
 	projectId: string;
 	stack: EffectStack;
@@ -187,6 +194,8 @@ export type CommitStackInput = {
 	// Omitted keeps the stored transform.
 	transform?: SourceTransform;
 	label: string;
+	// Stored with this commit when `stack` or `stackA` refers to it.
+	newSource?: NewSource;
 };
 
 export type CommitStackResult = {

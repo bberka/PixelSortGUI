@@ -136,11 +136,20 @@ async function readEditor(page: Page) {
 	});
 }
 
+// Playwright intercepts the file picker only while a `filechooser` listener
+// exists, and subscribes without waiting for the browser. A listener added just
+// before a click or key press can lose that race, and the picker is dismissed
+// unseen, so one stays for the life of the page.
+async function open(page: Page): Promise<void> {
+	page.on('filechooser', () => {});
+	await page.goto('/');
+}
+
 async function openBase(
 	page: Page,
 	fixture = solid('base.png', BASE_COLOUR),
 ): Promise<void> {
-	await page.goto('/');
+	await open(page);
 	await chooseImages(page, [fixture]);
 	await waitForSettleRender(page);
 }
@@ -435,7 +444,7 @@ test('AC-F26.4: undo and redo restore the image, also after the effect was remov
 async function freshPage(browser: Browser, baseURL: string): Promise<Page> {
 	const context = await browser.newContext({baseURL, acceptDownloads: true});
 	const page = await context.newPage();
-	await page.goto('/');
+	await open(page);
 	return page;
 }
 

@@ -450,19 +450,17 @@ export function ExportDialog({
 	};
 
 	const commitQualityInput = () => {
-		if (
-			typedQuality !== null &&
-			typedQuality !== qualityFor(activeProject.exportSettings, effectiveFormat)
-		) {
-			persistSettings(withQuality(liveSettings, effectiveFormat, typedQuality));
-		}
-
 		if (typedQuality === null) {
 			return;
 		}
 
 		setQualityPreview(null);
 		setQualityDraft(String(typedQuality));
+		if (
+			typedQuality !== qualityFor(activeProject.exportSettings, effectiveFormat)
+		) {
+			persistSettings(withQuality(liveSettings, effectiveFormat, typedQuality));
+		}
 	};
 
 	// Leaving a field also drops what could not be accepted.

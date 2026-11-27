@@ -191,6 +191,7 @@ for (const viewport of PROOF_VIEWPORTS) {
 			expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
 			await trigger.click();
 			await expect(page.getByRole('menuitem')).toHaveText([
+				/^Paste image/,
 				'Export backup',
 				'Import backup',
 			]);
@@ -283,6 +284,8 @@ test('the Library menu and the dialogs work from the keyboard', async ({
 	await open(page);
 	await libraryActions(page).focus();
 	await page.keyboard.press('Enter');
+	await expect(page.getByRole('menuitem', {name: 'Paste image'})).toBeFocused();
+	await page.keyboard.press('ArrowDown');
 	await expect(
 		page.getByRole('menuitem', {name: 'Export backup'}),
 	).toBeFocused();

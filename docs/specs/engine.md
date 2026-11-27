@@ -10,6 +10,7 @@ Updated with exact geometry rounding and resampling rules (section 16.3) by Clau
 Updated with split side rendering by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated `imageBlend` extra sources, sampling arithmetic and unlisted effects by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with the worker and coordinator extra-source pipeline by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with masks and the brush (`F29`, section 16.6) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift engine spec
@@ -65,10 +66,11 @@ type EffectInstance = {
 	params: Record<string, ParamValue>;
 	mix: number; // 0..1, step 0.01, default 1
 	blend: BlendMode; // default 'normal'
+	mask?: InstanceMask; // absent: the effect applies everywhere (section 16.6)
 };
 
 type EffectStack = {
-	schemaVersion: 1;
+	schemaVersion: 1 | 2; // 2 exactly when some instance has a mask (section 16.6)
 	instances: EffectInstance[]; // applied in array order, index 0 first; at most 32
 };
 ```
@@ -96,6 +98,7 @@ type RenderContext = {
 	scratch(slot: number, byteLength: number): Uint8Array; // reusable buffer, contents undefined
 	getSource(sha256: string): ExtraSource | undefined; // read only, section 16.5
 	readonly debugView: 'none' | 'selection';
+	readonly mask: Uint8Array | null; // this instance's final mask at render size, read only (section 16.6)
 };
 ```
 
@@ -184,12 +187,14 @@ type PipelineOptions = {
 	checkpoint: () => void | Promise<void>;
 	onProgress?: (fraction: number) => void;
 	extraSources?: ReadonlyMap<string, ExtraSource>; // keyed by SHA-256, section 16.5
+	masks?: ReadonlyMap<string, MaskBitmap>; // painted masks keyed by mask hash, section 16.6
+	geometry?: MaskGeometry; // how a painted mask maps onto the effective image, section 16.6
 };
 
 type PipelineResult = {
 	image: RgbaImage;
 	perInstanceMs: number[];
-	warnings: {instanceId: string; code: 'unknown-type' | 'newer-version' | 'params-fixed' | 'missing-source'}[];
+	warnings: {instanceId: string; code: 'unknown-type' | 'newer-version' | 'params-fixed' | 'missing-source' | 'missing-mask'}[];
 };
 ```
 
@@ -203,7 +208,7 @@ Algorithm:
    4. If a parameter of kind `image` is not `''` and `options.extraSources` has no entry for it, add one `missing-source` warning for the instance. The effect still runs and decides what to do. This instance and every later one are not read from or written to the stage cache.
    5. Build the context (`scale = renderWidth / sourceWidth`, `seed = params.seed ?? 0`, `debugView` from `options.debug` when it names this instance and the effect lists that view in `debugViews`, else `'none'`).
    6. `output` = whichever of `a`, `b` is not `current`. Call `render(current, output, params, ctx)`. The pipeline does not copy `current` defensively before calling `render`.
-   7. If `debugView` is `'none'` and (`mix < 1` or `blend !== 'normal'`), composite in place: `output = composite(current, output, mix, blend)` (section 4.5).
+   7. If `debugView` is `'none'` and (`mix < 1` or `blend !== 'normal'` or the instance has a mask), composite in place: `output = composite(current, output, mix, blend, mask)` (sections 4.5 and 16.6).
    8. `current = output`.
    9. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection. If the debug instance's effect does not list `'selection'` in `debugViews`, it renders normally with mix and blend and the pipeline still stops there; if the debug instance is disabled or unknown, the whole stack renders normally.
 3. Return a fresh copy of `current` (never aliasing `source`, a stage cache entry, or a working buffer).
@@ -233,6 +238,8 @@ For every pixel, with `i` the instance input channel, `f` the effect output chan
 - R, G, B: `out = floorDiv(2 * (i * (100 - m) + b * m) + 100, 200)`.
 - A: `out = floorDiv(2 * (iA * (100 - m) + fA * m) + 100, 200)` (alpha always mixes as `normal`).
 
+With a mask, let `k` be the pixel's final mask value (0 to 255) and `w = m * k` (0 to 25,500). Each channel is `floorDiv(2 * (i * (25500 - w) + b * w) + 25500, 51000)`, with `b = fA` for alpha. At `k = 255` this equals the formula above byte for byte; at `k = 0` the output equals the input.
+
 Mix and blend are applied against the instance's own input at the same render size, so they work at every level (this avoids the scale mismatch the research found in pixel-sorter's blending). Out-of-range `mix` is clamped to `[0, 1]` (`NaN` is treated as `1`) and an unknown `blend` mode renders as `'normal'`, without changing stored data.
 
 ### 4.6 Adding a new effect
@@ -247,14 +254,15 @@ The owner will add his own effects. The full procedure, which touches no UI or s
 
 Nothing else changes: the parameter panel, persistence, history and presets all handle the new type through the schema.
 
-### 4.7 On-canvas tool slot (reserved for later)
+### 4.7 On-canvas tool slot
 
-Designed now so future interactive canvas tools (such as painting a mask or drawing a sort path) can be added without changing `EffectDefinition`, `ParamSpec`, or `renderStack`. Not built in the first release.
+Designed now so future interactive canvas tools (such as painting a mask or drawing a sort path) can be added without changing `EffectDefinition` or `ParamSpec`. Not built in the first release; the mask brush (`F29`) is its first user.
 
 - The engine remains DOM-free and knows nothing about pointer events or UI tools.
-- A separate UI-side tool registry (later, under `src/features/canvas/tools/`) can register an optional tool binding keyed by `(effectType, version)` (or for a universal feature such as per-instance masks).
-- When the selected instance matches a registered tool binding, the canvas stage mounts the tool's overlay ([DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot-reserved-for-later)), which translates canvas pointer gestures into normal parameter updates or mask-asset writes and commits through the existing stack/history store.
+- A separate UI-side tool registry (under `src/features/canvas/tools/`) can register an optional tool binding keyed by `(effectType, version)` (or for a universal feature such as per-instance masks).
+- When the selected instance matches a registered tool binding, the canvas stage mounts the tool's overlay ([DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot)), which translates canvas pointer gestures into normal parameter updates or mask-asset writes and commits through the existing stack/history store.
 - Effects that do not register a canvas tool require zero UI code and remain purely schema-driven.
+- The first binding is the mask brush (section 16.6). It is a universal feature: it binds to the selected instance's mask, whatever the effect type.
 
 ## 5. Pixel sort effect (`pixelSort`)
 
@@ -338,7 +346,7 @@ For each line, with pixels `p[0..n-1]` in line order:
   5. `selected = !isEdge !== invert`, that is, non-edges are selected unless inverted.
   This map is computed once per render into scratch memory (2 bytes per pixel at most) before lines are processed.
 - `whole`: every pixel with alpha above 0 is selected. `invert` is ignored.
-- Later, masks (5.6) also clear `selected`.
+- With a mask (5.6, `F29`), a pixel whose mask value is 0 is never selected, in every mode; applied after `invert`.
 
 **2. Runs.** A **run** is a maximal sequence of consecutive selected pixels in a line. Runs never continue past the end of a line and never wrap to another line.
 
@@ -400,13 +408,12 @@ Every mode is a bijection on `{0, ..., n - 1}` for all `n >= 2`. `mirror` places
 - `average`: every pixel of the interval becomes the channel-wise mean `floorDiv(2 * sum + n, 2 * n)` (for R, G, B, A in `rgba`; for each active channel only in `rgb`, `r`, `g`, `b`, leaving other channels and alpha unchanged). `order`, `discretize` and `intervalTransform` do not affect it.
 - `gradient`: take the first ordered element `s` and the last ordered element `e` (all four channels of the first and last ordered pixels in `rgba`; the first and last ordered values of each active channel in `rgb`, `r`, `g`, `b`), and for output position `i` in `0..n-1` let `k = transformIndex(intervalTransform, i, n)` and set the output channel to `floorDiv(2 * (s * (n - 1 - k) + e * k) + (n - 1), 2 * (n - 1))`. Output colours are interpolated and are not a permutation. With `shuffle` order, `s` and `e` are the first and last shuffled elements; with tied keys, `s` and `e` come from the stable order (earliest and latest in the interval).
 
-### 5.6 Masks (later; semantics fixed now)
+### 5.6 Masks
 
-Masks are a later feature (product.md section 6). When they arrive they follow these rules, so the first-release design does not block them:
+Specified with `F29` in [section 16.6](#166-masks-f29). Two rules concern this effect:
 
-- A mask is a single-channel 8-bit image at source resolution, stored as a separate asset and referenced from an effect instance by a new optional field (stack `schemaVersion` 2). At render time it is resampled to render size by box averaging.
-- For every effect type, the mask scales the composite: in section 4.5, `m` becomes `Math.round(mix * 100 * mask / 255)` per pixel.
-- For `pixelSort` it also affects selection: a pixel whose mask value is below 128 is not selected, so masked areas break runs exactly like unselected pixels.
+- A pixel whose `ctx.mask` value is 0 is not selected, so areas outside the mask break runs exactly like unselected pixels. Pixels with a mask value of 1 to 255 are selected as usual, and the composite (section 4.5) fades the result by the mask. This replaces the earlier "below 128" rule ([decisions.md D48](decisions.md#d48-masks-weight-the-composite-and-clear-pixel-sort-selection-only-where-zero-2026-11-27)).
+- The "Show selection" view therefore darkens pixels outside the mask.
 
 ### 5.7 Selection view
 
@@ -733,6 +740,7 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/rgb-noise.ts
   effects/jpeg-crush.ts
   effects/image-blend.ts
+  mask/                types and validation, brightness and image masks, fit, feather, brush, asset bytes (section 16.6)
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
@@ -1283,3 +1291,140 @@ Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceH
 
   `settle` misses the 300 ms p95 target in all 18 runs: Chromium p95 322 to 551 ms (median 243 to 405), Firefox 346 to 903 ms (median 322 to 785). The quieter third round was no better. The p95 of `pixelSort` in the same runs was 93 to 183 ms against the 60 to 97 ms section 9 records, so the machine explains part of the miss, but not how much. `drag` p95 was 26 to 79 ms, and only at a cap lowered to 0.13 to 0.52 MP. `AC-F8.1` (5 updates per second) is met.
 - **Recommendation:** ship `v0.3.0` with the effect unchanged, because the acceptance limit is met and `settle` is an engineering target; product.md section 9 asks the owner to accept the miss. Then run manual item `M7` of [acceptance-v0.3.0.md](acceptance-v0.3.0.md#manual-checklist) on an idle machine. If it still misses, give the fast paths their own task: copy rows directly for unrotated whole-pixel placement, and one inner loop per blend mode instead of a call per channel. The golden cases must stay unchanged.
+
+### 16.6 Masks (F29)
+
+A **mask** is an 8-bit weight per pixel (0 to 255) that limits where one effect instance applies. 255 applies the instance fully (as scaled by its mix), 0 leaves the instance's input unchanged. Product behaviour is in [product.md F29](product.md#f29-masks-and-on-canvas-brush); storage is in [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29). All code is pure TypeScript under `src/engine/mask/`, and uses only `+ - * /`, comparisons and `Math.floor` (section 1, rule 3).
+
+#### Data model
+
+```ts
+type InstanceMask = {
+	invert: boolean; // default false
+	feather: number; // integer 0..256, effective-image px, default 0
+} & (
+	| {kind: 'paint'; asset: string} // mask hash (64 lowercase hex), or '' for nothing painted
+	| {kind: 'luma'; range: readonly [number, number]; softness: number} // 0..1 step 0.001; defaults [0.5, 1] and 0.1
+	| {kind: 'image'; source: string; fit: 'cover' | 'contain' | 'stretch'} // source SHA-256 or ''; default fit 'cover'
+);
+
+type MaskBitmap = {readonly width: number; readonly height: number; readonly data: Uint8Array}; // row-major, one byte per pixel
+
+type MaskGeometry = {sourceWidth: number; sourceHeight: number; transform: SourceTransform}; // the stored source, section 16.3
+```
+
+- An instance has at most one mask, of one kind. Mix is its opacity; there is no second opacity setting.
+- `validateMask` returns `undefined` for a value that is not an object or has an unknown `kind`. Otherwise it fills defaults, rounds `feather` and clamps it to `[0, 256]`, applies the section 3 `range` and `number` rules to `range` and `softness`, and turns an `asset` or `source` that is not 64 lowercase hex digits into `''`. The pipeline validates a copy and never changes stored data. A mask the pipeline cannot validate is kept in storage, and the instance is skipped with a `missing-mask` warning, so a newer kind never renders unmasked.
+- Instances of unknown type keep their mask unchanged (AC-F4.6).
+- `canonicalStackJson` includes the mask, so equality, history and stage cache keys see every mask change.
+
+#### Painted mask grid and asset
+
+- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304`. Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
+- **Canonical bytes:** the ASCII bytes `DMSK`, width and height as little-endian uint32, then `width * height` mask bytes. The **mask hash** is the SHA-256 of the canonical bytes. Compression never affects it.
+- `asset: ''` is a mask that is 0 everywhere.
+- An asset is immutable. Every edit makes new bytes and a new hash.
+- A stored asset whose grid size is not the size above for the project's source counts as missing.
+
+#### Order of operations
+
+Per instance, at render size `W × H`:
+
+1. **Base** mask by kind (below).
+2. **Feather**, when `r = ctx.pxLength(feather) > 0`.
+3. **Invert**: `k = 255 - k`.
+
+The result is `ctx.mask` and the `mask` of the composite (section 4.5).
+
+#### Painted base: fitting the grid
+
+1. Rotate and flip the grid exactly as section 16.3 orients pixels. Its size is `Mw × Mh`; the oriented source size is `Wo × Ho`.
+2. Take the crop `(cx, cy, Wc, Hc)` in oriented source pixels (the whole image without a crop). The resize filter is not used.
+3. Per axis, with `S` the mask side, `O` the oriented source side, `c` the crop start, `C` the cropped side and `R` the render side, destination edge `d` in `0..R`, in 1/256 mask pixels, is `e(d) = floorDiv(256 * S * (c * R + d * C), O * R)`.
+4. Taps for destination `d`:
+   - If `e(d + 1) - e(d) >= 256` (area average): each mask pixel `s` weighs its overlap of `[256 s, 256 s + 256)` with `[e(d), e(d + 1))`.
+   - Otherwise (linear): `q = clamp(floorDiv(e(d) + e(d + 1), 2) - 128, 0, 256 * (S - 1))`, `i0 = floorDiv(q, 256)`, `f = q - 256 * i0`, weights `256 - f` for `i0` and `f` for `min(i0 + 1, S - 1)`.
+5. With the 2D weight `wx * wy` and `T` the product of the two axes' weight sums, `k = floorDiv(2 * sum(wx * wy * v) + T, 2 * T)`.
+
+An identity transform rendered at the grid size copies the grid unchanged.
+
+#### Brightness base (`luma`)
+
+Computed from the pipeline's `source` (the effective image at render size, before any instance), so it does not change when effects above the instance change. For each pixel, `L = floorDiv(2126*R + 7152*G + 722*B + 5000, 10000)` (alpha ignored). With `lo = Math.floor(range[0] * 255 + 0.5)`, `hi` likewise, `s = Math.floor(softness * 255 + 0.5)` and `d = max(lo - L, L - hi, 0)`:
+
+`k = d === 0 ? 255 : d > s ? 0 : floorDiv(510 * (s + 1 - d) + (s + 1), 2 * (s + 1))`
+
+Like pixel sort selection, preview and export agree in structure, not byte for byte (section 10.3).
+
+#### Image base (`image`)
+
+- The image is an extra source (section 16.5), loaded, cached and counted exactly like an `imageBlend` image.
+- It is placed over the effective image with the section 16.5 placement and sampling for the chosen `fit`, with `scale = 1`, offsets 0 and rotation 0.
+- With the sampled pixel `(R, G, B, A)` and `L` as above, `k = floorDiv(2 * L * A + 255, 510)`. Outside a `contain` image the sample is transparent, so `k = 0`.
+- The geometry transform does not apply to the mask image; it stays fitted to the output frame.
+- `source: ''` gives a mask that is 0 everywhere.
+
+#### Feather
+
+Two passes of a box blur of radius `r`, each horizontal then vertical, coordinates clamped to the image. Each 1D output is `floorDiv(2 * sum + n, 2 * n)` with `n = 2r + 1`. Use running sums; cost does not depend on `r`. Call `ctx.checkpoint()` at least once per 16,384 pixels, here and in every other mask loop.
+
+#### Pipeline rules
+
+- A disabled instance computes no mask.
+- A mask is **missing** when a painted `asset` is not in `options.masks` or has the wrong size, an image `source` is not in `options.extraSources`, or the mask does not validate. A missing mask skips the instance (its input passes on unchanged, even with `invert`), adds `missing-mask` or `missing-source`, and neither reads nor writes the stage cache for this instance and later ones.
+- `options.geometry` absent means the identity transform and a source of `sourceWidth × sourceHeight`. With it, `sourceWidth` and `sourceHeight` of the options stay the effective size.
+- With a mask, composite runs even at mix 1 and blend `normal`. An effect may use `ctx.mask` to skip work only where the output is unchanged by it.
+- A debug selection view ignores the composite but still passes `ctx.mask`.
+- An instance without a mask renders byte for byte as before. No effect version changes.
+- Memory: the pipeline may hold up to `2 * W * H` further bytes (the mask and a blur buffer), reused between instances. This adds to the section 9 memory budget only for masked stacks.
+
+#### Brush
+
+Painting is deterministic: the same base bitmap, stroke settings and samples give the same bytes.
+
+```ts
+type BrushStroke = {
+	mode: 'paint' | 'erase';
+	hardness: number; // integer 0..100
+	strength: number; // integer 1..100
+};
+type BrushSample = {x: number; y: number; rx: number; ry: number}; // integers in 1/16 mask px; rx, ry >= 8
+```
+
+**From the canvas to samples** (`mask/coords.ts`). A pointer position in effective-image pixels maps back through resize, crop and orientation (section 16.3) to continuous stored-source coordinates, then scales by `maskSide / sourceSide`. The brush diameter `size` is in effective-image pixels. Its radius `size / 2`, times the pressure factor, goes through the same scale per effective axis (the axes swap for a rotation of 90 or 270), giving `rx` and `ry`; an unlocked resize therefore gives an elliptical dab. The results are stored as `roundHalfAway(16 * v)`.
+
+**Pressure factor:** `1`, except for `pointerType === 'pen'` with "Pen pressure sets size" on: `0.2 + 0.8 * clamp(pressure, 0, 1)`.
+
+**Dab placement.** The first sample stamps one dab. Between samples `P` and `Q`, with `sx = max(16, floorDiv(min(P.rx, Q.rx), 4))` and `sy` likewise, `n = max(1, floorDiv(abs(Q.x - P.x) + sx - 1, sx), floorDiv(abs(Q.y - P.y) + sy - 1, sy))`. Dabs `j` in `1..n` take each of `x, y, rx, ry` as `P + roundHalfAway((Q - P) * j / n)`.
+
+**Dab stamping.** For each mask pixel `(px, py)` in the dab's bounding box, clipped to the grid:
+
+- `du = (16 * px + 8 - x) / rx`, `dv` likewise, `q = du * du + dv * dv`. Skip when `q >= 1`.
+- `h = hardness / 100`, `h2 = min(h * h, max(0, 1 - 32 / max(rx, ry)))`, which keeps about one mask pixel of soft edge on a hard brush.
+- `u = q <= h2 ? 1 : (1 - q) / (1 - h2)`, `a = Math.floor(u * u * (3 - 2 * u) * 255 + 0.5)`.
+- `cover[p] = max(cover[p], a)`.
+
+`cover` is one buffer per stroke, zeroed at its start, so overlapping dabs of one stroke never build up.
+
+**Applying a stroke** to the base bitmap `B` it started from, with `S = floorDiv(510 * strength + 100, 200)` and `c = floorDiv(2 * cover * S + 255, 510)`:
+
+- paint: `M = B + floorDiv(2 * (255 - B) * c + 255, 510)`
+- erase: `M = B - floorDiv(2 * B * c + 255, 510)`
+
+A stroke that changes no byte makes no commit. **Fill** is every byte 255; **Clear** sets `asset` to `''`.
+
+#### Workers
+
+- **Mask worker** (`src/worker/mask.worker.ts`), new, one while the brush is on. It holds the bitmap being edited, applies `mask/brush.ts`, and posts changed rectangles of the mask fitted to the overlay size, with invert applied and without feather. At stroke end it returns the new bitmap, its hash and its compressed canonical bytes. The main thread never stamps ([decisions.md D49](decisions.md#d49-brush-strokes-run-in-a-mask-worker-and-effects-render-when-a-stroke-ends-2026-11-27)). Its message types live in `src/worker/protocol.ts`:
+  - to the worker: `maskOpen {requestId, asset: {sha256, width, height, blob} | null, invert, geometry, overlay: {width, height}}` (`null` is an empty grid), `strokeStart {stroke, sample}`, `strokeMove {samples}`, `strokeEnd {requestId}`, `strokeCancel {requestId}`, `maskFill {requestId}`;
+  - from it: `overlayPatch {x, y, width, height, data}`, `maskOpened {requestId}`, `maskEdited {requestId, changed, asset?: {sha256, width, height, blob}}`, `error`.
+- **Preview worker:** `loadMask {requestId, sha256, width, height, blob}` (answered by `maskLoaded` or `error`), `unloadMask {sha256}`, and `renderMask {jobId, sourceKey, mask, width, height}` answered by `maskRendered {jobId, data}`: the final mask of the order above, for the overlay. Assets are decompressed with `DecompressionStream('deflate-raw')`, stopped at `12 + width * height` bytes, and checked against their hash. `render` passes `masks` and `geometry` to `renderStack`.
+- **Export worker:** `export` and `renderFull` gain `masks?: readonly {sha256: string; width: number; height: number; blob: Blob}[]` for the enabled instances.
+- **Coordinator:** loads, unloads and waits for painted masks as it does extra sources (section 8.3), including the `sourcesPending` flag. A mask image is one of the extra-source references.
+- **Proxies:** no separate mask proxies. The grid is at most 4 MP and every level fits it at render time. The stage cache needs no new key part.
+
+#### Tests
+
+- Unit tests with hand-computed values for the composite (including `k = 0` and 255), brightness ranges at both ends with softness 0 and above, fitting (identity, each rotation and flip, crop, up- and downscale), feather, validation, coordinate mapping both ways, dab placement and stamping.
+- Properties: an all-255 mask equals no mask; an all-0 mask equals the instance switched off; `invert` twice is identity; a stroke is unchanged by repeating a sample; strength 100 hard erase over a filled mask gives 0 inside the dab core; `pixelSort` with `fill = sort` never moves a pixel into or out of the zero area.
+- Golden cases `tests/golden/mask/` with a mask fixture generated in code: painted, brightness and image masks, feather, invert, a geometry transform, and a masked `pixelSort`.

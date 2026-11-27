@@ -6,6 +6,7 @@ Updated with the phone editor redesign and the keyboard hint rule (F18) by Claud
 Updated with the cloud sync network exception (F28) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with touch targets, dialog focus and long names by Claude Sonnet 5.5 (apx, medium thinking), bug-sweep subagent.
 Updated with export field validation and focus after screen changes by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
+Updated with masks and the brush (F29, section 7.4) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
 
 # Drift design system
@@ -330,11 +331,11 @@ One control (default)             All controls
   - App installation: `"Install app"` button when `beforeinstallprompt` is captured (desktop Chromium).
   - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section listing each bundled package with its version and licence, and a `"Full licence texts"` link to the same-origin file `THIRD-PARTY-NOTICES.txt` (no licence text in the app's JavaScript).
 
-### 7.1 On-canvas tool slot (reserved for later)
+### 7.1 On-canvas tool slot
 
-Designed now so future interactive tools (such as painting a mask or drawing a sort path) plug in without changing the parameter panel or the three responsive layouts. Not built in the first release.
+The slot for interactive canvas tools, so they plug in without changing the three responsive layouts. Not built in the first release; the mask brush (section 7.4) is its first user.
 
-- **Placement:** An optional floating tool strip docked inside the canvas stage (top-left on desktop and tablet, above the stack strip on phone), rendered only when the selected effect instance has a registered canvas tool binding ([engine.md section 4.7](docs/specs/engine.md#47-on-canvas-tool-slot-reserved-for-later)).
+- **Placement:** An optional floating tool strip docked inside the canvas stage (top-left on desktop and tablet; on a phone a docked row in place of the effect strip), rendered only while a tool with a registered canvas binding is on ([engine.md section 4.7](docs/specs/engine.md#47-on-canvas-tool-slot)).
 - **Overlay and input:** The canvas stage reserves a transparent pointer-event overlay layer aligned to the same zoom and pan transform as the photo canvas. When an on-canvas tool is active, pointer events route to the tool handler; holding `Space` (or switching back to the pan/hand tool) temporarily restores canvas pan.
 - **No impact on schema-driven effects:** Effects without a registered canvas tool render no tool strip and keep the default pan-on-drag canvas behaviour.
 
@@ -370,7 +371,7 @@ Designed now so future interactive tools (such as painting a mask or drawing a s
   - **Open project file (`src/features/import/`):** every import picker (`use-image-picker.ts`: `"Import images"` and `"Open images"`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) uses the drop overlay copy (`drop-overlay.tsx`) `"Drop images or project files to open"`. A file named `.glproj` (any letter case) is opened as a project file, a `.zip` goes by what its manifest says it is (see "`.zip` files" below), and every other file is opened as an image. The progress card reads `"Opening <file name> (<n> of <total>)"`. When several files are chosen at once, the first of them, in the order chosen, that opened becomes the open project. Errors use the existing `ImportProblemDialog`, titled `"Can't open project"`, `"Can't open <N> projects"`, `"Can't open file"` for a single `.zip` that is neither a project file nor a backup, or `"Can't open <N> files"` when the refused files are of different kinds; it stays up when another file of the same batch opened and changed the screen.
 - **Full backup and restore (F17):**
   - **Settings -> Storage (`src/features/settings/settings-content.tsx`):** A `"Backup & restore"` row below the persistence controls with `"Export backup"` and `"Import backup"` outline buttons. Choosing one closes Settings first. `"Export backup"` then opens its dialog; `"Import backup"` opens the file picker.
-  - **Library app bar (`src/app/app-bar-actions.ts`):** A compact overflow menu button (`⋮`, `aria-label="Library actions"`) after Settings, at every width, with `"Paste image"` (section 7.4), `"Export backup"` and `"Import backup"`.
+  - **Library app bar (`src/app/app-bar-actions.ts`):** A compact overflow menu button (`⋮`, `aria-label="Library actions"`) after Settings, at every width, with `"Paste image"` (section 7.5), `"Export backup"` and `"Import backup"`.
   - **Phone editor:** the app bar overflow (`"More actions"`, section 6.4) lists the two backup items below `"Save project file"`.
   - **Touch:** both overflow buttons and their menu items are at least `44 px` on a coarse pointer.
   - **Import backup picker:** a single-file picker filtered to `.zip`. The chosen file opens the "Import backup" dialog, except a project archive, which opens as a project file. The three `"Import backup"` controls are disabled while an import or a file check is running.
@@ -415,7 +416,7 @@ Empty Library, desktop and tablet (phone stacks the actions at full width):
 - **Column:** one `ScrollArea` fills `<main>`. Its content is horizontally centred, at most `896 px` wide, with `16 px` side padding (`24 px` from 640 px), and vertically centred while it is shorter than the screen.
 - **Hero:** the app icon at `56 px` (decorative, `alt=""`), then the pitch as the screen's `h2`. It takes focus (`tabIndex={-1}`) after the introduction is dismissed or the last project is deleted.
 - **Drop zone:** a named `section` ("Add photos") at most `576 px` wide, `2 px` dashed `border-input`, `--card` fill, `8 px` radius, `lucide` `ImageUp` icon, `"Drop photos here"` in `16 / 24` semibold. It is a visual target: the whole window accepts drops, and the drop overlay (section 6.1) covers the screen while dragging.
-- **Actions:** `Button` default `"Open images"` (the only primary), `"Paste image"` outline (section 7.4), `"Try a sample"` outline (disabled and reading `"Creating sample…"` while saving), `"Read the guide"` ghost link. A row from 640 px; stacked full width below. If the sample cannot be made, a toast says `"Couldn't create the sample project."`.
+- **Actions:** `Button` default `"Open images"` (the only primary), `"Paste image"` outline (section 7.5), `"Try a sample"` outline (disabled and reading `"Creating sample…"` while saving), `"Read the guide"` ghost link. A row from 640 px; stacked full width below. If the sample cannot be made, a toast says `"Couldn't create the sample project."`.
 - **Privacy and formats:** the privacy line in `14 / 20`, the line naming the formats in `12 / 16`, both `text-muted-foreground`, centred. No keys are listed here (section 8.4).
 - **Introduction:** a named `section` with `h3` `"See what Drift does"`, one line `"Pick one to try it on a sample picture. Left is the original, right is the result."`, and a ghost icon button `"Dismiss introduction"`. Four tiles in 2 columns below 1024 px and 4 from 1024 px, `12 px` gap. Each tile is one `button` (`--card`, `1 px` border, `8 px` radius, hover `--secondary`): a `4:3` canvas with the original in the left half, the result in the right half and the split divider line of section 7.2 between them (decorative, `aria-hidden`), then the tile name (`14 / 20` semibold) and one line of description (`12 / 16` muted). While a preview renders, or if it fails, the canvas area is `--muted`; the tile works either way.
 - **Sample picture:** original artwork generated by code: a banded dusk sky, a striped sun, three ridges and rippled water with fine grain, so every effect has edges and runs to work on. It is part of the photo layer, not the UI, so its colours are not tokens.
@@ -428,7 +429,38 @@ Guide screen:
 - **Type:** page title `24 / 32` semibold (`h2`), section titles `18 / 24` semibold (`h3`), effect names `16 / 24` (`h4`), body `14 / 24`.
 - **Effects reference:** one bordered `--card` block per effect with a definition list of parameters, divided by `1 px` `--border`. Keys in the shortcut table use `kbd` with `--secondary` fill and the mono font. The `"Keyboard shortcuts"` section and its contents entry are left out where keyboard hints are hidden (section 8.4). No other guide text names a key.
 
-### 7.4 Paste image from clipboard (F30)
+### 7.4 Masks and the brush (F29)
+
+**Tokens.** `--mask-overlay` is `#ff2d55` in both themes, because it is drawn over the photo; the "Show mask" opacity sets its alpha. All controls use the semantic tokens of section 2.2, so Light and True Black need nothing else.
+
+**Mask group** (`src/features/masks/`), in the parameter panel below Blend & Mix, headed `"Mask"`:
+
+- No mask: an outline `"Add mask"` button opening a `DropdownMenu`: `"Paint"` (`Brush`), `"Brightness"` (`SunMedium`), `"Image"` (`Image`).
+- With a mask, in this order:
+  - Type: `ToggleGroup` `"Paint"` / `"Brightness"` / `"Image"`.
+  - `"Show mask"` `Switch` and, while on, an `"Overlay opacity"` `Slider` + `Input` (10 to 100%).
+  - `"Invert mask"` `Switch`.
+  - `"Mask feather"` `Slider` + `Input` (0 to 256 px).
+  - Paint: `"Edit with brush"` toggle button (`aria-pressed`), `"Fill"` and `"Clear"` outline buttons; the note `"Nothing is painted yet."` while empty and the brush is off. While the brush is on: `"Brush size"`, `"Hardness"`, `"Strength"` sliders with inputs and a `"Pen pressure sets size"` `Switch`.
+  - Brightness: `"Mask range"` two-thumb slider with `Low` and `High` inputs, and `"Softness"`, as percentages.
+  - Image: the image control of section 7.2 labelled `"Mask image"`, and a `"Fit"` `ToggleGroup`.
+  - `"Remove mask"` ghost button (`Trash2`). No confirmation; Undo restores it. Focus moves to `"Add mask"`.
+- Sliders follow section 5.1: live `drag` preview, one commit on release. Brush settings and overlay settings create no commit.
+- A missing mask shows `"Missing mask"` in destructive text under the type control.
+- The effect stack row and the phone chip of a masked instance show a `14 px` `VenetianMask` icon with the accessible text `"Has mask"`.
+
+**Brush toolbar** (the section 7.1 tool strip, `src/features/canvas/tools/`), shown only while the brush is on: `"Paint"` and `"Erase"` as a two-item `ToggleGroup`, a separator, `"Show mask"` (`Eye`, `aria-pressed`), `"Done"` (`Check`). Icon buttons with tooltips, `36 px` on a fine pointer and `44 × 44 px` on a coarse pointer, on `--card` with a `1 px` `--border`. It is a `role="toolbar"` named `"Mask brush"` with arrow-key movement between its buttons.
+
+**Overlay and cursor.** The overlay sits between the photo and the pointer layer, under the same zoom and pan transform. The brush cursor is a circle of the brush's on-screen size (an ellipse under an unlocked resize), a `1 px` white ring with `1 px` black casing, an inner dashed ring at the hardness radius, and a `+` or `-` at the centre for Paint or Erase. It follows hover, the active stroke and keyboard movement, and hides for touch hover. No animation. The canvas has `touch-action: none` and an accessible description of the keys. Turning the brush on or off, switching tool, size and hardness changes, and `"Stroke added"` are announced politely.
+
+**Layouts:**
+
+- **Desktop (`1440 × 900`):** the toolbar is a vertical strip at the top left of the canvas, `12 px` in and below the compare and split pills. The Mask group scrolls with the parameter panel; turning the brush on scrolls the brush settings into view.
+- **Tablet (`820 × 1180`):** the same vertical strip in the canvas; the Mask group is in the docked panel's right column. All targets are `44 px` on a coarse pointer.
+- **Phone (`390 × 844`):** nothing is laid over the canvas. While the brush is on, the toolbar replaces the effect strip as a `52 px` row of four labelled `44 px` buttons. In the one-control panel the tabs `"Mask"` (type, Show mask, Invert, Remove), then for a mask `"Feather"` and, by type, `"Size"`, `"Hardness"`, `"Strength"`, `"Overlay"` (Paint), `"Range"`, `"Softness"` (Brightness) or `"Mask image"`, `"Fit"` (Image) follow `Blend`. Each fits the `144 px` area. The `"Mask"` tab holds `"Edit with brush"`, `"Fill"` and `"Clear"`; its content scrolls inside the area. Turning the brush on selects `"Size"`.
+- **Phone landscape:** the toolbar row takes the effect strip's place in the right drawer.
+
+### 7.5 Paste image from clipboard (F30)
 
 - **Menu item:** `"Paste image"` (`ClipboardPaste` icon) is the first item of the Library overflow menu, with a separator under it. It ends with the shortcut `Ctrl+V` / `⌘V` where keys are shown (section 8.4). `44 px` tall on a coarse pointer.
 - **Empty Library:** an outline `"Paste image"` button after `"Open images"`, with the same icon. The action row wraps if it does not fit.
@@ -446,6 +478,7 @@ Guide screen:
   - `Ctrl` / `Cmd` + wheel, or trackpad pinch (`wheel` with `ctrlKey`): zoom continuously around the pointer position.
   - Plain wheel: pan vertically (and horizontally with trackpad two-finger scroll or `Shift + wheel`).
   - Double-click: toggle between `Fit` and `100%` centered on the clicked point.
+- **Brush on (F29):** one pointer paints instead of panning ([section 7.4](#74-masks-and-the-brush-f29), product.md F29). Pinch, wheel zoom, middle-button drag and `Space` + drag keep working.
 - **Touch (phone/tablet):**
   - Single-finger drag: pan.
   - Two-finger pinch: continuous zoom and pan around the finger midpoint at 60 fps (`touch-action: none` on the canvas element, direct `requestAnimationFrame` redraw without React re-renders, AC-F13.1).
@@ -481,6 +514,15 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | `Arrow` keys (`+ Shift`) | Crop box focused | Move the crop box by 1 px (10 px) (F20) |
 | `Enter` / `Escape` | Crop mode (canvas or crop box; `Escape` anywhere outside text fields and open menus) | Apply / cancel the crop (F20) |
 | `Space` held while dragging | Crop mode | Pan instead of moving the crop box (F20) |
+| `B` | Editor, selected effect has a painted mask | Turn the brush on or off (F29) |
+| `X` | Brush on | Switch Paint and Erase (F29) |
+| `[` / `]` | Brush on | Brush size down / up: steps of 1 px below 20 px, then 10% (F29) |
+| `Shift+[` / `Shift+]` | Brush on | Hardness down / up by 10% (F29) |
+| `M` | Editor, selected effect has a mask | Show or hide the mask overlay (F29) |
+| `Arrow` keys (`+ Shift`) | Brush on, canvas focused | Move the brush cursor by 1/4 (1) brush size, instead of panning (F29) |
+| `Enter` | Brush on, canvas focused | Start or end a stroke (F29) |
+| `Escape` | Brush on (outside text fields and open overlays) | Cancel the stroke in progress, else turn the brush off (F29) |
+| `Space` held while dragging | Brush on | Pan instead of painting (F29) |
 | `Alt+ArrowUp` / `Alt+ArrowDown` | Effect stack row focused | Move selected effect instance up / down 1 position (AC-F4.3) |
 | `Escape` | History compare active (outside text fields, crop mode, and open modals) | Stop comparing against the pinned history step (F31) |
 | `Escape` | Any modal / menu / sheet | Close overlay and restore focus to its trigger |

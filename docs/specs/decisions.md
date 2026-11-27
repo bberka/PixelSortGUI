@@ -7,6 +7,7 @@ Updated with project files (F25), full backup/restore (F17), and multi-image ble
 Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with cloud backup and sync decisions (D39 to D41, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with the backup size limit decision (D44) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
+Updated with mask decisions (D45 to D49) and open questions (Q28 to Q30) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with `pixelSort` v2 decisions (D50) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift decisions and open questions
@@ -322,6 +323,38 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Cost:** A library over 4 GB needs two or more backups.
 - **Revisit if:** Users hit the limit with a single selection often, or one project alone can exceed it (`F26`'s eight extra images stay under 2 GB).
 
+### D45. Painted masks live on the stored source at up to 4 MP (2026-11-27)
+
+- **Options considered:** (a) A raster on the effective image (after crop and resize); (b) a raster on the stored source at its full size; (c) a raster on the stored source capped at 4 MP; (d) stroke lists replayed at render time.
+- **Choice:** (c), fitted through the project's `SourceTransform` at render time (`engine.md` section 16.6).
+- **Reason:** Paint stays on the photo content through every geometry change, with no destructive rewrite. A 50 MP raster costs 50 MB per edit and per stroke buffer; 4 MP is 4 MiB, about the settle preview's size, and brush edges are soft enough that bilinear upscaling is hard to see. Stroke lists make render time and history grow with every stroke and freeze the brush formula forever.
+- **Revisit if:** Users see blocky mask edges in full-size exports.
+
+### D46. One mask per instance, with brightness and image masks computed at render time (2026-11-27)
+
+- **Options considered:** (a) Every mask rasterised and stored; (b) a list of combinable mask sources; (c) one mask of one of three kinds, only painted ones stored.
+- **Choice:** (c), as an optional `mask` field on `EffectInstance`, outside `params`. Mix is the mask's strength. `schemaVersion` is 2 only for a stack that has a mask.
+- **Reason:** Brightness and image masks stay editable, cost no storage and follow the render size. Keeping masks outside `ParamSpec` means no effect needs code for them. One mask covers the requested cases without a second layer hierarchy (`product.md` section 8). The conditional version leaves unmasked data readable by older builds.
+
+### D47. Content-addressed mask store and database version 4 (2026-11-27)
+
+- **Options considered:** (a) Mask bytes inside the stack JSON; (b) one mutable mask record per instance; (c) immutable assets keyed by hash, reference-counted per project; (d) putting masks in `sources`.
+- **Choice:** (c), a `masks` store with `referencedMaskHashes` on each project, compressed with the browser's `deflate-raw`.
+- **Reason:** History snapshots stay a few kilobytes and undo is a hash lookup. Duplicate, copy between sides and imports share bytes. It repeats the proven source rules (`persistence.md` section 8.5). `sources` assumes decodable images and counts toward the 8-image cap.
+
+### D48. Masks weight the composite and clear pixel sort selection only where zero (2026-11-27)
+
+- **Options considered:** (a) Keep the reserved rule: `m = round(mix * 100 * mask / 255)` and unselected below 128; (b) weight the composite by `mix * mask` at full precision and clear selection only at 0.
+- **Choice:** (b). It replaces the earlier `engine.md` section 5.6 text, which no release implemented.
+- **Reason:** With the 128 cut a feathered edge jumps from the input to a half blend and the outer half of the ramp does nothing. The reserved formula also quantises the mask to 101 levels. The new formula is exact and unchanged at 255.
+
+### D49. Brush strokes run in a mask worker and effects render when a stroke ends (2026-11-27)
+
+- **Options considered:** (a) Stamp on the main thread; (b) approximate strokes with canvas 2D and rasterise afterwards; (c) a dedicated worker that stamps and returns overlay patches; (d) re-render effects during a stroke.
+- **Choice:** (c), with the effect preview updated at stroke end.
+- **Reason:** A large dab covers hundreds of thousands of pixels, which risks main-thread long tasks. One rasteriser keeps the overlay and the stored mask identical. A separate worker is not blocked by effect renders. Live effect updates while painting can be added later without changing stored data.
+- **Also:** Pen pressure scales size only. Touch contact width and height are ignored for size because browsers report them inconsistently.
+
 ### D50. Pixel sort v2: independent per-channel sort, bijective interval transforms and v1 migration (2026-11-27)
 
 - **Options considered:**
@@ -335,7 +368,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ## Open questions for the owner
 
-Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, Q11 through Q19 arise from the post-v0.1.0 specifications, and Q20 through Q27 from cloud backup and sync:
+Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains open from scaffolding, Q11 through Q19 arise from the post-v0.1.0 specifications, Q20 through Q27 from cloud backup and sync, and Q28 through Q30 from masks:
 
 ### Q10. Optional pre-commit guards and skills management
 
@@ -426,6 +459,21 @@ Questions Q1 through Q9 are settled above (2026-11-24). Question Q10 remains ope
 
 - **Question:** After Milestone 8 (backup in `v0.4.0`, automatic sync in `v0.5.0`), or ahead of project files and image blending (it still needs F17)?
 - **Recommended default:** After Milestone 8.
+
+### Q28. Mask detail
+
+- **Question:** Painted masks are stored at up to 4 MP, so on a larger photo the finest brush edge spans a few photo pixels (`D45`). Is that enough?
+- **Recommended default:** Yes.
+
+### Q29. Masks in presets
+
+- **Question:** A saved preset keeps brightness masks and drops painted and image masks, which belong to one photo (`product.md` F29). Correct?
+- **Recommended default:** Yes.
+
+### Q30. Scope and timing of masks
+
+- **Question:** Ship F29 with one mask per effect and no region cutout, and when: before or after Milestone 9 (cloud)? The two do not depend on each other, but whichever lands second takes the next database version.
+- **Recommended default:** This scope, region cutout later (Q11); the owner picks the order.
 
 ---
 

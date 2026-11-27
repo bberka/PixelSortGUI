@@ -1366,7 +1366,7 @@ Like pixel sort selection, preview and export agree in structure, not byte for b
 
 #### Feather
 
-Two passes of a box blur of radius `r`, each horizontal then vertical, coordinates clamped to the image. Each 1D output is `floorDiv(2 * sum + n, 2 * n)` with `n = 2r + 1`. Use running sums; cost does not depend on `r`. Call `ctx.checkpoint()` at least once per 16,384 pixels, here and in every other mask loop.
+Two passes of a box blur of radius `r`, each horizontal then vertical, coordinates clamped to the image. Each 1D output is `floorDiv(2 * sum + n, 2 * n)` with `n = 2r + 1`. Use running sums; cost does not depend on `r`. Call `ctx.checkpoint()` at least once per 16,384 pixels, here and in every other mask loop of a render (the brush and asset code run outside a render and take no checkpoint).
 
 #### Pipeline rules
 
@@ -1391,7 +1391,7 @@ type BrushStroke = {
 type BrushSample = {x: number; y: number; rx: number; ry: number}; // integers in 1/16 mask px; rx, ry >= 8
 ```
 
-**From the canvas to samples** (`mask/coords.ts`). A pointer position in effective-image pixels maps back through resize, crop and orientation (section 16.3) to continuous stored-source coordinates, then scales by `maskSide / sourceSide`. The brush diameter `size` is in effective-image pixels. Its radius `size / 2`, times the pressure factor, goes through the same scale per effective axis (the axes swap for a rotation of 90 or 270), giving `rx` and `ry`; an unlocked resize therefore gives an elliptical dab. The results are stored as `roundHalfAway(16 * v)`.
+**From the canvas to samples** (`mask/coords.ts`). A pointer position in effective-image pixels maps back through resize, crop and orientation (section 16.3) to continuous stored-source coordinates, then scales by `maskSide / sourceSide`. The brush diameter `size` is in effective-image pixels. Its radius `size / 2`, times the pressure factor, goes through the same scale per effective axis (the axes swap for a rotation of 90 or 270), giving `rx` and `ry`; an unlocked resize therefore gives an elliptical dab. The results are stored as `roundHalfAway(16 * v)`, and `rx` and `ry` are then raised to at least 8 (half a mask pixel), so a very small brush on a downscaled grid stays valid.
 
 **Pressure factor:** `1`, except for `pointerType === 'pen'` with "Pen pressure sets size" on: `0.2 + 0.8 * clamp(pressure, 0, 1)`.
 

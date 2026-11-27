@@ -12,6 +12,7 @@ Updated `imageBlend` extra sources, sampling arithmetic and unlisted effects by 
 Updated with the worker and coordinator extra-source pipeline by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with masks and the brush (`F29`, section 16.6) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
+Updated with the mask grid, brush radius and engine boundary rules (section 16.6) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift engine spec
 
@@ -1294,7 +1295,7 @@ Given base render dimensions `(W, H)` (with `ctx.sourceWidth = Ws`, `ctx.sourceH
 
 ### 16.6 Masks (F29)
 
-A **mask** is an 8-bit weight per pixel (0 to 255) that limits where one effect instance applies. 255 applies the instance fully (as scaled by its mix), 0 leaves the instance's input unchanged. Product behaviour is in [product.md F29](product.md#f29-masks-and-on-canvas-brush); storage is in [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29). All code is pure TypeScript under `src/engine/mask/`, and uses only `+ - * /`, comparisons and `Math.floor` (section 1, rule 3).
+A **mask** is an 8-bit weight per pixel (0 to 255) that limits where one effect instance applies. 255 applies the instance fully (as scaled by its mix), 0 leaves the instance's input unchanged. Product behaviour is in [product.md F29](product.md#f29-masks-and-on-canvas-brush); storage is in [persistence.md section 8.6](persistence.md#86-database-version-4-masks-f29). All code is pure TypeScript under `src/engine/mask/`, and uses only `+ - * /`, comparisons and `Math.floor` (section 1, rule 3), except the one `Math.sqrt` of the grid size. `mask/asset.ts` is the one engine file with an import from outside the engine, `fflate`, and calls `crypto.subtle.digest` for the mask hash.
 
 #### Data model
 
@@ -1320,7 +1321,7 @@ type MaskGeometry = {sourceWidth: number; sourceHeight: number; transform: Sourc
 
 #### Painted mask grid and asset
 
-- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304`. Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
+- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304` (the engine repeats the formula in `mask/coords.ts`, and a test holds the two equal). Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
 - **Canonical bytes:** the ASCII bytes `DMSK`, width and height as little-endian uint32, then `width * height` mask bytes. The **mask hash** is the SHA-256 of the canonical bytes. Compression never affects it.
 - `asset: ''` is a mask that is 0 everywhere.
 - An asset is immutable. Every edit makes new bytes and a new hash.

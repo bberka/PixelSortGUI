@@ -25,6 +25,7 @@ import {
 	type AppBoot,
 	type ReadyRestore,
 } from '@/app/use-app-boot.ts';
+import {useScreenChangeFocus} from '@/app/use-screen-change-focus.ts';
 import {Toaster} from '@/components/ui/sonner';
 import {TooltipProvider} from '@/components/ui/tooltip';
 import {BackupProvider} from '@/features/backup/backup-provider.tsx';
@@ -106,6 +107,7 @@ function AppFrame({screens}: {readonly screens?: ScreenRegistry}) {
 	const route = useAppStore((state) => state.route);
 	const {chrome} = (screens ?? SCREENS)[route.screen];
 	useGuideShortcut();
+	useScreenChangeFocus(route);
 
 	if (chrome === 'bare') {
 		return (
@@ -123,7 +125,7 @@ function AppFrame({screens}: {readonly screens?: ScreenRegistry}) {
 					<AppBar />
 					<StorageUnavailableBanner />
 					<DatabaseReloadBanner />
-					<main className="flex min-h-0 flex-1 flex-col">
+					<main className="flex min-h-0 flex-1 flex-col focus-visible:-outline-offset-2">
 						<RouteHost route={route} screens={screens} />
 					</main>
 					<StorageFullDialog />

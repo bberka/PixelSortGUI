@@ -9,6 +9,7 @@ Updated with optional cloud backup and sync (F28) by Claude Sonnet 5.5 (apx, hig
 Updated with masks and the on-canvas brush (F29) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
 Updated `F6` with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
+Updated with paste image from clipboard (F30) by Claude Sonnet 5.5 (apx, thought level medium), implementation subagent.
 
 # Drift product spec
 
@@ -89,7 +90,7 @@ Each feature has an ID (`F1` to `F16`, `F18`, `F19`; `F17` is moved to section 6
 
 ### F1. Import images
 
-The user adds images through a file picker (multiple selection allowed) or by dropping files on the library or editor. Each accepted file becomes a new project named after the file without its extension. If the same file bytes were imported before (same SHA-256), the new project reuses the stored source image instead of storing a second copy.
+The user adds images through a file picker (multiple selection allowed), by dropping files on the library or editor, or by pasting from the clipboard (F30). Each accepted file becomes a new project named after the file without its extension. If the same file bytes were imported before (same SHA-256), the new project reuses the stored source image instead of storing a second copy.
 
 - AC-F1.1: Activating "Open images" opens the system file picker filtered to images and project files (F25); choosing 3 JPEG files creates 3 projects in the library, and the editor opens the first chosen file.
 - AC-F1.2: Dropping a PNG file on the library screen (desktop) creates one project and opens it.
@@ -108,14 +109,14 @@ The app bar of the Library shows "Import images", "Guide" and "Settings" at ever
 **Empty Library.** With no projects the Library is the app's landing screen ([decisions.md D38](decisions.md#d38-the-empty-library-is-the-landing-screen-2026-11-26)), laid out as in [DESIGN.md section 7.3](../../DESIGN.md#73-empty-library-and-guide-screen-f2-f27). One centred column holds, top to bottom:
 
 - a hero: the app icon and the one-line pitch "Glitch art and pixel sorting for your photos";
-- a large drop zone, "Drop photos here", with one set of actions: "Open images" (primary), "Try a sample" and "Read the guide". Files dropped anywhere on the window are imported (F1);
+- a large drop zone, "Drop photos here", with one set of actions: "Open images" (primary), "Paste image" (F30, where the browser lets a page read the clipboard), "Try a sample" and "Read the guide". Files dropped anywhere on the window are imported (F1);
 - the privacy line "Images stay on this device. Drift works offline and needs no account.";
 - a line with the formats Drift opens;
 - the effect introduction (F27) until it is dismissed.
 
 **Sample project.** The sample is an original picture drawn by code in the app (`src/features/library/sample-image.ts`), 1200 × 900 px. No photo file is bundled or downloaded. "Try a sample" encodes it as PNG, creates a project named "Sample" with an empty stack and opens it. It is an ordinary project in every way.
 
-- AC-F2.1: With no projects, the library shows the empty state described in DESIGN.md (the pitch heading, the "Drop photos here" zone, one "Open images" button, "Read the guide" and the note "Images stay on this device").
+- AC-F2.1: With no projects, the library shows the empty state described in DESIGN.md (the pitch heading, the "Drop photos here" zone, one "Open images" button, "Paste image" (F30), "Read the guide" and the note "Images stay on this device").
 - AC-F2.2: Cards show the thumbnail of the result after the last commit, not of the source image, within 5 s of that commit.
 - AC-F2.3: Rename accepts 1 to 120 characters, trims surrounding spaces, and the new name survives a reload.
 - AC-F2.4: Duplicate creates a project named "<name> copy" with the same effect stack, the same history and its own view state; editing the copy does not change the original.
@@ -553,7 +554,7 @@ Acceptance criteria:
 - AC-F27.4: Every effect type in the registry, with every parameter label, appears in the effects reference (unit test), except effects marked `unlisted` ([engine.md section 4.1](engine.md#41-effect-definition)).
 - AC-F27.5: At 1440 x 900 the contents list stays visible while the text scrolls; at 390 x 844 and 820 x 1180 it is collapsed behind `"Contents"`. Choosing an entry scrolls to that section and focuses its heading.
 - AC-F27.6: After one online visit, loading `#/guide` offline shows the Guide, with no request to another origin.
-- AC-F27.7: On a fresh profile the effect introduction is shown. After dismissing it and reloading, it does not return, and the empty Library still shows "Open images", "Try a sample" and "Read the guide". Dismissing moves focus to the pitch heading. A first import dismisses it too: after deleting every project the empty Library shows no introduction.
+- AC-F27.7: On a fresh profile the effect introduction is shown. After dismissing it and reloading, it does not return, and the empty Library still shows "Open images", "Paste image", "Try a sample" and "Read the guide". Dismissing moves focus to the pitch heading. A first import dismisses it too: after deleting every project the empty Library shows no introduction.
 - AC-F27.8: axe reports no violations on the Guide in both themes at the three test viewports, and no horizontal page scroll occurs.
 
 ### F28. Optional cloud backup and sync (Dropbox, Google Drive)
@@ -672,6 +673,29 @@ Acceptance criteria:
 - AC-F29.19: At `390 × 844`, `820 × 1180` and `1440 × 900`, in Light and True Black, the mask controls and brush toolbar are reachable without horizontal scroll, targets are at least `44 × 44 px` on a coarse pointer, the phone canvas keeps at least `50%` of the height with one control shown, and axe reports no violations.
 - AC-F29.20: While the brush is on or a masked project is edited, the app makes no network request.
 
+### F30. Paste image from clipboard
+
+The user adds an image that is on the clipboard (a screenshot, a copied picture, a copied image file) without saving it to disk first. A pasted image goes through the same import flow as a chosen or dropped file (F1, F21): the same size and format limits, the 50 MP choice, SHA-256 reuse of an identical source, the same dialogs and notices, and the new project opens in the editor.
+
+- **Paste shortcut:** `Ctrl+V` (`⌘V`), or the browser's own Paste command, on the Library or the editor. It is ignored while focus is in a text field, text area, other form field or editable text, and while a dialog is open; the paste then behaves as the browser normally does. It does nothing on the Guide.
+- **What is read:** every image file on the clipboard (an `image/*` type, or a file name with a known image extension, so a refused HEIC or RAW file still gets its message). Several copied files create several projects. Text, project files, archives and other files are ignored, and a paste with no image does nothing.
+- **"Paste image" action:** in the Library app bar's overflow menu and in the empty Library's actions. It reads the clipboard with `navigator.clipboard.read()`, which may make the browser ask for permission or show its own paste button. It is left out where the browser has no such call; the shortcut still works there.
+- **Feedback from the action:** a non-blocking message in a live region: `"No image on the clipboard."` when there is none, `"Drift isn't allowed to read the clipboard."` when permission is denied or the browser's paste prompt is dismissed, and `"Couldn't read the clipboard."` for any other failure. Where keyboard hints are shown (F18), the last two add `"Press Ctrl+V to paste instead."` (`⌘V` on a Mac).
+- **Name:** a pasted file keeps its own name. A file with no name, or the stand-in name a browser gives clipboard pictures (`image`, `blob`, `clipboard`, `unknown` or `untitled`, with any extension), becomes a project named "Pasted image". Messages about such a file call it `Pasted image.<extension>`.
+- **Privacy:** the clipboard is read only on a paste or on "Paste image". Nothing leaves the device.
+
+Acceptance criteria:
+
+- AC-F30.1: Pasting a PNG picture on the Library with `Ctrl+V` creates exactly one project named "Pasted image" with the picture's dimensions and opens it.
+- AC-F30.2: Pasting in the editor creates a new project and opens it; the project that was open is unchanged.
+- AC-F30.3: Pasting while the Rename field or another text field has focus, or while a dialog is open, creates no project.
+- AC-F30.4: Pasting text only creates no project and shows no message.
+- AC-F30.5: Pasting the same picture twice creates two projects that share one stored source image.
+- AC-F30.6: A pasted image over 50 MP shows the AC-F1.5 dialog, and one over 16,384 px on a side is refused with the AC-F1.4 message.
+- AC-F30.7: "Paste image" in the Library menu and in the empty Library imports the clipboard picture. It is operable by keyboard alone.
+- AC-F30.8: With no image on the clipboard "Paste image" shows "No image on the clipboard."; with permission denied it shows the permission message. Neither creates a project.
+- AC-F30.9: Where `(pointer: coarse) and (hover: none)` matches, neither the menu item, the messages nor the Guide names a paste shortcut.
+
 ### F31. Compare against any history step
 
 The user can pin any entry in the project's History panel (F23) as the reference image for Compare and Split view (F11), inspecting an earlier or redo-branch snapshot beside or in place of the current edit without jumping the history head or modifying any saved stack.
@@ -707,7 +731,7 @@ Grouped by likely order. Each needs its own spec before work starts (moved first
 1. **Mobile, tablet and Safari acceptance (later).** Acceptance testing and reference devices for phones, tablets and Safari; the iOS canvas-limit path (tiled decode, custom streaming PNG writer, on-demand WebAssembly JPEG encoder, and 24 MP mobile limit, specified in [engine.md section 16.2](engine.md#162-ios-canvas-limit-decode-and-export-path)); and Safari 7-day storage eviction / Home Screen warnings (specified in [persistence.md section 8.4.5](persistence.md#845-safari-7-day-eviction-warning-later)).
 3. **More on-canvas tools.** Masks and the brush are specified in F29. Still later: region cutout if requested (Q11), combining several mask sources on one instance, turning a brightness or image mask into a painted one, selection tools (gradient, lasso), and drawing a sort path, using the slot in [engine.md section 4.7](engine.md#47-on-canvas-tool-slot) and [DESIGN.md section 7.1](../../DESIGN.md#71-on-canvas-tool-slot).
 4. **Further `pixelSort` paths and grouping.** Grouping equal colours (`smooth`) and more line shapes (concentric rectangles, circles, spirals, random walks, tiles with density). (The 6 remaining F22 effects, per-channel pixel sort, and the `reverse`, `mirror`, `splice` and `fold` interval transforms are shipped.)
-5. **Editing comfort.** Paste an image from the clipboard; project tags or folders; batch export of several projects; side-by-side preview of two presets.
+5. **Editing comfort.** Project tags or folders; batch export of several projects; side-by-side preview of two presets.
 6. **Extended colour pipelines.** WebP export on Safari through a WebAssembly encoder; 16-bit PNG/TIFF processing kept at 16 bits; wide-gamut (Display P3) output.
 7. **Speed.** WebGPU acceleration for axis-aligned pixel sort; multi-worker splitting; WebAssembly SIMD kernels. See engine.md section 12.
 8. **Motion.** Parameter animation to GIF and video, and video input frame by frame.

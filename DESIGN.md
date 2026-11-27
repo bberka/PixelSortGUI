@@ -218,6 +218,7 @@ All screens use `100dvh` height and `overflow-x: hidden` on the root shell so ho
 ```
 
 - **Grid columns:** Phone (`390 × 844`): 2 columns, `12 px` gap, `12 px` page padding. Tablet (`820 × 1180`): 3 columns, `16 px` gap, `16 px` padding. Desktop (`1440 × 900`): `repeat(auto-fill, minmax(220px, 1fr))`, `16 px` gap, `24 px` padding.
+- **Paste (F30):** `Ctrl+V` / `⌘V` imports the clipboard picture through the same progress card and dialogs. There is no overlay and nothing changes for a paste without an image.
 - **Drag and drop (desktop, AC-F1.2):** Dragging files over the window displays a high-contrast dashed overlay (`"Drop images or project files to open"`).
 - **Card interaction (AC-F2.7):** Card body is a focusable button (`Enter` / `Space` opens project); overflow `⋯` button sits in the card footer with `Open`, `Rename`, `Duplicate`, `Delete`.
 - **App bar (AC-F2.9):** `Import images`, `Guide` and `Settings` stay at the right end of the bar at every width, with or without projects.
@@ -370,8 +371,8 @@ The slot for interactive canvas tools, so they plug in without changing the thre
   - **Open project file (`src/features/import/`):** every import picker (`use-image-picker.ts`: `"Import images"` and `"Open images"`) accepts `.glproj` and `.zip` alongside image formats. Window-wide drag-and-drop (`window-file-drop.tsx`) uses the drop overlay copy (`drop-overlay.tsx`) `"Drop images or project files to open"`. A file named `.glproj` (any letter case) is opened as a project file, a `.zip` goes by what its manifest says it is (see "`.zip` files" below), and every other file is opened as an image. The progress card reads `"Opening <file name> (<n> of <total>)"`. When several files are chosen at once, the first of them, in the order chosen, that opened becomes the open project. Errors use the existing `ImportProblemDialog`, titled `"Can't open project"`, `"Can't open <N> projects"`, `"Can't open file"` for a single `.zip` that is neither a project file nor a backup, or `"Can't open <N> files"` when the refused files are of different kinds; it stays up when another file of the same batch opened and changed the screen.
 - **Full backup and restore (F17):**
   - **Settings -> Storage (`src/features/settings/settings-content.tsx`):** A `"Backup & restore"` row below the persistence controls with `"Export backup"` and `"Import backup"` outline buttons. Choosing one closes Settings first. `"Export backup"` then opens its dialog; `"Import backup"` opens the file picker.
-  - **Library app bar (`src/app/app-bar-actions.ts`):** A compact overflow menu button (`⋮`, `aria-label="Library actions"`) after Settings, at every width, with `"Export backup"` and `"Import backup"`.
-  - **Phone editor:** the app bar overflow (`"More actions"`, section 6.4) lists the same two items below `"Save project file"`.
+  - **Library app bar (`src/app/app-bar-actions.ts`):** A compact overflow menu button (`⋮`, `aria-label="Library actions"`) after Settings, at every width, with `"Paste image"` (section 7.5), `"Export backup"` and `"Import backup"`.
+  - **Phone editor:** the app bar overflow (`"More actions"`, section 6.4) lists the two backup items below `"Save project file"`.
   - **Touch:** both overflow buttons and their menu items are at least `44 px` on a coarse pointer.
   - **Import backup picker:** a single-file picker filtered to `.zip`. The chosen file opens the "Import backup" dialog, except a project archive, which opens as a project file. The three `"Import backup"` controls are disabled while an import or a file check is running.
   - **`.zip` files:** a `.zip` dropped on the window or chosen in an import picker is checked for its `manifest.json` `kind` ([persistence.md section 8.4.3](docs/specs/persistence.md#843-selective-export-and-selective-import-flow)). `"project"` opens as a project file; `"backup"` opens the "Import backup" dialog once the other files of the batch are done and any problem dialog is dismissed; anything else is refused. One backup is handled at a time: each further backup in a batch is refused with `"Can't open <file name>: import one backup at a time."` While a backup dialog is open, dropped files are ignored and no drop overlay shows.
@@ -401,7 +402,7 @@ Empty Library, desktop and tablet (phone stacks the actions at full width):
 |        + - - - - - - - - - - - - - - - - - - - - - - - +          |
 |        '                 [ImageUp icon]                 '        |
 |        '                Drop photos here                '        |
-|        '  [Open images] [Try a sample] [Read the guide] '        |
+| ' [Open images] [Paste image] [Try a sample] [Read the guide] '   |
 |        + - - - - - - - - - - - - - - - - - - - - - - - +          |
 |          Images stay on this device. Drift works offline ...      |
 |                    Opens JPEG, PNG, WebP, ...                     |
@@ -415,7 +416,7 @@ Empty Library, desktop and tablet (phone stacks the actions at full width):
 - **Column:** one `ScrollArea` fills `<main>`. Its content is horizontally centred, at most `896 px` wide, with `16 px` side padding (`24 px` from 640 px), and vertically centred while it is shorter than the screen.
 - **Hero:** the app icon at `56 px` (decorative, `alt=""`), then the pitch as the screen's `h2`. It takes focus (`tabIndex={-1}`) after the introduction is dismissed or the last project is deleted.
 - **Drop zone:** a named `section` ("Add photos") at most `576 px` wide, `2 px` dashed `border-input`, `--card` fill, `8 px` radius, `lucide` `ImageUp` icon, `"Drop photos here"` in `16 / 24` semibold. It is a visual target: the whole window accepts drops, and the drop overlay (section 6.1) covers the screen while dragging.
-- **Actions:** `Button` default `"Open images"` (the only primary), `"Try a sample"` outline (disabled and reading `"Creating sample…"` while saving), `"Read the guide"` ghost link. A row from 640 px; stacked full width below. If the sample cannot be made, a toast says `"Couldn't create the sample project."`.
+- **Actions:** `Button` default `"Open images"` (the only primary), `"Paste image"` outline (section 7.5), `"Try a sample"` outline (disabled and reading `"Creating sample…"` while saving), `"Read the guide"` ghost link. A row from 640 px; stacked full width below. If the sample cannot be made, a toast says `"Couldn't create the sample project."`.
 - **Privacy and formats:** the privacy line in `14 / 20`, the line naming the formats in `12 / 16`, both `text-muted-foreground`, centred. No keys are listed here (section 8.4).
 - **Introduction:** a named `section` with `h3` `"See what Drift does"`, one line `"Pick one to try it on a sample picture. Left is the original, right is the result."`, and a ghost icon button `"Dismiss introduction"`. Four tiles in 2 columns below 1024 px and 4 from 1024 px, `12 px` gap. Each tile is one `button` (`--card`, `1 px` border, `8 px` radius, hover `--secondary`): a `4:3` canvas with the original in the left half, the result in the right half and the split divider line of section 7.2 between them (decorative, `aria-hidden`), then the tile name (`14 / 20` semibold) and one line of description (`12 / 16` muted). While a preview renders, or if it fails, the canvas area is `--muted`; the tile works either way.
 - **Sample picture:** original artwork generated by code: a banded dusk sky, a striped sun, three ridges and rippled water with fine grain, so every effect has edges and runs to work on. It is part of the photo layer, not the UI, so its colours are not tokens.
@@ -459,6 +460,13 @@ Guide screen:
 - **Phone (`390 × 844`):** nothing is laid over the canvas. While the brush is on, the toolbar replaces the effect strip as a `52 px` row of four labelled `44 px` buttons. In the one-control panel the tabs `"Mask"` (type, Show mask, Invert, Remove), then for a mask `"Feather"` and, by type, `"Size"`, `"Hardness"`, `"Strength"`, `"Overlay"` (Paint), `"Range"`, `"Softness"` (Brightness) or `"Mask image"`, `"Fit"` (Image) follow `Blend`. Each fits the `144 px` area. The `"Mask"` tab holds `"Edit with brush"`, `"Fill"` and `"Clear"`; its content scrolls inside the area. Turning the brush on selects `"Size"`.
 - **Phone landscape:** the toolbar row takes the effect strip's place in the right drawer.
 
+### 7.5 Paste image from clipboard (F30)
+
+- **Menu item:** `"Paste image"` (`ClipboardPaste` icon) is the first item of the Library overflow menu, with a separator under it. It ends with the shortcut `Ctrl+V` / `⌘V` where keys are shown (section 8.4). `44 px` tall on a coarse pointer.
+- **Empty Library:** an outline `"Paste image"` button after `"Open images"`, with the same icon. The action row wraps if it does not fit.
+- **Availability:** both are left out where the browser has no `navigator.clipboard.read()`.
+- **Feedback:** a `Sonner` toast with the copy of section 9; its region is announced politely. A successful paste uses the import progress card, dialogs and announcements of section 6.1.
+
 ## 8. Interaction: touch, pointer and keyboard
 
 ### 8.1 Canvas gestures (F13)
@@ -489,6 +497,7 @@ Shortcuts do not trigger while focus is inside `<input>`, `<textarea>`, `<select
 | Shortcut | Scope | Action |
 |---|---|---|
 | `?` | Anywhere except text fields and open dialogs | Open the Guide (F27) |
+| `Ctrl+V` / `Cmd+V` | Library and Editor, except text fields and open dialogs | Import the image on the clipboard (F30) |
 | `Ctrl+Z` / `Cmd+Z` | Editor | Undo last commit (AC-F9.1) |
 | `Ctrl+Shift+Z` / `Cmd+Shift+Z` / `Ctrl+Y` | Editor | Redo commit (AC-F9.1) |
 | `\` | Editor | Toggle Compare (tap) or peek Original (hold > 300 ms) (F11) |
@@ -531,7 +540,10 @@ One rule, in `src/lib/keyboard-hints.ts`, decides whether the app mentions keys 
 
 | State | Trigger | Presentation and exact copy | Actions |
 |---|---|---|---|
-| Empty library (AC-F2.1) | 0 projects stored | The empty Library of section 7.3: pitch, `"Drop photos here"`, note `"Images stay on this device."` | `"Open images"` (primary), `"Try a sample"`, `"Read the guide"`; on a first launch also the effect introduction |
+| Empty library (AC-F2.1) | 0 projects stored | The empty Library of section 7.3: pitch, `"Drop photos here"`, note `"Images stay on this device."` | `"Open images"` (primary), `"Paste image"`, `"Try a sample"`, `"Read the guide"`; on a first launch also the effect introduction |
+| No clipboard image (AC-F30.8) | `"Paste image"` finds no picture | Toast: `"No image on the clipboard."` with `"Copy an image, then try again."` | none |
+| Clipboard blocked (AC-F30.8) | Permission denied or the browser's paste prompt dismissed | Toast: `"Drift isn't allowed to read the clipboard."`, plus `"Press Ctrl+V to paste instead."` where keys are shown | none |
+| Clipboard failure | Any other read error | Toast: `"Couldn't read the clipboard."`, with the same second line | none |
 | Empty effect stack | New project or all effects removed | Centered note in stack panel: `"No effects yet"` | `"Add effect"`, `"Browse presets"` |
 | Render in progress (AC-F8.3) | Preview render running > 300 ms | Thin `2 px` `--accent` progress bar pinned to top of canvas stage | Disappears on finish or cancel |
 | Full-resolution render (AC-F8.4) | Zoom > 1.25× settle proxy | Compact pill at bottom-left of canvas: `"Rendering full resolution"` | Disappears on finish or cancel (AC-F8.5) |

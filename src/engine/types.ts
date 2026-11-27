@@ -1,3 +1,5 @@
+import type {InstanceMask} from './mask/types.ts';
+
 export type RgbaImage = {
 	// 1..16384
 	readonly width: number;
@@ -22,15 +24,20 @@ export type EffectInstance = {
 	// 0..1 in steps of 0.01.
 	mix: number;
 	blend: BlendMode;
+	// Absent: the effect applies everywhere (engine.md section 16.6).
+	mask?: InstanceMask;
 };
 
 export type EffectStack = {
-	schemaVersion: 1;
+	// 2 exactly when some instance has a mask, see `stackSchemaVersion`.
+	schemaVersion: 1 | 2;
 	// Applied in array order, index 0 first.
 	instances: EffectInstance[];
 };
 
+// The version of a stack without a mask.
 export const STACK_SCHEMA_VERSION = 1;
+export const MASKED_STACK_SCHEMA_VERSION = 2;
 export const MAX_STACK_INSTANCES = 32;
 
 export type RenderLevel = 'drag' | 'settle' | 'full';
@@ -69,6 +76,8 @@ export type RenderContext = {
 	// The extra source with this SHA-256, or undefined when it was not supplied. Read only.
 	getSource(sha256: string): ExtraSource | undefined;
 	readonly debugView: DebugView;
+	// This instance's final mask at render size, one byte per pixel, or null without one. Read only.
+	readonly mask: Uint8Array | null;
 };
 
 export type VisibleWhen = {
@@ -216,6 +225,16 @@ export function canonicalJson(value: unknown): string {
 	return `{${members.join(',')}}`;
 }
 
+// The `schemaVersion` a stack of these instances has.
+export function stackSchemaVersion(
+	instances: readonly EffectInstance[],
+): EffectStack['schemaVersion'] {
+	return instances.some((instance) => instance.mask !== undefined)
+		? MASKED_STACK_SCHEMA_VERSION
+		: STACK_SCHEMA_VERSION;
+}
+
+// Includes every instance's mask, so a mask change is always a different string.
 export function canonicalStackJson(stack: EffectStack): string {
 	return canonicalJson(stack);
 }

@@ -121,3 +121,61 @@ describe('composite', () => {
 		);
 	});
 });
+
+describe('composite with a mask', () => {
+	function maskedOne(mix: number, blend: BlendMode, k: number): number[] {
+		const output = image(1, 1, EFFECT);
+		composite(image(1, 1, INPUT), output, mix, blend, new Uint8Array([k]));
+		return bytes(output);
+	}
+
+	// Each expected value is floorDiv(2 * (i * (25500 - w) + b * w) + 25500,
+	// 51000) with w = m * k, from engine.md section 4.5, worked by hand.
+	it.each<[BlendMode, number, number, number[]]>([
+		['normal', 1, 128, [150, 100, 10, 191]],
+		['normal', 0.5, 128, [175, 75, 10, 223]],
+		['normal', 1, 1, [200, 50, 10, 255]],
+		['normal', 1, 254, [100, 150, 10, 128]],
+		['lighten', 1, 128, [200, 100, 10, 191]],
+		['darken', 1, 128, [150, 50, 10, 191]],
+		['difference', 1, 128, [150, 75, 5, 191]],
+	])('%s at mix %d and mask %d', (blend, mix, k, expected) => {
+		expect(maskedOne(mix, blend, k)).toEqual(expected);
+	});
+
+	const BLENDS = ['normal', 'lighten', 'darken', 'difference'] as const;
+
+	it.each(BLENDS)('mask 0 gives the input exactly with %s', (blend) => {
+		expect(maskedOne(1, blend, 0)).toEqual(INPUT);
+	});
+
+	it('equals the unmasked formula byte for byte at mask 255', () => {
+		for (const blend of BLENDS) {
+			for (let m = 0; m <= 100; m++) {
+				const input = noiseImage(16, 4, m);
+				const plain = noiseImage(16, 4, m + 500);
+				const weighted = noiseImage(16, 4, m + 500);
+				composite(input, plain, m / 100, blend);
+				composite(
+					input,
+					weighted,
+					m / 100,
+					blend,
+					new Uint8Array(64).fill(255),
+				);
+				expect(weighted.data).toEqual(plain.data);
+			}
+		}
+	});
+
+	it('reads the mask by image position when composited in rows', () => {
+		const input = noiseImage(3, 4, 1);
+		const whole = noiseImage(3, 4, 2);
+		const rows = noiseImage(3, 4, 2);
+		const mask = Uint8Array.from({length: 12}, (_, i) => i * 23);
+		composite(input, whole, 0.8, 'difference', mask);
+		compositeRows(input, rows, 0.8, 'difference', 2, 4, mask);
+		compositeRows(input, rows, 0.8, 'difference', 0, 2, mask);
+		expect(rows.data).toEqual(whole.data);
+	});
+});

@@ -1,0 +1,29 @@
+{
+	"input": "noise-97x61",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "pixelSort",
+				"version": 2,
+				"enabled": true,
+				"params": {
+					"intervalMode": "whole"
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "paint",
+					"invert": false,
+					"feather": 0,
+					"asset": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+				}
+			}
+		]
+	},
+	"scale": 1,
+	"masks": {
+		"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": "shapes"
+	}
+}

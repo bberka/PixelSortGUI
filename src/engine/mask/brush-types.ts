@@ -1,21 +1,5 @@
 // Shapes of engine.md section 16.6 that the brush and the mask asset use.
 
-import type {SourceTransform} from '../transform.ts';
-
-export type MaskBitmap = {
-	readonly width: number;
-	readonly height: number;
-	// Row-major, one byte per pixel.
-	readonly data: Uint8Array;
-};
-
-// The stored source (section 16.3) a painted mask's grid lies on.
-export type MaskGeometry = {
-	sourceWidth: number;
-	sourceHeight: number;
-	transform: SourceTransform;
-};
-
 export type BrushStroke = {
 	mode: 'paint' | 'erase';
 	// Integer 0..100.

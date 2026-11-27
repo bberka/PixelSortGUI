@@ -1,0 +1,27 @@
+{
+	"input": "bands-80x80",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "bgr"
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "luma",
+					"invert": true,
+					"feather": 5,
+					"range": [0.5, 1],
+					"softness": 0
+				}
+			}
+		]
+	},
+	"scale": 1
+}

@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {decode, encode} from 'fast-png';
 import {effectRegistry} from '../../src/engine/effects/index.ts';
+import {maskGridSize} from '../../src/engine/mask/grid.ts';
 import {renderStack} from '../../src/engine/pipeline.ts';
 import {boxDownscale} from '../../src/engine/resample.ts';
 import {
 	applyTransform,
+	IDENTITY_TRANSFORM,
 	type SourceTransform,
 } from '../../src/engine/transform.ts';
 import type {
@@ -13,6 +15,7 @@ import type {
 	ExtraSource,
 	RgbaImage,
 } from '../../src/engine/types.ts';
+import {getMaskFixture, type MaskFixtureName} from '../fixtures/mask.ts';
 import {
 	getSyntheticFixture,
 	type SyntheticFixtureName,
@@ -30,6 +33,8 @@ export type GoldenCaseSpec = {
 		string,
 		{fixture: SyntheticFixtureName; scale?: number}
 	>;
+	// Painted masks the stack names, by mask hash, drawn on the input's grid.
+	masks?: Record<string, MaskFixtureName>;
 };
 
 export type GoldenCaseEntry = {
@@ -106,12 +111,27 @@ export async function renderGoldenCase(
 		}),
 	);
 
+	// The grid of a painted mask lies on the input before the transform.
+	const grid = maskGridSize(fixture.width, fixture.height);
+	const masks = new Map(
+		Object.entries(spec.masks ?? {}).map(([hash, name]) => [
+			hash,
+			getMaskFixture(name, grid.width, grid.height),
+		]),
+	);
+
 	const result = await renderStack(input, spec.stack, effectRegistry, {
 		level: spec.scale < 1 ? 'settle' : 'full',
 		sourceWidth,
 		sourceHeight,
 		debug: spec.debug,
 		extraSources,
+		masks,
+		geometry: {
+			sourceWidth: fixture.width,
+			sourceHeight: fixture.height,
+			transform: spec.transform ?? IDENTITY_TRANSFORM,
+		},
 		checkpoint: () => undefined,
 	});
 	return result.image;

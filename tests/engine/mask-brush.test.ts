@@ -1,11 +1,8 @@
 import fc from 'fast-check';
 import {describe, expect, it} from 'vite-plus/test';
-import {renderSizeForPixelCap} from '../../src/codec/decode.ts';
 import type {
 	BrushSample,
 	BrushStroke,
-	MaskBitmap,
-	MaskGeometry,
 } from '../../src/engine/mask/brush-types.ts';
 import {
 	applyStroke,
@@ -19,11 +16,12 @@ import {
 import {
 	brushSample,
 	effectiveToMask,
-	MASK_PIXEL_CAP,
-	maskGridSize,
 	maskToEffective,
 	pressureFactor,
 } from '../../src/engine/mask/coords.ts';
+import {MASK_PIXEL_CAP, maskGridSize} from '../../src/engine/mask/grid.ts';
+import type {MaskBitmap, MaskGeometry} from '../../src/engine/mask/types.ts';
+import {renderSizeForPixelCap} from '../../src/engine/render-size.ts';
 import {
 	applyTransform,
 	IDENTITY_TRANSFORM,

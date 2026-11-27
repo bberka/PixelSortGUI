@@ -13,10 +13,65 @@ for (let weighted = 0; weighted < MIXED.length; weighted++) {
 	MIXED[weighted] = Math.floor((2 * weighted + 100) / 200);
 }
 
+// Replaces R, G and B of the effect result with the blended value of section 4.5.
+function blendColours(
+	from: Uint8ClampedArray,
+	to: Uint8ClampedArray,
+	blend: BlendMode,
+	start: number,
+	end: number,
+): void {
+	if (blend !== 'lighten' && blend !== 'darken' && blend !== 'difference') {
+		return;
+	}
+
+	for (let p = start; p < end; p += 4) {
+		for (let c = p; c < p + 3; c++) {
+			to[c] =
+				blend === 'lighten'
+					? Math.max(from[c], to[c])
+					: blend === 'darken'
+						? Math.min(from[c], to[c])
+						: Math.abs(from[c] - to[c]);
+		}
+	}
+}
+
+// 255 (mask) times 100 (mix).
+const FULL_WEIGHT = 25_500;
+
+// Section 4.5 with a mask: each pixel's weight is `m * mask`.
+function compositeMasked(
+	from: Uint8ClampedArray,
+	to: Uint8ClampedArray,
+	m: number,
+	blend: BlendMode,
+	mask: Uint8Array,
+	start: number,
+	end: number,
+): void {
+	blendColours(from, to, blend, start, end);
+	for (let p = start; p < end; p += 4) {
+		const weight = m * mask[p / 4];
+		if (weight === FULL_WEIGHT) {
+			continue;
+		}
+
+		const keep = FULL_WEIGHT - weight;
+		for (let c = p; c < p + 4; c++) {
+			to[c] = Math.floor(
+				(2 * (from[c] * keep + to[c] * weight) + FULL_WEIGHT) /
+					(2 * FULL_WEIGHT),
+			);
+		}
+	}
+}
+
 /**
  Mixes rows `rowStart` (inclusive) to `rowEnd` (exclusive) of the effect
  result in `output` with the instance input in `input`, writing `output` in
  place (engine.md section 4.5). An unknown blend mode behaves as `normal`.
+ `mask` holds one weight per pixel of the whole image; 0 keeps the input.
  */
 export function compositeRows(
 	input: RgbaImage,
@@ -25,6 +80,7 @@ export function compositeRows(
 	blend: BlendMode,
 	rowStart: number,
 	rowEnd: number,
+	mask: Uint8Array | null = null,
 ): void {
 	const m = mixPercent(mix);
 	const keep = 100 - m;
@@ -35,6 +91,11 @@ export function compositeRows(
 
 	if (m === 0) {
 		to.set(from.subarray(start, end), start);
+		return;
+	}
+
+	if (mask) {
+		compositeMasked(from, to, m, blend, mask, start, end);
 		return;
 	}
 
@@ -112,7 +173,8 @@ export function composite(
 	output: RgbaImage,
 	mix: number,
 	blend: BlendMode,
+	mask: Uint8Array | null = null,
 ): RgbaImage {
-	compositeRows(input, output, mix, blend, 0, input.height);
+	compositeRows(input, output, mix, blend, 0, input.height, mask);
 	return output;
 }

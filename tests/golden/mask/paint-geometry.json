@@ -1,0 +1,45 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "bgr"
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "paint",
+					"invert": false,
+					"feather": 0,
+					"asset": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+				}
+			}
+		]
+	},
+	"scale": 1,
+	"transform": {
+		"rotation": 90,
+		"flipX": true,
+		"flipY": false,
+		"crop": {
+			"x": 6,
+			"y": 4,
+			"width": 40,
+			"height": 52
+		},
+		"resize": {
+			"width": 60,
+			"height": 78,
+			"filter": "lanczos3"
+		}
+	},
+	"masks": {
+		"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": "shapes"
+	}
+}

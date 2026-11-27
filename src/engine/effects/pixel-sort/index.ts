@@ -18,6 +18,7 @@ import {
 	type Sorter,
 } from './fill.ts';
 import {
+	clearMasked,
 	fillKeys,
 	intervalCap,
 	P_CAP,
@@ -483,9 +484,10 @@ export async function renderPixelSort(
 					pace,
 				)
 			: undefined;
-	const offsets = edgeMap
-		? scratchInt32(ctx, SLOT_OFFSETS, capacity)
-		: undefined;
+	const {mask} = ctx;
+	// Image offsets of the line's pixels, for the maps indexed by image position.
+	const offsets =
+		edgeMap || mask ? scratchInt32(ctx, SLOT_OFFSETS, capacity) : undefined;
 
 	const lo16 = thresholdBound(params.threshold[0]);
 	const hi16 = thresholdBound(params.threshold[1]);
@@ -517,8 +519,11 @@ export async function renderPixelSort(
 		}
 
 		walker.gather32(in32, pixels);
-		if (edgeMap && offsets) {
+		if (offsets) {
 			walker.fillOffsets(offsets);
+		}
+
+		if (edgeMap && offsets) {
 			selectFromMap(edgeMap, offsets, length, line.selected);
 		} else if (mode === 'threshold') {
 			fillKeys(params.selectKey, line.bytes, 0, length, line.keys);
@@ -533,6 +538,10 @@ export async function renderPixelSort(
 			);
 		} else {
 			selectWhole(line.bytes, length, line.selected);
+		}
+
+		if (mask && offsets) {
+			clearMasked(mask, offsets, length, line.selected);
 		}
 
 		if (showSelection) {

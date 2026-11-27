@@ -1,0 +1,33 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "pixelSort",
+				"version": 2,
+				"enabled": true,
+				"params": {
+					"threshold": [0.2, 0.8]
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "paint",
+					"invert": false,
+					"feather": 0,
+					"asset": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+				}
+			}
+		]
+	},
+	"scale": 1,
+	"debug": {
+		"instanceId": "mask0001",
+		"view": "selection"
+	},
+	"masks": {
+		"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": "shapes"
+	}
+}

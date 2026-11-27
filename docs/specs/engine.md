@@ -211,7 +211,7 @@ Algorithm:
    6. `output` = whichever of `a`, `b` is not `current`. Call `render(current, output, params, ctx)`. The pipeline does not copy `current` defensively before calling `render`.
    7. If `debugView` is `'none'` and (`mix < 1` or `blend !== 'normal'` or the instance has a mask), composite in place: `output = composite(current, output, mix, blend, mask)` (sections 4.5 and 16.6).
    8. `current = output`.
-   9. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection. If the debug instance's effect does not list `'selection'` in `debugViews`, it renders normally with mix and blend and the pipeline still stops there; if the debug instance is disabled or unknown, the whole stack renders normally.
+   9. If this instance is the debug instance, stop here: later instances are not applied, so the selection view shows exactly this instance's selection. If the debug instance's effect does not list `'selection'` in `debugViews`, it renders normally with mix and blend and the pipeline still stops there; if the debug instance is disabled, skipped for an unknown type or a newer version, or has a missing mask (section 16.6), the whole stack renders normally.
 3. Return a fresh copy of `current` (never aliasing `source`, a stage cache entry, or a working buffer).
 
 `perInstanceMs` has one entry per stack instance at the same index, with `0` for instances that did not run. Progress is reported as `(completedInstances + instanceFraction) / enabledInstanceCount` (counting skipped unknown or newer-version instances as completed); fractions lower than the last reported are dropped, and a render that ends early (cache hit or debug stop) reports `1` at the end.
@@ -522,7 +522,7 @@ A worker cannot read new messages while a synchronous loop runs, and `SharedArra
 
 ### 8.5 Stage cache
 
-The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. The preview worker's `sourceKey` names the source bytes and the geometry transform (16.3). Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source, the transform or the render size changes to free memory. The key does not name the size of an extra source's proxy, so the preview worker replaces its cache with a new one when it unloads an extra source or a `drag` proxy of one changes size; a render already in flight keeps writing to the old cache, which is dropped. Debug renders read earlier stages from the cache but never write to it.
+The preview worker caches pipeline stage outputs so editing instance `j` re-renders only instances `j` and later. `StageCache` exposes `get`, `set`, `clear`, `size`, and `byteLength`, and is built by `createStageCache({maxEntries?, maxBytes?})`. Key for the output after instance `i`: `level + ':' + width + 'x' + height + ':' + sourceKey + ':' + canonicalStackJson(enabled prefix 0..i)`. The enabled prefix includes enabled instances of unknown type or newer version even though they do not render, so editing them invalidates later stages. The key's `schemaVersion` is the one the prefix alone would have (2 exactly when one of its instances has a mask), so adding a mask to a later instance keeps the earlier stages. The cache keeps at most 6 entries or 160 MiB (`160 * 1024 * 1024`), whichever is reached first, evicting least recently used; a long stack therefore re-renders from the start when an early instance (more than six from the end) changes. The preview worker's `sourceKey` names the source bytes and the geometry transform (16.3). Because the key includes `sourceKey` and render size, stale entries cannot hit; the pipeline does not call `clear()`, and the worker calls `clear()` when the source, the transform or the render size changes to free memory. The key does not name the size of an extra source's proxy, so the preview worker replaces its cache with a new one when it unloads an extra source or a `drag` proxy of one changes size; a render already in flight keeps writing to the old cache, which is dropped. Debug renders read earlier stages from the cache but never write to it.
 
 ### 8.6 Progressive refinement
 
@@ -722,12 +722,14 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   params.ts            validateParams, defaults, migration runner
   registry.ts          createRegistry
   pipeline.ts          renderStack, StageCache, createStageCache
-  composite.ts         mix and blend
+  composite.ts         mix, blend and mask weighting
   random.ts            mix32, hash32, unit, intIn
   keys.ts              the 8 keys
   lines.ts             line partition
   direction-table.ts   generated, checked in
   resample.ts          box downscale for the drag proxy and masks
+  render-size.ts       render dimensions for a scale or a pixel cap (sections 8.1 and 16.6)
+  blur.ts              clamped running-sum box blur (edge selection and mask feather)
   transform.ts         geometry transforms: crop rounding, orientation, resampling (section 16.3)
   lanczos-table.ts     generated, checked in
   effects/index.ts     the registered list
@@ -741,7 +743,8 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/rgb-noise.ts
   effects/jpeg-crush.ts
   effects/image-blend.ts
-  mask/                types and validation, brightness and image masks, fit, feather, brush, asset bytes (section 16.6)
+  mask/                section 16.6: types.ts, validate.ts, grid.ts, fit.ts, evaluate.ts, feather.ts, pace.ts,
+                       coords.ts, brush-types.ts, brush.ts, asset.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
@@ -1315,15 +1318,15 @@ type MaskGeometry = {sourceWidth: number; sourceHeight: number; transform: Sourc
 ```
 
 - An instance has at most one mask, of one kind. Mix is its opacity; there is no second opacity setting.
-- `validateMask` returns `undefined` for a value that is not an object or has an unknown `kind`. Otherwise it fills defaults, rounds `feather` and clamps it to `[0, 256]`, applies the section 3 `range` and `number` rules to `range` and `softness`, and turns an `asset` or `source` that is not 64 lowercase hex digits into `''`. The pipeline validates a copy and never changes stored data. A mask the pipeline cannot validate is kept in storage, and the instance is skipped with a `missing-mask` warning, so a newer kind never renders unmasked.
+- `validateMask` returns `undefined` for a value that is not a plain object or has an unknown `kind`. Otherwise it drops unknown keys, fills defaults, rounds `feather` and clamps it to `[0, 256]`, applies the section 3 `range` and `number` rules to `range` and `softness` (both with step 0.001), and turns an `asset` or `source` that is not 64 lowercase hex digits into `''`. The pipeline validates a copy and never changes stored data. A mask the pipeline cannot validate is kept in storage, and the instance is skipped with a `missing-mask` warning, so a newer kind never renders unmasked.
 - Instances of unknown type keep their mask unchanged (AC-F4.6).
 - `canonicalStackJson` includes the mask, so equality, history and stage cache keys see every mask change.
 
 #### Painted mask grid and asset
 
-- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304` (the engine repeats the formula in `mask/coords.ts`, and a test holds the two equal). Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
+- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304` (`maskGridSize` in `mask/grid.ts`). Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
 - **Canonical bytes:** the ASCII bytes `DMSK`, width and height as little-endian uint32, then `width * height` mask bytes. The **mask hash** is the SHA-256 of the canonical bytes. Compression never affects it.
-- `asset: ''` is a mask that is 0 everywhere.
+- `asset: ''` is a mask that is 0 everywhere. It names no bytes, so it is never missing.
 - An asset is immutable. Every edit makes new bytes and a new hash.
 - A stored asset whose grid size is not the size above for the project's source counts as missing.
 
@@ -1372,7 +1375,7 @@ Two passes of a box blur of radius `r`, each horizontal then vertical, coordinat
 #### Pipeline rules
 
 - A disabled instance computes no mask.
-- A mask is **missing** when a painted `asset` is not in `options.masks` or has the wrong size, an image `source` is not in `options.extraSources`, or the mask does not validate. A missing mask skips the instance (its input passes on unchanged, even with `invert`), adds `missing-mask` or `missing-source`, and neither reads nor writes the stage cache for this instance and later ones.
+- A mask is **missing** when a painted `asset` is not in `options.masks` or has the wrong size (its `width`, `height` or byte count), an image `source` is not in `options.extraSources`, or the mask does not validate. An empty `asset` or `source` is not missing. A missing mask skips the instance (its input passes on unchanged, even with `invert`), adds `missing-source` for a missing image `source` and `missing-mask` otherwise (never a second warning with the same code for one instance), and neither reads nor writes the stage cache for this instance and later ones.
 - `options.geometry` absent means the identity transform and a source of `sourceWidth × sourceHeight`. With it, `sourceWidth` and `sourceHeight` of the options stay the effective size.
 - With a mask, composite runs even at mix 1 and blend `normal`. An effect may use `ctx.mask` to skip work only where the output is unchanged by it.
 - A debug selection view ignores the composite but still passes `ctx.mask`.

@@ -10,8 +10,8 @@ import {
 	maskBytes,
 	type MaskAsset,
 } from '../../src/engine/mask/asset.ts';
-import type {MaskBitmap} from '../../src/engine/mask/brush-types.ts';
 import {createMask} from '../../src/engine/mask/brush.ts';
+import type {MaskBitmap} from '../../src/engine/mask/types.ts';
 import {hash32} from '../../src/engine/random.ts';
 
 const TINY: MaskBitmap = {width: 2, height: 1, data: new Uint8Array([7, 9])};

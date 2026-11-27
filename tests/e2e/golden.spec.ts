@@ -61,6 +61,8 @@ test.describe('golden cases match in real browsers', () => {
 			const effectsUrl = '/__golden-test/src/engine/effects/index.js';
 			const resampleUrl = '/__golden-test/src/engine/resample.js';
 			const fixturesUrl = '/__golden-test/tests/fixtures/synthetic.js';
+			const maskFixturesUrl = '/__golden-test/tests/fixtures/mask.js';
+			const maskGridUrl = '/__golden-test/src/engine/mask/grid.js';
 			const transformUrl = '/__golden-test/src/engine/transform.js';
 
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
@@ -72,7 +74,11 @@ test.describe('golden cases match in real browsers', () => {
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
 			const {getSyntheticFixture} = await import(fixturesUrl);
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
-			const {applyTransform} = await import(transformUrl);
+			const {getMaskFixture} = await import(maskFixturesUrl);
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
+			const {maskGridSize} = await import(maskGridUrl);
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- route-served module in browser
+			const {applyTransform, IDENTITY_TRANSFORM} = await import(transformUrl);
 
 			async function digestHex(
 				data: Uint8ClampedArray<ArrayBuffer>,
@@ -130,6 +136,20 @@ test.describe('golden cases match in real browsers', () => {
 					),
 				);
 
+				// The grid of a painted mask lies on the input before the transform.
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
+				const grid = maskGridSize(fixture.width, fixture.height) as {
+					width: number;
+					height: number;
+				};
+				const masks = new Map(
+					Object.entries(entry.spec.masks ?? {}).map(([hash, name]) => [
+						hash,
+						// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
+						getMaskFixture(name, grid.width, grid.height) as unknown,
+					]),
+				);
+
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- dynamic route module
 				const rendered = (await renderStack(
 					renderInput,
@@ -141,6 +161,13 @@ test.describe('golden cases match in real browsers', () => {
 						sourceHeight: source.height,
 						debug: entry.spec.debug,
 						extraSources,
+						masks,
+						geometry: {
+							sourceWidth: fixture.width,
+							sourceHeight: fixture.height,
+							// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic route module
+							transform: entry.spec.transform ?? IDENTITY_TRANSFORM,
+						},
 						checkpoint: () => undefined,
 					},
 				)) as {

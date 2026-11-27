@@ -9,6 +9,7 @@ import {RandomizeButton} from './randomize-button.tsx';
 import {cryptoRandom, randomizeParams, type RandomSource} from './randomize.ts';
 import {isParamVisible} from './visibility.ts';
 import {MaskSetup} from '@/features/masks/mask-controls.tsx';
+import {BRUSH_SIZE_TAB} from '@/features/masks/mask-tabs.tsx';
 import {announce} from '@/app/announcer.ts';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {Badge} from '@/components/ui/badge';
@@ -204,6 +205,21 @@ export function ParameterPanel({
 		const resolution = resolveInstance(instance, registry);
 		return {instance, resolution};
 	}, [stack, selectedInstanceId, registry]);
+
+	// Turning the brush on selects a phone's "Size" tab.
+	const brushed = useAppStore((state) => state.activeBrush?.instanceId);
+	const brushedType =
+		resolved?.instance.id === brushed ? resolved?.instance.type : undefined;
+	const [shownBrushedType, setShownBrushedType] = useState<string>();
+	if (shownBrushedType !== brushedType) {
+		setShownBrushedType(brushedType);
+		if (brushedType !== undefined) {
+			setActiveKeys((current) => ({
+				...current,
+				[brushedType]: BRUSH_SIZE_TAB,
+			}));
+		}
+	}
 
 	if (!stack) {
 		return null;

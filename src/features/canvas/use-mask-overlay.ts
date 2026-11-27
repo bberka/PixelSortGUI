@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, type RefObject} from 'react';
 import type {MaskOverlayImage} from './draw.ts';
+import {tintMask} from './mask-tint.ts';
 import {
 	useAppRuntime,
 	useAppStore,
@@ -34,31 +35,6 @@ type Shown = {
 	readonly bitmap: ImageBitmap;
 };
 
-// The mask as pixels of the overlay colour, the mask value as their alpha.
-async function tintMask(
-	mask: Uint8Array,
-	width: number,
-	height: number,
-): Promise<ImageBitmap> {
-	const [red = 0, green = 0, blue = 0] = globalThis
-		.getComputedStyle(globalThis.document.documentElement)
-		.getPropertyValue('--mask-overlay')
-		.trim()
-		.split(/\s+/)
-		.map(Number);
-	const image = new ImageData(width, height);
-	const {data} = image;
-	for (const [index, element] of mask.entries()) {
-		const offset = index * 4;
-		data[offset] = red;
-		data[offset + 1] = green;
-		data[offset + 2] = blue;
-		data[offset + 3] = element;
-	}
-
-	return globalThis.createImageBitmap(image);
-}
-
 /**
  Keeps `overlayRef` holding the overlay of the selected instance's mask while
  "Show mask" is on (DESIGN.md section 7.4), and calls `redraw` when it changes.
@@ -90,6 +66,8 @@ export function useMaskOverlay(
 	const comparing = useAppStore((state) => state.compareHistorySeq !== null);
 	const showingOriginal = useTransientStore(selectShowingOriginal);
 	const cropping = useTransientStore((state) => state.geometry.cropping);
+	// While the brush is on, its worker draws the overlay.
+	const brushing = useAppStore((state) => state.activeBrush !== null);
 
 	const wantedRef = useRef<OverlayRequest | null>(null);
 	const shownRef = useRef<Shown | null>(null);
@@ -137,7 +115,9 @@ export function useMaskOverlay(
 				const data = await bundle.store
 					.getState()
 					.renderMask(request.side, mask, width, height);
-				bitmap = data && (await tintMask(data, width, height));
+				bitmap =
+					data &&
+					(await globalThis.createImageBitmap(tintMask(data, width, height)));
 			} catch {
 				// Without memory for it there is no overlay.
 			}
@@ -169,7 +149,12 @@ export function useMaskOverlay(
 	}, [bundle.store, show]);
 
 	const active =
-		visible && !comparing && !showingOriginal && !cropping && Boolean(source);
+		visible &&
+		!brushing &&
+		!comparing &&
+		!showingOriginal &&
+		!cropping &&
+		Boolean(source);
 
 	useEffect(() => {
 		const stored = instance?.mask ? validateMask(instance.mask) : undefined;

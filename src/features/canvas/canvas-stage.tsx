@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {CompareOverlay} from './compare.tsx';
 import {clampSplitPosition} from './compare-logic.ts';
 import {drawCanvas, type CompareDraw, type MaskOverlayImage} from './draw.ts';
@@ -18,6 +18,10 @@ import {StageOverlays} from './stage-overlays.tsx';
 import {cropFitView} from './crop-fit.ts';
 import {useDelayedFlag} from './use-delayed-flag.ts';
 import {useMaskOverlay} from './use-mask-overlay.ts';
+import {useMaskBrush} from './tools/mask-brush/use-mask-brush.ts';
+import {BrushCursor} from './tools/mask-brush/brush-cursor.tsx';
+import {useCanvasToolStrip} from './tools/registry.ts';
+import type {CanvasToolHandle, ToolStage} from './tools/types.ts';
 import {
 	clampCenter,
 	fitView,
@@ -37,6 +41,8 @@ import {
 	useTransientStore,
 } from '@/app/runtime-context.tsx';
 import {CropOverlay} from '@/features/transform/crop-overlay.tsx';
+import {useShowKeyboardHints} from '@/lib/keyboard-hints.ts';
+import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
 import {useCropBodyDrag} from '@/features/transform/use-crop-body-drag.ts';
 import {resolveStoredGeometry} from '@/storage/geometry.ts';
 import {projectDimensions} from '@/render/render-source.ts';
@@ -59,6 +65,9 @@ A wheel gesture has no release event; the view is saved this long after it.
 export const WHEEL_COMMIT_MS = 200;
 const WHEEL_ZOOM_RATE = 0.0015;
 const CANVAS_LABEL = 'Image canvas';
+const BRUSH_KEYS_ID = 'canvas-brush-keys';
+const BRUSH_KEYS =
+	'Brush on. Arrow keys move the brush, Shift moves it further. Enter starts and ends a stroke. Escape cancels a stroke, then turns the brush off. X switches Paint and Erase. Brackets change the size, with Shift the hardness. M shows or hides the mask. Hold Space and drag to pan.';
 
 function devicePixelRatio(): number {
 	const ratio = globalThis.devicePixelRatio;
@@ -232,6 +241,8 @@ export function CanvasStage() {
 	}, [announceRender, failed, projectId, renderBusy]);
 
 	const overlayRef = useRef<MaskOverlayImage | null>(null);
+	// The tool draws through these, and `draw` is declared before it.
+	const brushRef = useRef<CanvasToolHandle | null>(null);
 
 	const draw = useCallback(() => {
 		const canvas = canvasRef.current;
@@ -324,11 +335,14 @@ export function CanvasStage() {
 			},
 			compare,
 			// History compare hides the overlay, like Compare and crop mode.
-			overlay: pinnedEntry ? null : overlayRef.current,
+			overlay: pinnedEntry
+				? null
+				: (brushRef.current?.overlayRef.current ?? overlayRef.current),
 			checker: checkerRef.current,
 			dpr,
 		});
 		placeCropRef.current?.();
+		brushRef.current?.place();
 	}, [bundle.store]);
 
 	const scheduleDraw = useCallback(() => {
@@ -343,6 +357,24 @@ export function CanvasStage() {
 	}, [draw]);
 
 	useMaskOverlay(overlayRef, scheduleDraw);
+
+	const toolStage = useMemo<ToolStage>(
+		() => ({
+			canvas: () => canvasRef.current,
+			readView() {
+				const view = viewRef.current;
+				return view ? {view, viewport: viewportRef.current} : null;
+			},
+			redraw: scheduleDraw,
+		}),
+		[scheduleDraw],
+	);
+	const brush = useMaskBrush(toolStage);
+	brushRef.current = brush;
+	const toolStrip = useCanvasToolStrip();
+	const brushing = useAppStore((state) => state.activeBrush !== null);
+	const compact = usePhoneLayout();
+	const showKeys = useShowKeyboardHints();
 
 	const writeLabel = useCallback((zoom: number) => {
 		const label = labelRef.current;
@@ -721,7 +753,10 @@ export function CanvasStage() {
 		if (
 			!current ||
 			!source ||
-			(event.pointerType === 'mouse' && event.button !== 0)
+			// While a tool is on, the middle button pans too.
+			(event.pointerType === 'mouse' &&
+				event.button !== 0 &&
+				!(event.button === 1 && brush.engaged()))
 		) {
 			return;
 		}
@@ -731,12 +766,35 @@ export function CanvasStage() {
 			event.currentTarget.focus({preventScroll: true});
 		}
 
+		const position = pointerPosition(event);
+		const taken = brush.pointerDown(event, position, pointersRef.current.size);
+		if (taken === 'ignore') {
+			return;
+		}
+
+		if (event.button === 1) {
+			// No autoscroll.
+			event.preventDefault();
+		}
+
+		if (taken === 'tool') {
+			// A pen takes over from a resting hand.
+			pointersRef.current.clear();
+			pinchRef.current = null;
+			gestureStartRef.current = null;
+			lastTapRef.current = null;
+			event.currentTarget.focus({preventScroll: true});
+		}
+
 		try {
 			event.currentTarget.setPointerCapture(event.pointerId);
 		} catch {}
 
-		const position = pointerPosition(event);
 		pointersRef.current.set(event.pointerId, position);
+		if (taken === 'tool') {
+			return;
+		}
+
 		if (pointersRef.current.size === 1) {
 			gestureStartRef.current = position;
 			// Set here rather than through state so a drag never re-renders React.
@@ -761,7 +819,19 @@ export function CanvasStage() {
 
 	const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
 		const previous = pointersRef.current.get(event.pointerId);
+		if (brush.pointerMove(event, pointerPosition(event))) {
+			if (previous) {
+				pointersRef.current.set(event.pointerId, pointerPosition(event));
+			}
+
+			return;
+		}
+
 		if (!previous) {
+			if (brush.engaged()) {
+				return;
+			}
+
 			const {current} = viewRef;
 			event.currentTarget.style.cursor =
 				current &&
@@ -813,7 +883,17 @@ export function CanvasStage() {
 		event: React.PointerEvent<HTMLCanvasElement>,
 		canTap: boolean,
 	) => {
+		const taken = brush.pointerUp(event.pointerId, canTap, event.pointerType);
 		if (!pointersRef.current.has(event.pointerId)) {
+			return;
+		}
+
+		if (taken) {
+			pointersRef.current.delete(event.pointerId);
+			try {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			} catch {}
+
 			return;
 		}
 
@@ -844,7 +924,12 @@ export function CanvasStage() {
 			commitView(viewRef.current);
 		}
 
-		if (!canTap || event.pointerType === 'mouse' || !isTap(position, start)) {
+		if (
+			!canTap ||
+			event.pointerType === 'mouse' ||
+			brush.engaged() ||
+			!isTap(position, start)
+		) {
 			lastTapRef.current = null;
 			return;
 		}
@@ -871,10 +956,16 @@ export function CanvasStage() {
 
 	const handleDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
 		event.preventDefault();
-		toggleFitAndActual(pointerPosition(event));
+		if (!brush.engaged()) {
+			toggleFitAndActual(pointerPosition(event));
+		}
 	};
 
 	const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+		if (brush.keyDown(event)) {
+			return;
+		}
+
 		const viewport = syncViewport();
 		const {current} = viewRef;
 		const source = sourceRef.current;
@@ -901,13 +992,23 @@ export function CanvasStage() {
 				aria-label={CANVAS_LABEL}
 				tabIndex={0}
 				className="absolute inset-0 block h-full w-full cursor-grab touch-none select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+				aria-describedby={brushing && showKeys ? BRUSH_KEYS_ID : undefined}
 				onPointerDown={handlePointerDown}
 				onPointerMove={handlePointerMove}
 				onPointerUp={handlePointerUp}
 				onPointerCancel={handlePointerCancel}
+				onPointerLeave={(event) => {
+					brush.pointerLeave(event.pointerType);
+				}}
 				onDoubleClick={handleDoubleClick}
 				onKeyDown={handleKeyDown}
 			/>
+			{brushing && showKeys ? (
+				<p className="sr-only" id={BRUSH_KEYS_ID}>
+					{BRUSH_KEYS}
+				</p>
+			) : null}
+			<BrushCursor ref={brush.cursorRef} />
 			{cropping && projectId !== null ? (
 				<CropOverlay readView={readView} placeRef={placeCropRef} />
 			) : null}
@@ -935,6 +1036,12 @@ export function CanvasStage() {
 					commitSplitPosition(clamped);
 				}}
 			/>
+			{/* A phone docks the strip under the canvas instead. */}
+			{toolStrip && !compact ? (
+				<div className="absolute top-12 left-3 z-20">
+					<toolStrip.toolbar layout="strip" />
+				</div>
+			) : null}
 			<StageOverlays
 				labelRef={labelRef}
 				zoom={labelZoom}

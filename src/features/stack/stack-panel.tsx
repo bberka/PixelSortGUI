@@ -2,6 +2,7 @@ import {useEffect, useMemo, useRef, useState, type PointerEvent} from 'react';
 import {AddEffectPicker} from './add-effect-picker.tsx';
 import {StackRow} from './stack-row.tsx';
 import {usePhoneLayout} from '@/lib/use-phone-layout.ts';
+import {useCanvasToolStrip} from '@/features/canvas/tools/registry.ts';
 import {cn} from '@/lib/utils';
 import {ScrollArea} from '@/components/ui/scroll-area';
 import {announce} from '@/app/announcer.ts';
@@ -59,6 +60,7 @@ export function EffectStackPanel({
 	const selectEffect = useAppStore((state) => state.selectEffect);
 
 	const compact = usePhoneLayout();
+	const toolStrip = useCanvasToolStrip();
 	const pickerTriggerRef = useRef<HTMLButtonElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
 	const pendingFocusIndexRef = useRef<number | null>(null);
@@ -116,6 +118,11 @@ export function EffectStackPanel({
 
 	if (!stack) {
 		return null;
+	}
+
+	// On a phone a tool's strip takes the effect strip's place.
+	if (compact && toolStrip) {
+		return <toolStrip.toolbar layout="row" />;
 	}
 
 	const atLimit = instances.length >= MAX_STACK_INSTANCES;

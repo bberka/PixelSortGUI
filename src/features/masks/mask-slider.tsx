@@ -105,7 +105,8 @@ export function MaskSlider({
 				/>
 				<div className={cn('flex justify-end', inline && 'shrink-0')}>
 					<ExactEntry
-						className={inline ? 'w-20' : 'w-24'}
+						// "2000 px" needs the wider field on a touch screen too.
+						className={inline && unit === '%' ? 'w-20' : 'w-24'}
 						format={(next) => `${next}${unit}`}
 						id={id}
 						parse={parseValue}

@@ -1,3 +1,4 @@
+import {useEffect, useRef} from 'react';
 import {ChevronsUpIcon, ScanEyeIcon} from 'lucide-react';
 import {BlendControl, MixControl} from './instance-controls.tsx';
 import {ParamControl} from './param-control.tsx';
@@ -61,6 +62,14 @@ export function FocusedParams({
 	];
 	// A parameter that has just been hidden falls back to the first one.
 	const active = tabs.find((tab) => tab.key === activeKey)?.key ?? tabs[0].key;
+	const listRef = useRef<HTMLDivElement>(null);
+
+	// A tab selected from elsewhere, as "Size" is by the brush, comes into view.
+	useEffect(() => {
+		listRef.current
+			?.querySelector('[data-state="active"]')
+			?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+	}, [active]);
 
 	return (
 		<Tabs
@@ -79,6 +88,7 @@ export function FocusedParams({
 					{/* Radix leaves the list itself tabbable, which traps Shift+Tab
 					    in Firefox, so only the selected tab is a tab stop. */}
 					<TabsList
+						ref={listRef}
 						tabIndex={-1}
 						aria-label="Parameters"
 						className="w-max items-start gap-1 border-0 bg-transparent p-0 group-data-[orientation=horizontal]/tabs:h-[50px]"

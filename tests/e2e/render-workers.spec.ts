@@ -188,7 +188,8 @@ test.describe('render workers in the production build', () => {
 							response.original.close();
 						} else if (
 							response.type !== 'progress' &&
-							response.type !== 'extraSourceLoaded'
+							response.type !== 'extraSourceLoaded' &&
+							response.type !== 'maskLoaded'
 						) {
 							answers.push({type: response.type, jobId: response.jobId});
 						}

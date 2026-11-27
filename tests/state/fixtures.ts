@@ -61,6 +61,10 @@ export function createFakeCoordinator(): FakeCoordinator {
 		get extraSourceLoader() {
 			return extraSourceLoader;
 		},
+		setMaskLoader() {},
+		async renderMask() {
+			return undefined;
+		},
 		setSource(source) {
 			calls.push({type: 'setSource', source});
 		},

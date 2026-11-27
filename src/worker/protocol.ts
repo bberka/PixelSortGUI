@@ -3,6 +3,7 @@ import type {CodecErrorCode} from '../codec/decode.ts';
 import type {ExportFormat} from '../codec/encode.ts';
 import type {PipelineWarning} from '../engine/pipeline.ts';
 import type {SourceTransform} from '../engine/transform.ts';
+import type {InstanceMask} from '../engine/mask/types.ts';
 import type {EffectStack} from '../engine/types.ts';
 import type {BackupErrorCode} from '../storage/backup-error.ts';
 import type {
@@ -47,6 +48,17 @@ export type ExtraSourceFile = {
 	sourceHeight: number;
 };
 
+// A painted mask asset (engine.md section 16.6).
+export type MaskFile = {
+	// Mask hash.
+	sha256: string;
+	// Grid size.
+	width: number;
+	height: number;
+	// Raw DEFLATE of the canonical bytes.
+	blob: Blob;
+};
+
 export type PreviewRequest =
 	| {
 			type: 'loadSource';
@@ -78,7 +90,20 @@ export type PreviewRequest =
 	| {type: 'unloadSource'; sourceKey: string}
 	// Answered by `extraSourceLoaded`, or `error` with the `requestId`.
 	| ({type: 'loadExtraSource'; requestId: number} & ExtraSourceFile)
-	| {type: 'unloadExtraSource'; sha256: string};
+	| {type: 'unloadExtraSource'; sha256: string}
+	// Answered by `maskLoaded`, or `error` with the `requestId`.
+	| ({type: 'loadMask'; requestId: number} & MaskFile)
+	| {type: 'unloadMask'; sha256: string}
+	// The final mask of one instance at `width x height`, at most the `settle`
+	// proxy size. Answered by `maskRendered`, or `error` with the `jobId`.
+	| {
+			type: 'renderMask';
+			jobId: number;
+			sourceKey: string;
+			mask: InstanceMask;
+			width: number;
+			height: number;
+	  };
 
 export type PreviewResponse =
 	| {
@@ -106,6 +131,9 @@ export type PreviewResponse =
 	  }
 	| {type: 'cancelled'; jobId: number}
 	| {type: 'extraSourceLoaded'; requestId: number; sha256: string}
+	| {type: 'maskLoaded'; requestId: number; sha256: string}
+	// One byte per pixel, row-major.
+	| {type: 'maskRendered'; jobId: number; data: Uint8Array}
 	| {
 			type: 'error';
 			jobId?: number;
@@ -135,6 +163,8 @@ export type ExportRequest =
 			// Optional maximum output file size in KB (10..102400).
 			maxFileSizeKb?: number | null;
 			extraSources?: readonly ExtraSourceFile[];
+			// The painted masks of the enabled instances.
+			masks?: readonly MaskFile[];
 	  } & StackRequest)
 	| ({
 			type: 'renderFull';
@@ -145,6 +175,7 @@ export type ExportRequest =
 			sourceHeight: number;
 			transform?: SourceTransform;
 			extraSources?: readonly ExtraSourceFile[];
+			masks?: readonly MaskFile[];
 	  } & StackRequest);
 
 export type ExportResponse =

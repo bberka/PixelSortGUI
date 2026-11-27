@@ -1,6 +1,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vite-plus/test';
+import type {InstanceMask} from '../engine/mask/types.ts';
 import {IDENTITY_TRANSFORM, type SourceTransform} from '../engine/transform.ts';
 import type {EffectStack} from '../engine/types.ts';
+import {createSideRenderer} from '../state/side-renderer.ts';
 import type {
 	ExportRequest,
 	ExportResponse,
@@ -13,6 +15,7 @@ import {
 	nextDragCap,
 	type CoordinatorEnv,
 	type ExtraSourceRecord,
+	type MaskAssetRecord,
 	type RenderEvent,
 	type WorkerHandlers,
 } from './coordinator.ts';
@@ -1685,5 +1688,379 @@ describe('extra sources (engine.md section 8.3)', () => {
 		expect(posted('loadExtraSource')).toEqual([]);
 		expect(frames()[0].sourcesPending).toBeUndefined();
 		expect(renders()).toHaveLength(1);
+	});
+});
+
+describe('masks (engine.md section 16.6)', () => {
+	const PAINT = 'c'.repeat(64);
+	const OTHER = 'd'.repeat(64);
+	const IMAGE = 'e'.repeat(64);
+
+	const paint = (asset: string): InstanceMask => ({
+		kind: 'paint',
+		asset,
+		invert: false,
+		feather: 0,
+	});
+	const imageMask: InstanceMask = {
+		kind: 'image',
+		source: IMAGE,
+		fit: 'cover',
+		invert: false,
+		feather: 0,
+	};
+
+	function masked(...masks: InstanceMask[]): EffectStack {
+		const [instance] = stackOf(0).instances;
+		return {
+			schemaVersion: 2,
+			instances: masks.map((mask, index) => ({
+				...instance,
+				id: `masked0${index}`,
+				mask,
+			})),
+		};
+	}
+
+	const record = (name: string): MaskAssetRecord => ({
+		blob: new Blob([name]),
+		width: 2364,
+		height: 1773,
+	});
+	const records = new Map([
+		[PAINT, record('paint')],
+		[OTHER, record('other')],
+	]);
+	const maskFile = (sha256: string) => ({sha256, ...records.get(sha256)!});
+	const image: ExtraSourceRecord = {
+		blob: new Blob(['image']),
+		width: 640,
+		height: 480,
+	};
+	const imageFile = {
+		sha256: IMAGE,
+		blob: image.blob,
+		sourceWidth: 640,
+		sourceHeight: 480,
+	};
+
+	const settled = async () => vi.advanceTimersByTimeAsync(0);
+
+	function withStorage(stored: Iterable<string> = records.keys()) {
+		const context = setup();
+		const held = new Set(stored);
+		// A storage record has more fields than the worker is sent.
+		const loader = vi.fn(async (sha256: string) =>
+			held.has(sha256)
+				? {...records.get(sha256)!, sha256, byteLength: 5, createdAt: 1}
+				: undefined,
+		);
+		context.coordinator.setMaskLoader(loader);
+		context.coordinator.setExtraSourceLoader(async () => image);
+		context.coordinator.setSource(SOURCE);
+		context.finishLoad();
+		const loads = () => context.posted('loadMask');
+		return {
+			...context,
+			held,
+			loader,
+			loads,
+			unloads: () =>
+				context.posted('unloadMask').map((message) => message.sha256),
+			finishMask(sha256: string) {
+				const load = loads().findLast((message) => message.sha256 === sha256)!;
+				context.preview().reply({
+					type: 'maskLoaded',
+					requestId: load.requestId,
+					sha256,
+				});
+			},
+			finishImage() {
+				const load = context.posted('loadExtraSource').at(-1)!;
+				context.preview().reply({
+					type: 'extraSourceLoaded',
+					requestId: load.requestId,
+					sha256: load.sha256,
+				});
+			},
+		};
+	}
+
+	async function loaded() {
+		const context = withStorage();
+		context.coordinator.setStack({stack: masked(paint(PAINT))});
+		await settled();
+		context.finishMask(PAINT);
+		context.answer(context.renders().at(-1)!);
+		context.answer(context.renders().at(-1)!);
+		return context;
+	}
+
+	it('loads each referenced mask once, with only the fields the worker takes', async () => {
+		const {coordinator, loader, loads, posted} = withStorage();
+		const stack = masked(paint(PAINT), paint(PAINT), paint(''), paint(OTHER));
+		stack.instances[3].enabled = false;
+		coordinator.setStack({stack});
+		await settled();
+
+		expect(loader.mock.calls).toEqual([[PAINT], [OTHER]]);
+		expect(loads().map(({type, requestId, ...file}) => file)).toStrictEqual([
+			maskFile(PAINT),
+			maskFile(OTHER),
+		]);
+		expect(posted('loadExtraSource')).toEqual([]);
+	});
+
+	it('renders before the mask loads, marks the frame pending and renders again after', async () => {
+		const {coordinator, renders, answer, frames, finishMask} = withStorage();
+		coordinator.setStack({stack: masked(paint(PAINT))});
+		await settled();
+		answer(renders()[0]);
+		expect(frames()[0].sourcesPending).toBe(true);
+		expect(renders()).toHaveLength(1);
+
+		finishMask(PAINT);
+		expect(renders()).toHaveLength(2);
+		expect(renders()[1].generation).toBeGreaterThan(renders()[0].generation);
+		answer(renders()[1]);
+		expect(frames()[1].sourcesPending).toBeUndefined();
+	});
+
+	it('loads a mask image as an extra source and waits for it', async () => {
+		const {coordinator, posted, renders, answer, frames, finishImage} =
+			withStorage();
+		coordinator.setStack({stack: masked(imageMask)});
+		await settled();
+		expect(posted('loadExtraSource')).toMatchObject([imageFile]);
+		answer(renders()[0]);
+		expect(frames()[0].sourcesPending).toBe(true);
+
+		finishImage();
+		answer(renders()[1]);
+		expect(frames()[1].sourcesPending).toBeUndefined();
+		coordinator.setStack({stack: stackOf(0)});
+		expect(posted('unloadExtraSource')).toEqual([
+			{type: 'unloadExtraSource', sha256: IMAGE},
+		]);
+	});
+
+	it('unloads a mask the stack no longer names', async () => {
+		const {coordinator, unloads} = await loaded();
+		coordinator.setStack({stack: masked(paint(OTHER))});
+		expect(unloads()).toEqual([PAINT]);
+	});
+
+	it('asks storage again for a missing mask, but not while dragging', async () => {
+		const {coordinator, held, loader, loads, errors, renders, answer, frames} =
+			withStorage([]);
+		const stack = masked(paint(PAINT));
+		coordinator.setStack({stack});
+		await settled();
+		answer(renders()[0]);
+		answer(renders()[1]);
+		expect(frames().at(-1)!.sourcesPending).toBeUndefined();
+		expect(errors()).toEqual([]);
+
+		coordinator.setStack({stack}, {dragging: true});
+		await settled();
+		expect(loader).toHaveBeenCalledTimes(1);
+
+		held.add(PAINT);
+		coordinator.setStack({stack});
+		await settled();
+		expect(loads()).toHaveLength(1);
+	});
+
+	it('reports a damaged mask, renders again and leaves it out of a full render', async () => {
+		const {coordinator, renders, answer, exports, loads, errors, preview} =
+			withStorage();
+		coordinator.setViewScale(4);
+		coordinator.setStack({stack: masked(paint(PAINT))});
+		await settled();
+		answer(renders()[0]);
+		preview().reply({
+			type: 'error',
+			requestId: loads()[0].requestId,
+			code: 'decode-failed',
+			message: 'damaged',
+		});
+		expect(errors()).toMatchObject([
+			{error: {code: 'decode-failed', message: 'damaged'}, failed: false},
+		]);
+		answer(renders()[1]);
+		vi.advanceTimersByTime(500);
+		expect(exports[0].posted[0].masks).toEqual([]);
+	});
+
+	it('loads a restarted worker with the masks it already read', async () => {
+		const context = await loaded();
+		const {preview, previews, loader, loads, renders, frames} = context;
+		const stale = loads()[0].requestId;
+		preview().fail('boom');
+
+		expect(previews).toHaveLength(2);
+		expect(preview().posted.map((message) => message.type)).toEqual([
+			'loadSource',
+			'loadMask',
+		]);
+		expect(loader).toHaveBeenCalledTimes(1);
+
+		context.finishLoad();
+		context.answer(renders()[0]);
+		expect(frames().at(-1)!.sourcesPending).toBe(true);
+		preview().reply({type: 'maskLoaded', requestId: stale, sha256: PAINT});
+		expect(renders()).toHaveLength(1);
+		context.finishMask(PAINT);
+		expect(renders()).toHaveLength(2);
+	});
+
+	it('waits for a pending mask before a full render, and sends those of enabled instances', async () => {
+		const {coordinator, renders, answer, exports, finishMask} = withStorage();
+		const stack = masked(paint(PAINT), paint(OTHER));
+		stack.instances[1].enabled = false;
+		coordinator.setViewScale(4);
+		coordinator.setStack({stack});
+		await settled();
+		answer(renders()[0]);
+		vi.advanceTimersByTime(1000);
+		expect(exports).toHaveLength(0);
+
+		finishMask(PAINT);
+		finishMask(OTHER);
+		answer(renders().at(-1)!);
+		answer(renders().at(-1)!);
+		vi.advanceTimersByTime(500);
+		expect(exports[0].posted[0].masks).toEqual([maskFile(PAINT)]);
+	});
+
+	it('reads the masks and mask images of an export it never previewed', async () => {
+		const {coordinator, exports} = withStorage();
+		const stack = masked(paint(PAINT), imageMask, paint(OTHER));
+		stack.instances[2].enabled = false;
+		coordinator.exportImage({stack, scale: 1, format: 'png'});
+		await settled();
+
+		expect(exports[0].posted[0]).toMatchObject({type: 'export', stack});
+		expect(exports[0].posted[0].masks).toStrictEqual([maskFile(PAINT)]);
+		expect(exports[0].posted[0].extraSources).toEqual([imageFile]);
+	});
+
+	it('fails an export whose mask cannot be read', async () => {
+		const {coordinator, exports, loader} = withStorage();
+		loader.mockRejectedValueOnce(new Error('database closed'));
+		const task = coordinator.exportImage({
+			stack: masked(paint(PAINT)),
+			scale: 1,
+			format: 'png',
+		});
+		await expect(task.result).resolves.toEqual({
+			status: 'error',
+			error: {code: 'internal', message: 'database closed'},
+		});
+		expect(exports).toHaveLength(0);
+	});
+
+	describe('renderMask', () => {
+		it('returns the bytes the worker renders', async () => {
+			const {coordinator, posted, preview} = await loaded();
+			const result = coordinator.renderMask(paint(PAINT), 4, 3);
+			const [sent] = posted('renderMask');
+			expect(sent).toMatchObject({
+				sourceKey: 'photo',
+				mask: paint(PAINT),
+				width: 4,
+				height: 3,
+			});
+			const data = new Uint8Array(12);
+			preview().reply({type: 'maskRendered', jobId: sent.jobId, data});
+			await expect(result).resolves.toBe(data);
+		});
+
+		it('resolves undefined without asking the worker while the mask is loading', async () => {
+			const {coordinator, posted} = withStorage();
+			coordinator.setStack({stack: masked(paint(PAINT))});
+			await expect(
+				coordinator.renderMask(paint(PAINT), 4, 3),
+			).resolves.toBeUndefined();
+			expect(posted('renderMask')).toEqual([]);
+		});
+
+		it('reports a failure and keeps the render in flight', async () => {
+			const {coordinator, posted, preview, errors, renders, answer, frames} =
+				await loaded();
+			coordinator.setStack({stack: masked(paint(PAINT))});
+			const result = coordinator.renderMask(paint(PAINT), 9999, 9999);
+			preview().reply({
+				type: 'error',
+				jobId: posted('renderMask')[0].jobId,
+				code: 'internal',
+				message: 'too big',
+			});
+			await expect(result).resolves.toBeUndefined();
+			expect(errors()).toHaveLength(1);
+			const count = frames().length;
+			answer(renders().at(-1)!);
+			expect(frames()).toHaveLength(count + 1);
+		});
+
+		it.each(['crash', 'source change', 'dispose'] as const)(
+			'resolves undefined on %s',
+			async (how) => {
+				const {coordinator, preview} = await loaded();
+				const result = coordinator.renderMask(paint(PAINT), 4, 3);
+				if (how === 'crash') {
+					preview().fail('boom');
+				} else if (how === 'source change') {
+					coordinator.setSource({...SOURCE, key: 'other'});
+				} else {
+					coordinator.dispose();
+				}
+
+				await expect(result).resolves.toBeUndefined();
+			},
+		);
+	});
+
+	it('gives each split side its own masks, and side A its own worker', async () => {
+		const sideB = await loaded();
+		const sideA = setup();
+		const loadMask = vi.fn(async (sha256: string) => records.get(sha256));
+		const renderer = createSideRenderer({
+			createCoordinator: () => sideA.coordinator,
+			loadExtraSource: async () => image,
+			loadMask,
+			onEvent() {},
+			onClose() {},
+		});
+		const target = {
+			source: SOURCE,
+			request: {stack: masked(paint(OTHER))},
+			dragging: false,
+		};
+		const before = sideB.preview().posted.length;
+		renderer.sync(target);
+		await settled();
+		sideA.finishLoad();
+
+		expect(loadMask.mock.calls).toEqual([[OTHER]]);
+		expect(sideA.posted('loadMask')).toMatchObject([maskFile(OTHER)]);
+		sideA.answer(sideA.renders()[0]);
+		expect(sideA.frames()[0].sourcesPending).toBe(true);
+		sideA.preview().reply({
+			type: 'maskLoaded',
+			requestId: sideA.posted('loadMask')[0].requestId,
+			sha256: OTHER,
+		});
+		sideA.answer(sideA.renders()[1]);
+		expect(sideA.frames()[1].sourcesPending).toBeUndefined();
+		// Side B heard nothing of it.
+		expect(sideB.preview().posted).toHaveLength(before);
+
+		// Only the mask differs: side A renders the new one.
+		renderer.sync({...target, request: {stack: masked(paint(PAINT))}});
+		expect(sideA.posted('unloadMask')).toMatchObject([{sha256: OTHER}]);
+		renderer.dispose();
+		expect(sideA.preview().terminated).toBe(true);
+		expect(sideB.preview().terminated).toBe(false);
 	});
 });

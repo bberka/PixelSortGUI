@@ -4,6 +4,9 @@ import {
 	renderSizeForPixelCap,
 } from '../codec/decode.ts';
 import {runtimeEffectRegistry as effectRegistry} from '../engine/effects/runtime.ts';
+import {MaskAssetError} from '../engine/mask/asset.ts';
+import {renderMask, resolveMask} from '../engine/mask/evaluate.ts';
+import type {MaskBitmap, MaskGeometry} from '../engine/mask/types.ts';
 import {createStageCache, renderStack} from '../engine/pipeline.ts';
 import {boxDownscale} from '../engine/resample.ts';
 import {
@@ -15,6 +18,7 @@ import {
 } from '../engine/transform.ts';
 import {Cancelled, type ExtraSource, type RgbaImage} from '../engine/types.ts';
 import {checkedDimensions, isIdentity, planProxy} from './geometry.ts';
+import {decodeMaskFile} from './mask-decode.ts';
 import {
 	DRAG_PIXEL_CAP_MAX,
 	SETTLE_PIXEL_CAP,
@@ -26,6 +30,8 @@ import {
 type RenderRequest = Extract<PreviewRequest, {type: 'render'}>;
 type LoadRequest = Extract<PreviewRequest, {type: 'loadSource'}>;
 type LoadExtraRequest = Extract<PreviewRequest, {type: 'loadExtraSource'}>;
+type LoadMaskRequest = Extract<PreviewRequest, {type: 'loadMask'}>;
+type RenderMaskRequest = Extract<PreviewRequest, {type: 'renderMask'}>;
 // What the last `loadSource` asked for, as changed by `setTransform` and `setDragCap`.
 type Wanted = Omit<LoadRequest, 'type' | 'requestId' | 'transform'> & {
 	transform: SourceTransform;
@@ -46,8 +52,15 @@ type Source = {
 	// The image size after the transform.
 	width: number;
 	height: number;
+	// How a painted mask maps onto it.
+	geometry: MaskGeometry;
 	settle: RgbaImage;
 	drag: RgbaImage;
+};
+
+type Mask = {
+	// Missing while the asset is being decompressed.
+	bitmap?: MaskBitmap;
 };
 
 type Extra = {
@@ -86,6 +99,9 @@ let cache = createStageCache();
 const extras = new Map<string, Extra>();
 // Extra sources are decoded one at a time to bound the memory of full decodes.
 let extraDecodes = Promise.resolve();
+// Painted masks by mask hash. Like extra sources, they outlive the project source.
+const masks = new Map<string, Mask>();
+let maskDecodes = Promise.resolve();
 let dragCap = DRAG_PIXEL_CAP_MAX;
 let wanted: Wanted | undefined;
 let source: Source | undefined;
@@ -184,6 +200,7 @@ async function loadProxies(requestId: number, spec: Wanted): Promise<void> {
 			cacheKey: `${sourceKey}:${transformKey(transform)}`,
 			width,
 			height,
+			geometry: {sourceWidth, sourceHeight, transform},
 			settle,
 			drag,
 		};
@@ -274,6 +291,97 @@ function loadedExtras(level: RenderRequest['level']): Map<string, ExtraSource> {
 	return loaded;
 }
 
+async function loadMask(request: LoadMaskRequest, mask: Mask): Promise<void> {
+	const {requestId, sha256} = request;
+	// Unloaded, or unloaded and asked for again, since it was queued.
+	const superseded = () => masks.get(sha256) !== mask;
+	if (superseded()) {
+		return;
+	}
+
+	try {
+		const bitmap = await decodeMaskFile(request);
+		if (superseded()) {
+			return;
+		}
+
+		mask.bitmap = bitmap;
+		scope.postMessage({type: 'maskLoaded', requestId, sha256});
+	} catch (error) {
+		if (superseded()) {
+			return;
+		}
+
+		masks.delete(sha256);
+		scope.postMessage({
+			type: 'error',
+			requestId,
+			code:
+				error instanceof MaskAssetError ? 'decode-failed' : errorCode(error),
+			message: errorMessage(error),
+		});
+	}
+}
+
+function loadedMasks(): Map<string, MaskBitmap> {
+	const loaded = new Map<string, MaskBitmap>();
+	for (const [sha256, {bitmap}] of masks) {
+		if (bitmap) {
+			loaded.set(sha256, bitmap);
+		}
+	}
+
+	return loaded;
+}
+
+// The final mask for the overlay, from the inputs loaded now. At most 4 MP, so it
+// runs without yielding and cannot interleave with the yields of a render.
+async function runRenderMask(request: RenderMaskRequest): Promise<void> {
+	const {jobId, sourceKey, mask, width, height} = request;
+	try {
+		if (source?.key !== sourceKey) {
+			throw new Error('No source is loaded for this mask.');
+		}
+
+		const {settle} = source;
+		// Throws `RangeError` for a size above the proxy.
+		const frame =
+			width === settle.width && height === settle.height
+				? settle
+				: boxDownscale(settle, width, height);
+		const ready = resolveMask(mask, {
+			source: frame,
+			sourceWidth: source.width,
+			sourceHeight: source.height,
+			geometry: source.geometry,
+			masks: loadedMasks(),
+			extraSources: loadedExtras('settle'),
+		});
+		if (ready.status === 'missing') {
+			throw new Error('The mask is missing.');
+		}
+
+		const data = await renderMask(ready, {
+			width,
+			height,
+			sourceWidth: source.width,
+			target: new Uint8Array(width * height),
+			spare: () => new Uint8Array(width * height),
+			checkpoint: () => undefined,
+		});
+		scope.postMessage({type: 'maskRendered', jobId, data}, [
+			data.buffer as ArrayBuffer,
+		]);
+	} catch (error) {
+		scope.postMessage({
+			type: 'error',
+			jobId,
+			code: errorCode(error),
+			message: errorMessage(error),
+		});
+	}
+}
+
 // Remakes every `drag` proxy for a new cap.
 function applyDragCap(pixels: number): void {
 	dragCap = pixels;
@@ -349,6 +457,8 @@ async function runRender(request: RenderRequest, from: Source): Promise<void> {
 				sourceKey: from.cacheKey,
 				// A snapshot: loads and unloads during the render do not reach it.
 				extraSources: loadedExtras(level),
+				masks: loadedMasks(),
+				geometry: from.geometry,
 				checkpoint,
 				onProgress(fraction) {
 					const now = performance.now();
@@ -531,6 +641,31 @@ scope.addEventListener('message', (event) => {
 				cache = createStageCache();
 			}
 
+			break;
+		}
+
+		case 'loadMask': {
+			const {requestId, sha256} = message;
+			// The hash names the bytes, so a loaded mask never needs a new decode.
+			if (masks.get(sha256)?.bitmap) {
+				scope.postMessage({type: 'maskLoaded', requestId, sha256});
+				break;
+			}
+
+			const mask: Mask = {};
+			masks.set(sha256, mask);
+			maskDecodes = maskDecodes.then(async () => loadMask(message, mask));
+			break;
+		}
+
+		case 'unloadMask': {
+			// Stage keys name the mask hash, which fixes the bytes, so the cache stays.
+			masks.delete(message.sha256);
+			break;
+		}
+
+		case 'renderMask': {
+			void runRenderMask(message);
 			break;
 		}
 	}

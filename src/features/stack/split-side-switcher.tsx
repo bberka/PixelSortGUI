@@ -64,7 +64,10 @@ function SideAction({
  */
 export function SplitSideSwitcher() {
 	const visible = useAppStore(
-		(state) => state.compareMode === 'split' && state.activeProject !== null,
+		(state) =>
+			state.compareMode === 'split' &&
+			state.activeProject !== null &&
+			state.compareHistorySeq === null,
 	);
 	const side = useAppStore(selectEditingSide);
 	const orientation = useAppStore(selectSplitOrientation);

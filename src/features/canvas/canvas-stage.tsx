@@ -35,13 +35,17 @@ import {
 	useAppStore,
 	useTransientStore,
 } from '@/app/runtime-context.tsx';
+import {effectiveDimensions} from '@/engine/transform.ts';
 import {CropOverlay} from '@/features/transform/crop-overlay.tsx';
 import {useCropBodyDrag} from '@/features/transform/use-crop-body-drag.ts';
 import {projectDimensions} from '@/render/render-source.ts';
 import {projectOrientedDimensions} from '@/state/geometry.ts';
 import {selectShowingOriginal} from '@/state/transient.ts';
 import {sideCanvasLabel, selectSplitOrientation} from '@/state/split-sides.ts';
-import type {RenderStatus} from '@/state/app-store.ts';
+import {
+	selectCompareHistoryEntry,
+	type RenderStatus,
+} from '@/state/app-store.ts';
 import {type ProjectRecord, DEFAULT_SPLIT_POSITION} from '@/storage/types.ts';
 
 /**
@@ -148,6 +152,11 @@ export function CanvasStage() {
 	const labelB = useAppStore((state) =>
 		sideCanvasLabel(state.activeProject, 'b'),
 	);
+	const pinnedHistoryEntry = useAppStore(selectCompareHistoryEntry);
+	const clearCompareHistory = useAppStore((state) => state.clearCompareHistory);
+	const historyCompareLabel = pinnedHistoryEntry
+		? `Step #${pinnedHistoryEntry.seq}: ${pinnedHistoryEntry.label}`
+		: null;
 
 	const [labelZoom, setLabelZoom] = useState(1);
 
@@ -253,7 +262,13 @@ export function CanvasStage() {
 			renderA,
 			activeProject,
 			cropSource: cropImage,
+			history,
+			compareHistorySeq,
 		} = bundle.store.getState();
+		const pinnedEntry =
+			compareHistorySeq === null
+				? null
+				: (history.find((entry) => entry.seq === compareHistorySeq) ?? null);
 		const isCropping = croppingRef.current;
 		let loadedSource = renderSourceRef.current;
 		if (isCropping) {
@@ -263,8 +278,10 @@ export function CanvasStage() {
 		}
 
 		let compare: CompareDraw = {mode: 'none'};
-		if (isCropping || showingOriginalRef.current) {
+		if (isCropping) {
 			compare = {mode: 'original'};
+		} else if (showingOriginalRef.current) {
+			compare = {mode: 'original', useSideA: pinnedEntry !== null};
 		} else if (compareModeRef.current === 'split') {
 			compare = {
 				mode: 'split',
@@ -272,6 +289,15 @@ export function CanvasStage() {
 				orientation: activeProject?.viewState.splitOrientation,
 			};
 		}
+
+		const pinnedSize =
+			pinnedEntry && activeProject
+				? effectiveDimensions(
+						activeProject.sourceWidth,
+						activeProject.sourceHeight,
+						pinnedEntry.transform,
+					)
+				: null;
 
 		drawCanvas({
 			surface,
@@ -286,7 +312,7 @@ export function CanvasStage() {
 					}
 				: null,
 			...toRenderedSide({frame: frameRef.current, full: fullRef.current}),
-			sideA: toRenderedSide(renderA),
+			sideA: {...toRenderedSide(renderA), size: pinnedSize},
 			compare,
 			checker: checkerRef.current,
 			dpr,
@@ -482,7 +508,14 @@ export function CanvasStage() {
 
 	useEffect(() => {
 		scheduleDraw();
-	}, [frameA, fullA, orientation, cropSource, scheduleDraw]);
+	}, [
+		frameA,
+		fullA,
+		orientation,
+		cropSource,
+		pinnedHistoryEntry,
+		scheduleDraw,
+	]);
 
 	useEffect(
 		() =>
@@ -873,6 +906,11 @@ export function CanvasStage() {
 				orientation={orientation}
 				labelA={labelA}
 				labelB={labelB}
+				historyCompareLabel={cropping ? null : historyCompareLabel}
+				onExitHistoryCompare={() => {
+					clearCompareHistory();
+					announce('Stopped comparing history step');
+				}}
 				onDragSplit={(position) => {
 					splitPositionRef.current = clampSplitPosition(position);
 					scheduleDraw();

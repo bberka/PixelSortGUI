@@ -223,6 +223,8 @@ export type AppState = {
 	activeThumbnail: ThumbnailRecord | null;
 	thumbnailVersions: Record<string, number>;
 	history: HistoryEntryRecord[];
+	// Transient pinned history step for F31 comparison (not persisted).
+	compareHistorySeq: number | null;
 	stackNeedsWriteBack: boolean;
 	stackEnvelopeStatus: 'ok' | 'newer-version';
 	unsupportedInstances: UnsupportedInstanceInfo[];
@@ -355,6 +357,8 @@ export type AppState = {
 	undo(): Promise<boolean>;
 	redo(): Promise<boolean>;
 	jumpToHistory(projectId: string, seq: number): Promise<boolean>;
+	setCompareHistorySeq(seq: number | null): void;
+	clearCompareHistory(): void;
 
 	// Geometry. One history entry; `false` when nothing changed or the project
 	// is not the active one.
@@ -595,6 +599,18 @@ export function selectRedoLabel(state: AppState): string | null {
 	return next?.label ?? null;
 }
 
+export function selectCompareHistoryEntry(
+	state: Pick<AppState, 'history' | 'compareHistorySeq'>,
+): HistoryEntryRecord | null {
+	if (state.compareHistorySeq === null) {
+		return null;
+	}
+
+	return (
+		state.history.find((entry) => entry.seq === state.compareHistorySeq) ?? null
+	);
+}
+
 type PendingKeyboardCommit =
 	| {
 			kind: 'param';
@@ -641,6 +657,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	let disposed = false;
 	let unsubscribeSideA: (() => void) | null = null;
 	let lastSideInputs: readonly unknown[] = [];
+	let compareHistoryPrevMode: CompareMode | null = null;
 
 	const loadExtraSource = async (sha256: string) =>
 		repository.getSource(sha256);
@@ -660,20 +677,82 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	});
 
 	// Side A follows the state, so every path that changes it is covered.
+	// When a history step is pinned (F31), sideRenderer renders that snapshot
+	// instead of side A's stack.
 	const syncSideA = () => {
-		const {activeProject, activeSource, compareMode, debugView} =
-			store.getState();
-		const stack = activeProject?.stackA;
-		const {activeDrag} = transientStore.getState();
-		const drag =
-			stack && stackHas(stack, activeDrag?.instanceId) ? activeDrag : null;
+		const {
+			activeProject,
+			activeSource,
+			compareMode,
+			debugView,
+			history,
+			compareHistorySeq,
+		} = store.getState();
 		const source =
 			activeSource && activeSource.sha256 === activeProject?.sourceHash
 				? activeSource
 				: null;
+
+		const pinnedEntry =
+			compareHistorySeq === null
+				? null
+				: (history.find((entry) => entry.seq === compareHistorySeq) ?? null);
+		if (pinnedEntry) {
+			const sameTransform =
+				activeProject !== null &&
+				transformKey(pinnedEntry.transform) ===
+					transformKey(activeProject.transform);
+			const needsRender =
+				pinnedEntry.stack.instances.length > 0 || !sameTransform;
+			const inputs = [
+				'history',
+				pinnedEntry.seq,
+				pinnedEntry.stack,
+				pinnedEntry.transform,
+				source,
+				activeProject?.transform,
+			];
+			if (inputs.every((value, index) => value === lastSideInputs[index])) {
+				return;
+			}
+
+			lastSideInputs = inputs;
+			if (!source || !needsRender) {
+				sideRenderer.sync(null);
+				return;
+			}
+
+			sideRenderer.sync({
+				source: {
+					key: source.sha256,
+					blob: source.blob,
+					width: source.width,
+					height: source.height,
+					transform: pinnedEntry.transform,
+				},
+				request: {
+					stack: pinnedEntry.stack,
+				},
+				dragging: false,
+			});
+			return;
+		}
+
+		const stack = activeProject?.stackA;
+		const {activeDrag} = transientStore.getState();
+		const drag =
+			stack && stackHas(stack, activeDrag?.instanceId) ? activeDrag : null;
 		const visible = compareMode === 'split';
 		const transform = activeProject?.transform;
-		const inputs = [stack, source, visible, debugView, drag, transform];
+		const inputs = [
+			'sideA',
+			stack,
+			source,
+			visible,
+			debugView,
+			drag,
+			transform,
+		];
 		if (inputs.every((value, index) => value === lastSideInputs[index])) {
 			return;
 		}
@@ -714,8 +793,12 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 	let lastCropInputs: readonly unknown[] = [];
 
 	const syncCropPreview = () => {
-		const {activeProject, activeSource} = store.getState();
+		const {activeProject, activeSource, compareHistorySeq} = store.getState();
 		const {cropping} = transientStore.getState().geometry;
+		if (cropping && compareHistorySeq !== null) {
+			store.getState().clearCompareHistory();
+		}
+
 		const inputs = [cropping, activeSource, activeProject?.transform];
 		if (inputs.every((value, index) => value === lastCropInputs[index])) {
 			return;
@@ -919,6 +1002,15 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 			// The new stack lands before the drag overlay goes, so no render ever
 			// sees the old committed value.
+			const pinnedDropped =
+				currentState.compareHistorySeq !== null &&
+				(currentState.compareHistorySeq > active.historyHeadSeq ||
+					currentState.compareHistorySeq < project.historyMinSeq);
+			const restoreCompareMode = pinnedDropped ? compareHistoryPrevMode : null;
+			if (pinnedDropped) {
+				compareHistoryPrevMode = null;
+			}
+
 			store.setState((state) => {
 				// The open project's view state lives here: a save that started
 				// during the commit leaves the stored copy older.
@@ -930,11 +1022,16 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 					activeProject: nextProject,
 					projects: upsertProject(state.projects, nextProject),
 					history: trimmedHistory,
+					...(pinnedDropped && {compareHistorySeq: null}),
+					...(restoreCompareMode !== null && {compareMode: restoreCompareMode}),
 					stackNeedsWriteBack: false,
 					debugView: nextDebugView,
 				};
 			});
-			transientStore.setState({activeDrag: null});
+			transientStore.setState({
+				activeDrag: null,
+				...(pinnedDropped && {compareLatched: false, compareHolding: false}),
+			});
 			if (transform) {
 				renderGeometry();
 			}
@@ -1044,10 +1141,23 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		const wasDragging = transientStore.getState().activeDrag !== null;
 		const notice = geometryNotice(active, result.entry.transform);
 
-		transientStore.setState({activeDrag: null});
+		const hadCompareHistory = store.getState().compareHistorySeq !== null;
+		const restoreCompareMode = hadCompareHistory
+			? compareHistoryPrevMode
+			: null;
+		if (hadCompareHistory) {
+			compareHistoryPrevMode = null;
+		}
+
+		transientStore.setState({
+			activeDrag: null,
+			...(hadCompareHistory && {compareLatched: false, compareHolding: false}),
+		});
 		store.setState((state) => ({
 			activeProject: nextProject,
 			projects: upsertProject(state.projects, nextProject),
+			...(hadCompareHistory && {compareHistorySeq: null}),
+			...(restoreCompareMode !== null && {compareMode: restoreCompareMode}),
 			stackNeedsWriteBack: resolved.needsWriteBack,
 			stackEnvelopeStatus: resolved.envelopeStatus,
 			unsupportedInstances: resolved.unsupportedInstances,
@@ -1250,6 +1360,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 
 	// Closes the open project without saving it and shows `route`.
 	const dropActiveProject = (route: AppRoute) => {
+		const restoreMode = compareHistoryPrevMode;
+		compareHistoryPrevMode = null;
 		transientStore.setState({
 			activeDrag: null,
 			splitPosition: null,
@@ -1262,6 +1374,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			activeSource: null,
 			activeThumbnail: null,
 			history: [],
+			compareHistorySeq: null,
+			...(restoreMode !== null && {compareMode: restoreMode}),
 			stackNeedsWriteBack: false,
 			stackEnvelopeStatus: 'ok',
 			unsupportedInstances: [],
@@ -1283,6 +1397,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		activeThumbnail: null,
 		thumbnailVersions: {},
 		history: [],
+		compareHistorySeq: null,
 		stackNeedsWriteBack: false,
 		stackEnvelopeStatus: 'ok',
 		unsupportedInstances: [],
@@ -1411,6 +1526,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						transform: result.project.transform,
 						createdAt: result.project.createdAt,
 					};
+					const restoreMode = compareHistoryPrevMode;
+					compareHistoryPrevMode = null;
 					transientStore.setState({
 						activeDrag: null,
 						splitPosition: null,
@@ -1428,6 +1545,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 						activeSource: result.source,
 						activeThumbnail: null,
 						history: [initialEntry],
+						compareHistorySeq: null,
+						...(restoreMode !== null && {compareMode: restoreMode}),
 						stackNeedsWriteBack: false,
 						stackEnvelopeStatus: 'ok',
 						unsupportedInstances: [],
@@ -1490,6 +1609,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			const stored = await repository.openProject(id);
 			const opened = repairProjectGeometry(stored);
 			const nextRoute: AppRoute = {screen: 'editor', projectId: opened.id};
+			const restoreMode = compareHistoryPrevMode;
+			compareHistoryPrevMode = null;
 			transientStore.setState({
 				activeDrag: null,
 				splitPosition: null,
@@ -1504,6 +1625,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeProjectId: opened.id,
 				activeProject: opened,
 				activeThumbnail: null,
+				compareHistorySeq: null,
+				...(restoreMode !== null && {compareMode: restoreMode}),
 				debugView: null,
 				route: nextRoute,
 				// A notice still waiting to be shown stays.
@@ -1532,6 +1655,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			openProjectRequestId++;
 
 			await repository.closeActiveProject();
+			const restoreMode = compareHistoryPrevMode;
+			compareHistoryPrevMode = null;
 			transientStore.setState({
 				activeDrag: null,
 				splitPosition: null,
@@ -1546,6 +1671,8 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 				activeSource: null,
 				activeThumbnail: null,
 				history: [],
+				compareHistorySeq: null,
+				...(restoreMode !== null && {compareMode: restoreMode}),
 				stackNeedsWriteBack: false,
 				stackEnvelopeStatus: 'ok',
 				unsupportedInstances: [],
@@ -2392,6 +2519,51 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 			});
 		},
 
+		setCompareHistorySeq(seq) {
+			if (seq === null) {
+				const hadPin = get().compareHistorySeq !== null;
+				const restoreMode = compareHistoryPrevMode;
+				compareHistoryPrevMode = null;
+				set({
+					compareHistorySeq: null,
+					...(restoreMode !== null && {compareMode: restoreMode}),
+				});
+				if (hadPin) {
+					const {compareLatched, compareHolding} = transientStore.getState();
+					if (compareLatched || compareHolding) {
+						transientStore.setState({
+							compareLatched: false,
+							compareHolding: false,
+						});
+					}
+				}
+
+				return;
+			}
+
+			const state = get();
+			if (
+				!state.activeProject ||
+				transientStore.getState().geometry.cropping ||
+				state.history.every((entry) => entry.seq !== seq)
+			) {
+				return;
+			}
+
+			transientStore.setState({compareLatched: false, compareHolding: false});
+			if (state.compareMode === 'toggle') {
+				compareHistoryPrevMode ??= 'toggle';
+				set({compareHistorySeq: seq, compareMode: 'split'});
+				return;
+			}
+
+			set({compareHistorySeq: seq});
+		},
+
+		clearCompareHistory() {
+			get().setCompareHistorySeq(null);
+		},
+
 		async setTransform(projectId, transform, label) {
 			return editInOrder(async () => {
 				const active = get().activeProject;
@@ -2627,6 +2799,7 @@ export function createAppStore(deps: AppStoreDependencies): AppStoreBundle {
 		flushViewState: flushViewStateImpl,
 
 		async setCompareMode(mode) {
+			compareHistoryPrevMode = null;
 			set({compareMode: mode});
 			try {
 				await repository.updateAppState({compareMode: mode});

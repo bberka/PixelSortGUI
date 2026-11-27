@@ -55,7 +55,7 @@ export type TileImage = FrameImage & {
 
 export type CompareDraw =
 	| {readonly mode: 'none'}
-	| {readonly mode: 'original'}
+	| {readonly mode: 'original'; readonly useSideA?: boolean}
 	| {
 			readonly mode: 'split';
 			readonly position: number;
@@ -63,9 +63,12 @@ export type CompareDraw =
 	  };
 
 // A rendered result: the preview frame and any full-resolution tiles over it.
+// `size`, when set and different from the canvas `source`, contain-fits the
+// side centered inside the canvas image bounds without stretching (F31).
 export type RenderedSide = {
 	readonly frame: FrameImage | null;
 	readonly tiles: readonly TileImage[] | null;
+	readonly size?: Size | null;
 };
 
 export type DrawInput = {
@@ -85,12 +88,39 @@ export type DrawInput = {
 	readonly dpr: number;
 };
 
-type Region = {
+export type Region = {
 	readonly x: number;
 	readonly y: number;
 	readonly width: number;
 	readonly height: number;
 };
+
+/**
+ Uniformly contain-fits `inner` centered inside `outer`, preserving aspect
+ ratio so a history snapshot with a different transform never stretches (F31).
+ */
+export function containRegion(outer: Size, inner: Size): Region {
+	if (
+		!(inner.width > 0) ||
+		!(inner.height > 0) ||
+		(inner.width === outer.width && inner.height === outer.height)
+	) {
+		return {x: 0, y: 0, width: outer.width, height: outer.height};
+	}
+
+	const scale = Math.min(
+		outer.width / inner.width,
+		outer.height / inner.height,
+	);
+	const width = inner.width * scale;
+	const height = inner.height * scale;
+	return {
+		x: (outer.width - width) / 2,
+		y: (outer.height - height) / 2,
+		width,
+		height,
+	};
+}
 
 /**
  Draws the newest frame over the whole image rectangle, then each full-resolution
@@ -132,16 +162,26 @@ export function drawCanvas(input: DrawInput): void {
 		width: source.width,
 		height: source.height,
 	};
-	const drawEdited = ({frame, tiles}: RenderedSide) => {
+	const drawEdited = ({frame, tiles, size}: RenderedSide) => {
+		const target = size ? containRegion(source, size) : fullRegion;
+		const tileScaleX = size && size.width > 0 ? target.width / size.width : 1;
+		const tileScaleY =
+			size && size.height > 0 ? target.height / size.height : 1;
+
 		if (frame) {
-			drawRegion(surface, frame, fullRegion, view, viewport);
+			drawRegion(surface, frame, target, view, viewport);
 		}
 
 		for (const tile of tiles ?? []) {
 			drawRegion(
 				surface,
 				tile,
-				{x: tile.x, y: tile.y, width: tile.width, height: tile.height},
+				{
+					x: target.x + tile.x * tileScaleX,
+					y: target.y + tile.y * tileScaleY,
+					width: tile.width * tileScaleX,
+					height: tile.height * tileScaleY,
+				},
 				view,
 				viewport,
 			);
@@ -150,7 +190,9 @@ export function drawCanvas(input: DrawInput): void {
 
 	const {compare} = input;
 	if (compare?.mode === 'original') {
-		if (input.original) {
+		if (compare.useSideA && input.sideA?.frame) {
+			drawEdited(input.sideA);
+		} else if (input.original) {
 			drawRegion(surface, input.original, fullRegion, view, viewport);
 		}
 

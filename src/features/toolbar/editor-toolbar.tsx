@@ -54,6 +54,9 @@ export function EditorToolbar() {
 	const undoLabel = useAppStore(selectUndoLabel);
 	const redoLabel = useAppStore(selectRedoLabel);
 	const compareMode = useAppStore((state) => state.compareMode);
+	const comparingHistory = useAppStore(
+		(state) => state.compareHistorySeq !== null,
+	);
 	const showingOriginal = useTransientStore(selectShowingOriginal);
 	const orientation = useAppStore(selectSplitOrientation);
 	// Crop mode suspends Compare and the split view (DESIGN.md section 7.2).
@@ -188,6 +191,16 @@ export function EditorToolbar() {
 				event.altKey ||
 				bundle.transientStore.getState().geometry.cropping
 			) {
+				return;
+			}
+
+			if (
+				event.key === 'Escape' &&
+				bundle.store.getState().compareHistorySeq !== null
+			) {
+				event.preventDefault();
+				bundle.store.getState().clearCompareHistory();
+				announce('Stopped comparing history step');
 				return;
 			}
 
@@ -408,7 +421,11 @@ export function EditorToolbar() {
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>
-						{hint('Compare original', '\\', 'hold to peek')}
+						{hint(
+							comparingHistory ? 'Compare pinned step' : 'Compare original',
+							'\\',
+							'hold to peek',
+						)}
 					</TooltipContent>
 				</Tooltip>
 				<Tooltip>

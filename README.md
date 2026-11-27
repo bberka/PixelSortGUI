@@ -26,7 +26,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - RGB noise effect: add colour or monochrome noise with an amount, a grain size, a chance of dead or hot pixels, and a seed.
 - JPEG crush effect: crush 4 to 64 px blocks like a badly saved JPEG, with a quality level, optional chroma subsampling, and seeded block corruption that bends colours. It gives the same output in every browser.
 - Undo and redo, by toolbar buttons and by Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Ctrl+Y. Each step is named after the change, for example "Angle 90°". History holds 200 steps and survives a reload.
-- History panel: a list of every step, newest first. Select one to jump to it. Later steps stay listed until you make a new change. It is a History tab on desktop and tablet, and a History button in the toolbar on phones.
+- History panel: a list of every step, newest first. Select one to jump to it, or use "Compare with this" to compare any earlier or redo step against the current edit in split or toggle compare without changing your history or stacks. Later steps stay listed until you make a new change. It is a History tab on desktop and tablet, and a History button in the toolbar on phones.
 - Presets: eight built-in ones, and your own saved from the current stack. Apply one, add one to the stack, rename or delete your own.
 - Parameter panel built from each effect's definition: sliders, a range slider, an angle control, switches, choice lists, a random seed, exact number entry, per-parameter reset, "Reset all" and a "Randomize" button that gives every parameter a random valid value. Each effect also has a mix amount and a blend setting.
 - Preview canvas with zoom (including a Fit option) and pan, by wheel, keyboard and touch pinch.

@@ -15,6 +15,7 @@ export const EMPTY_STACK: EffectStack = {
 type SplitState = {
 	readonly compareMode: CompareMode;
 	readonly activeProject: ProjectRecord | null;
+	readonly compareHistorySeq?: number | null;
 };
 
 export function otherSide(side: SplitSide): SplitSide {
@@ -65,7 +66,8 @@ export function projectInstanceIds(project: ProjectRecord): Set<string> {
  while the split view is on; otherwise it is the main stack, side B.
  */
 export function selectEditingSide(state: SplitState): SplitSide {
-	return state.compareMode === 'split'
+	return state.compareMode === 'split' &&
+		(state.compareHistorySeq ?? null) === null
 		? (state.activeProject?.viewState.editSide ?? 'b')
 		: 'b';
 }

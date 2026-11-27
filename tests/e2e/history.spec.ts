@@ -272,7 +272,7 @@ test('AC-F23.5: after 205 commits the panel shows 201 entries', async ({
 		Array.from({length: 204}, (_, index) => index + 1),
 	);
 
-	const rows = historyList(page).getByRole('button');
+	const rows = historyList(page).locator('button[data-history-jump]');
 	await expect(rows).toHaveCount(201);
 	await expect(rows.first()).toContainText('Angle 204°');
 	// Commits 1 to 4 fell off; commit 5 is the oldest state still reachable.
@@ -340,11 +340,17 @@ for (const theme of THEMES) {
 			// Tab to an older row and jump with Enter, then to another with Space.
 			await entry(page, 'Angle 40°').focus();
 			await page.keyboard.press('Shift+Tab');
+			await expect(
+				page.getByRole('button', {name: 'Compare with this: Angle 50°'}),
+			).toBeFocused();
+			await page.keyboard.press('Shift+Tab');
 			await expect(entry(page, 'Angle 50°')).toBeFocused();
+			await page.keyboard.press('Tab');
 			await page.keyboard.press('Tab');
 			await page.keyboard.press('Enter');
 			await expectRows(page, labels, 'Angle 40°', [long, 'Angle 50°']);
 			await expect(entry(page, 'Angle 40°')).toBeFocused();
+			await page.keyboard.press('Tab');
 			await page.keyboard.press('Tab');
 			await page.keyboard.press('Space');
 			await expectRows(page, labels, 'Angle 30°', [
@@ -390,6 +396,332 @@ for (const theme of THEMES) {
 				await expect(
 					page.getByRole('button', {name: 'History', exact: true}),
 				).toBeFocused();
+			}
+
+			expect(consoleErrors).toEqual([]);
+		});
+	}
+}
+
+async function sampleCanvasPixel(
+	page: Page,
+	fx: number,
+	fy: number,
+): Promise<readonly [number, number, number]> {
+	return page.evaluate(
+		([xFraction, yFraction]) => {
+			const canvas = globalThis.document.querySelector<HTMLCanvasElement>(
+				'canvas[aria-label="Image canvas"]',
+			);
+			if (!canvas) {
+				throw new Error('Canvas not found');
+			}
+
+			const context = canvas.getContext('2d');
+			if (!context) {
+				throw new Error('2D context unavailable');
+			}
+
+			const x = Math.min(
+				canvas.width - 1,
+				Math.max(0, Math.floor(canvas.width * xFraction)),
+			);
+			const y = Math.min(
+				canvas.height - 1,
+				Math.max(0, Math.floor(canvas.height * yFraction)),
+			);
+			const pixel = context.getImageData(x, y, 1, 1).data;
+			return [pixel[0] ?? 0, pixel[1] ?? 0, pixel[2] ?? 0] as const;
+		},
+		[fx, fy] as const,
+	);
+}
+
+async function seedCompareHistoryProject(page: Page): Promise<void> {
+	await page.goto('/');
+	await page.evaluate(async () => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		const booted = await runtime!.ready;
+		if (booted.status !== 'ready') {
+			throw new Error('Not ready');
+		}
+
+		const width = 320;
+		const height = 240;
+		const canvas = globalThis.document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext('2d')!;
+		for (let x = 0; x < width; x += 20) {
+			ctx.fillStyle = (x / 20) % 2 === 0 ? '#ff0000' : '#00ffff';
+			ctx.fillRect(x, 0, 20, height);
+		}
+
+		const blob = await new Promise<Blob>((resolve, reject) => {
+			canvas.toBlob((result) => {
+				if (result) {
+					resolve(result);
+				} else {
+					reject(new Error('Failed to encode PNG'));
+				}
+			}, 'image/png');
+		});
+
+		const {store} = booted.bundle;
+		await store.getState().importImage({
+			name: 'Compare history',
+			blob,
+			width,
+			height,
+		});
+		const shift = await store.getState().addEffect('channelShift');
+		await store.getState().commitParam(shift.id, 'redX', 20, 'Red X 20 px');
+		await store.getState().commitParam(shift.id, 'blueX', -20, 'Blue X -20 px');
+	});
+	await expect(page.getByLabel('Image canvas')).toBeVisible();
+	await page.waitForFunction(() => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		if (runtime?.result?.status !== 'ready') {
+			return false;
+		}
+
+		const {render} = runtime.result.bundle.store.getState();
+		return render.frame?.level === 'settle' && !render.busy.settle;
+	});
+	await page.evaluate(
+		() =>
+			new Promise<void>((resolve) => {
+				globalThis.requestAnimationFrame(() => {
+					globalThis.requestAnimationFrame(() => {
+						resolve();
+					});
+				});
+			}),
+	);
+}
+
+test('AC-F31.1 AC-F31.2 AC-F31.3 AC-F31.4: compares against an earlier history step in split, horizontal split, and toggle compare without mutating history', async ({
+	page,
+}) => {
+	const consoleErrors = collectConsoleErrors(page);
+	await seedCompareHistoryProject(page);
+
+	const beforeState = await page.evaluate(async () => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		const booted = await runtime!.ready;
+		if (booted.status !== 'ready') {
+			throw new Error('Not ready');
+		}
+
+		const project = booted.bundle.store.getState().activeProject!;
+		return {
+			head: project.historyHeadSeq,
+			max: project.historyMaxSeq,
+			stackCount: project.stack.instances.length,
+			stackACount: project.stackA?.instances.length ?? 0,
+		};
+	});
+
+	// Record a pixel of the current edited result on the left side before comparing.
+	const currentLeft = await sampleCanvasPixel(page, 0.45, 0.5);
+
+	await openHistoryTab(page);
+	const compareInitial = page.getByRole('button', {
+		name: 'Compare with this: Initial',
+	});
+	await compareInitial.click();
+
+	await expect(compareInitial).toHaveAttribute('aria-pressed', 'true');
+	await expect(
+		historyList(page).locator('[data-comparing]').getByText('Comparing'),
+	).toBeVisible();
+	await expect(page.locator('[data-slot="split-label-a"]')).toContainText(
+		'Step #0: Initial',
+	);
+	await expect(page.locator('[data-slot="split-label-b"]')).toHaveText(
+		'Current',
+	);
+	await expect(
+		page.locator('[data-slot="split-divider-handle"]'),
+	).toBeVisible();
+
+	// Pixels on the left (Step #0: Initial) differ from the current edited result.
+	await expect
+		.poll(async () => sampleCanvasPixel(page, 0.45, 0.5))
+		.not.toEqual(currentLeft);
+
+	// Switch to horizontal split (Shift+S).
+	await page.keyboard.press('Shift+S');
+	await expect(page.locator('[data-slot="split-divider"]')).toHaveAttribute(
+		'data-orientation',
+		'horizontal',
+	);
+	await expect(page.locator('[data-slot="split-label-a"]')).toContainText(
+		'Step #0: Initial',
+	);
+
+	// Toggle Compare (\) shows the pinned history step full-canvas.
+	await page.keyboard.press('\\');
+	await expect(
+		page.locator('[data-slot="compare-label-history"]'),
+	).toContainText('Step #0: Initial');
+
+	// One-click exit returns to normal view.
+	await page.getByRole('button', {name: 'Stop comparing history step'}).click();
+	await expect(page.locator('[data-slot="compare-label-history"]')).toHaveCount(
+		0,
+	);
+	await expect(page.locator('[data-slot="split-divider-handle"]')).toHaveCount(
+		0,
+	);
+	await expect(compareInitial).toHaveAttribute('aria-pressed', 'false');
+
+	// History head, max, and stacks stayed completely untouched.
+	const afterState = await page.evaluate(async () => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		const booted = await runtime!.ready;
+		if (booted.status !== 'ready') {
+			throw new Error('Not ready');
+		}
+
+		const project = booted.bundle.store.getState().activeProject!;
+		return {
+			head: project.historyHeadSeq,
+			max: project.historyMaxSeq,
+			stackCount: project.stack.instances.length,
+			stackACount: project.stackA?.instances.length ?? 0,
+		};
+	});
+	expect(afterState).toEqual(beforeState);
+	expect(consoleErrors).toEqual([]);
+});
+
+test('AC-F31.5 AC-F31.6: handles different geometry transforms and clears cleanly on Escape, Undo, and crop mode', async ({
+	page,
+}) => {
+	const consoleErrors = collectConsoleErrors(page);
+	await seedCompareHistoryProject(page);
+
+	// Rotate 90° clockwise so current transform differs from earlier steps.
+	await page.evaluate(async () => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		const booted = await runtime!.ready;
+		if (booted.status !== 'ready') {
+			throw new Error('Not ready');
+		}
+
+		const {store} = booted.bundle;
+		const project = store.getState().activeProject!;
+		await store.getState().setTransform(project.id, {
+			...project.transform,
+			rotation: 90,
+		});
+	});
+
+	await openHistoryTab(page);
+	await page
+		.getByRole('button', {name: 'Compare with this: Red X 20 px'})
+		.click();
+	await expect(page.locator('[data-slot="split-label-a"]')).toContainText(
+		'Step #2: Red X 20 px',
+	);
+
+	// Wait for the side coordinator to render the pre-rotation snapshot.
+	await page.waitForFunction(() => {
+		const runtime = (globalThis as unknown as RuntimeGlobal).__psgRuntime;
+		if (runtime?.result?.status !== 'ready') {
+			return false;
+		}
+
+		const {renderA} = runtime.result.bundle.store.getState();
+		return renderA.frame?.level === 'settle' && !renderA.busy.settle;
+	});
+
+	// Escape exits history compare cleanly.
+	await page.keyboard.press('Escape');
+	await expect(page.locator('[data-slot="split-label-a"]')).toHaveCount(0);
+
+	// Pin again, then Undo clears history compare cleanly.
+	await page
+		.getByRole('button', {name: 'Compare with this: Red X 20 px'})
+		.click();
+	await expect(page.locator('[data-slot="split-label-a"]')).toContainText(
+		'Step #2: Red X 20 px',
+	);
+	await page.getByRole('button', {name: /^Undo/}).click();
+	await expect(page.locator('[data-slot="split-label-a"]')).toHaveCount(0);
+
+	// Pin again, then entering crop mode (Transform) clears history compare cleanly.
+	await page.getByRole('button', {name: 'Compare with this: Initial'}).click();
+	await expect(page.locator('[data-slot="split-label-a"]')).toContainText(
+		'Step #0: Initial',
+	);
+	await page.getByRole('button', {name: 'Transform'}).click();
+	await expect(page.locator('[data-slot="split-label-a"]')).toHaveCount(0);
+
+	expect(consoleErrors).toEqual([]);
+});
+
+for (const theme of THEMES) {
+	for (const viewport of PROOF_VIEWPORTS) {
+		test(`AC-F31.8: compare history layout and a11y at ${viewport.name} in ${theme} @a11y`, async ({
+			page,
+			browserName,
+		}) => {
+			const consoleErrors = collectConsoleErrors(page);
+			await page.emulateMedia({colorScheme: theme});
+			await page.addInitScript((stored) => {
+				globalThis.localStorage.setItem('drift:theme', stored);
+			}, theme);
+			await page.setViewportSize(viewport);
+			await seedCompareHistoryProject(page);
+
+			if (viewport.name === 'phone') {
+				await page.getByRole('button', {name: 'History', exact: true}).click();
+				await expect(page.getByRole('dialog', {name: 'History'})).toBeVisible();
+				await page
+					.getByRole('button', {name: 'Compare with this: Initial'})
+					.click();
+				// Phone sheet closes so the comparison is immediately visible.
+				await expect(page.getByRole('dialog', {name: 'History'})).toHaveCount(
+					0,
+				);
+			} else {
+				await openHistoryTab(page);
+				await page
+					.getByRole('button', {name: 'Compare with this: Initial'})
+					.click();
+			}
+
+			await expect(page.locator('[data-slot="split-label-a"]')).toContainText(
+				'Step #0: Initial',
+			);
+			await expect(page.locator('[data-slot="split-label-b"]')).toHaveText(
+				'Current',
+			);
+			await expect(
+				page.getByRole('button', {name: 'Stop comparing history step'}),
+			).toBeVisible();
+
+			const pageOverflow = await page.evaluate(
+				() =>
+					globalThis.document.documentElement.scrollWidth -
+					globalThis.innerWidth,
+			);
+			expect(pageOverflow).toBeLessThanOrEqual(0);
+
+			await assertNoA11yViolations(page);
+
+			if (
+				process.env.CAPTURE_COMPARE_HISTORY_PROOF === '1' &&
+				browserName === 'chromium'
+			) {
+				const outDir = join(process.cwd(), '.proof', 'compare-history');
+				await mkdir(outDir, {recursive: true});
+				await page.screenshot({
+					path: join(outDir, `${viewport.name}-${theme}.png`),
+					animations: 'disabled',
+				});
 			}
 
 			expect(consoleErrors).toEqual([]);

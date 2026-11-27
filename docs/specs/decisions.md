@@ -7,6 +7,7 @@ Updated with project files (F25), full backup/restore (F17), and multi-image ble
 Updated with split view decisions (D33 to D35) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with cloud backup and sync decisions (D39 to D41, Q20 to Q27) by Claude Sonnet 5.5 (apx, high thinking), specification subagent.
 Updated with the backup size limit decision (D44) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
+Updated with `pixelSort` v2 decisions (D50) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift decisions and open questions
 
@@ -320,6 +321,15 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Reason:** `fflate` 0.8.3 truncates a larger offset to 32 bits without an error, so (a) means a second ZIP writer that can only be proven with multi-gigabyte files, for a backup the browser also has to assemble as one blob. (b) loses about 295 MB of the old cap, keeps one writer, and a large library can be split with the project checkboxes. The shown limit stays "4 GB".
 - **Cost:** A library over 4 GB needs two or more backups.
 - **Revisit if:** Users hit the limit with a single selection often, or one project alone can exceed it (`F26`'s eight extra images stay under 2 GB).
+
+### D50. Pixel sort v2: independent per-channel sort, bijective interval transforms and v1 migration (2026-11-27)
+
+- **Options considered:**
+  - Channels: (a) three independent R/G/B boolean toggles (which allows an all-off no-op state and cannot distinguish whole-pixel RGBA sorting by `sortKey` from independent RGB sorting); (b) a single `channelMode` enum (`rgba`, `rgb`, `r`, `g`, `b`) defaulting to `rgba`, where per-channel modes sort each active channel by its own 8-bit value (`byte * 257`), use channel-keyed random purpose codes (`P_CHANNEL_ORDER = 5`, `P_CHANNEL_SHUFFLE = 6`), and hide `sortKey`.
+  - Interval transforms: (a) non-bijective reflection that duplicates one half; (b) five exact integer bijections (`none`, `reverse`, `mirror`, `splice`, `fold`) applied to each ordered `sort` or `gradient` interval.
+- **Choice:** Option (b) for both, bumping `pixelSort` to `version: 2` with `migrations[1]` filling `channelMode: 'rgba'` and `intervalTransform: 'none'` (`engine.md` section 5).
+- **Reason:** One `channelMode` enum has no invalid/dead state, renders cleanly as a single dropdown across all viewport widths, keeps `rgba` defaults 100% byte-identical to v1, and makes `rgb` equal the exact channel-wise composition of `r`, `g` and `b` with input alpha. Bijective integer formulas preserve every channel's multiset for `fill: 'sort'`, avoid floating-point divergence across JS engines, and keep `mirror` (centre peak) and `fold` (centre valley) visually distinct. Providing `migrations[1]` upgrades v1 instances without emitting a `params-fixed` warning.
+- **Revisit if:** Users ask to sort a single channel by a different pixel key (such as sorting red by hue) or to pass a custom splice offset.
 
 ---
 

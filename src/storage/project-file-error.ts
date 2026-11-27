@@ -8,10 +8,12 @@ export type ProjectFileErrorCode =
 	| 'newer-version'
 	| 'missing-source'
 	| 'damaged-source'
+	| 'missing-mask'
+	| 'damaged-mask'
 	| 'unreadable-image';
 
 export type ProjectFileErrorDetail = {
-	// The archive path of the entry, for the two image data errors.
+	// The archive path of the entry, for the image and mask data errors.
 	path?: string;
 	// The `formatVersion` of the file, for `newer-version`.
 	version?: unknown;
@@ -48,6 +50,14 @@ export function projectOpenMessage(
 			return `${prefix} image data is damaged (${path}).`;
 		}
 
+		case 'missing-mask': {
+			return `${prefix} missing mask data (${path}).`;
+		}
+
+		case 'damaged-mask': {
+			return `${prefix} mask data is damaged (${path}).`;
+		}
+
 		case 'unreadable-image': {
 			return `${prefix} embedded image is unreadable or exceeds 16,384 px.`;
 		}
@@ -56,7 +66,7 @@ export function projectOpenMessage(
 
 export type ProjectSaveErrorCode = Extract<
 	ProjectFileErrorCode,
-	'too-large' | 'missing-source' | 'invalid-metadata'
+	'too-large' | 'missing-source' | 'missing-mask' | 'invalid-metadata'
 >;
 
 export function projectSaveMessage(
@@ -71,6 +81,10 @@ export function projectSaveMessage(
 
 		case 'missing-source': {
 			return `${prefix} its image data is missing.`;
+		}
+
+		case 'missing-mask': {
+			return `${prefix} its mask data is missing.`;
 		}
 
 		case 'invalid-metadata': {

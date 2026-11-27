@@ -16,9 +16,11 @@ import {
 	type BackupSettingsPayload,
 } from './backup-format.ts';
 import {repairProjectGeometry, resolveStoredGeometry} from './geometry.ts';
+import {referencedMaskHashes} from './masks.ts';
 import {
 	buildProjectRecords,
 	importedProjectName,
+	toMaskRecord,
 	toSourceRecord,
 	type ImportedRecords,
 	type ImportedThumbnail,
@@ -27,6 +29,7 @@ import {
 import {
 	StorageNotFoundError,
 	StorageValidationError,
+	type MaskRecord,
 	type ProjectRecord,
 	type SourceRecord,
 	type UserPresetRecord,
@@ -56,6 +59,7 @@ export type BackupPreviewProject = {
 	height: number;
 	sourceHashes: string[];
 	sourceBytes: number;
+	maskHashes: string[];
 	status: BackupProjectStatus;
 };
 
@@ -69,6 +73,8 @@ export type BackupPreview = {
 	localPresetCount: number;
 	// Bytes of each source of the backup that is not stored yet.
 	newSources: Record<string, number>;
+	// The same for its painted masks.
+	newMasks: Record<string, number>;
 };
 
 // A backup that passed every check, ready to import.
@@ -105,6 +111,7 @@ export type BackupLibrary = {
 export type BackupPlan = BackupImportResult & {
 	// Every source the written projects need.
 	sources: BackupContents['sources'];
+	masks: BackupContents['masks'];
 	records: ImportedRecords[];
 };
 
@@ -115,6 +122,8 @@ export type BackupImportStore = {
 	hasSource(sha256: string): Promise<boolean>;
 	// Stores `source` unless it is there; `true` when this call inserted it.
 	stageSource(source: SourceRecord, signal?: AbortSignal): Promise<boolean>;
+	hasMask(sha256: string): Promise<boolean>;
+	stageMask(mask: MaskRecord, signal?: AbortSignal): Promise<boolean>;
 	// Reads the library, plans from it and writes the plan, all or nothing.
 	commit(
 		plan: (library: BackupLibrary) => BackupPlan,
@@ -122,6 +131,7 @@ export type BackupImportStore = {
 	): Promise<BackupPlan>;
 	// Deletes those of the sources that no project refers to.
 	discardSources(hashes: readonly string[]): Promise<void>;
+	discardMasks(hashes: readonly string[]): Promise<void>;
 	cleanupOrphanedSources(): Promise<number>;
 	cleanupOrphanedMasks(): Promise<number>;
 };
@@ -201,6 +211,7 @@ function backupProjectStatus(
 function buildPreview(
 	contents: BackupContents,
 	library: BackupLibrary,
+	// Of the sources and masks that are stored already.
 	storedHashes: ReadonlySet<string>,
 ): BackupPreview {
 	const local = new Map(library.projects.map((item) => [item.id, item]));
@@ -225,6 +236,7 @@ function buildPreview(
 					(sum, hash) => sum + (sizes.get(hash) ?? 0),
 					0,
 				),
+				maskHashes: referencedMaskHashes(project, history ?? []),
 				status: backupProjectStatus(project, local.get(project.id)),
 			};
 		}),
@@ -235,23 +247,30 @@ function buildPreview(
 		newSources: Object.fromEntries(
 			[...sizes].filter(([hash]) => !storedHashes.has(hash)),
 		),
+		newMasks: Object.fromEntries(
+			contents.masks
+				.filter((mask) => !storedHashes.has(mask.sha256))
+				.map((mask) => [mask.sha256, mask.byteLength]),
+		),
 	};
 }
 
-// Bytes of new images that importing these projects stores.
+// Bytes of new images and masks that importing these projects stores.
 export function backupNewBytes(
 	preview: BackupPreview,
 	projectIds: readonly string[],
 ): number {
 	const chosen = new Set(projectIds);
 	const hashes = new Set(
-		preview.projects
-			.filter((project) => chosen.has(project.id))
-			.flatMap((project) => project.sourceHashes),
+		preview.projects.flatMap((project) =>
+			chosen.has(project.id)
+				? [...project.sourceHashes, ...project.maskHashes]
+				: [],
+		),
 	);
 	let bytes = 0;
 	for (const hash of hashes) {
-		bytes += preview.newSources[hash] ?? 0;
+		bytes += preview.newSources[hash] ?? preview.newMasks[hash] ?? 0;
 	}
 
 	return bytes;
@@ -297,6 +316,7 @@ export async function inspectBackupArchive(
 	}: BackupTransferDependencies,
 	library: {
 		findSource(sha256: string): Promise<SourceRecord | undefined>;
+		findMask(sha256: string): Promise<MaskRecord | undefined>;
 		read(): Promise<BackupLibrary>;
 	},
 ): Promise<BackupInspection> {
@@ -347,6 +367,13 @@ export async function inspectBackupArchive(
 		}
 
 		step();
+	}
+
+	for (const {sha256} of contents.masks) {
+		signal?.throwIfAborted();
+		if (await library.findMask(sha256)) {
+			storedHashes.add(sha256);
+		}
 	}
 
 	const thumbnails = new Map<string, ImportedThumbnail>();
@@ -400,6 +427,18 @@ function sourcesOf(
 		),
 	);
 	return contents.sources.filter((source) => hashes.has(source.sha256));
+}
+
+function masksOf(
+	contents: BackupContents,
+	projects: readonly BackupProjectContents[],
+): BackupContents['masks'] {
+	const hashes = new Set(
+		projects.flatMap(({project, history}) =>
+			referencedMaskHashes(project, history ?? []),
+		),
+	);
+	return contents.masks.filter((mask) => hashes.has(mask.sha256));
 }
 
 // Merge: the presets to add to `local`, skipping those it already holds.
@@ -479,6 +518,7 @@ export function planBackupImport(
 	return {
 		mode: selection.mode,
 		sources: sourcesOf(contents, written),
+		masks: masksOf(contents, written),
 		records,
 		projects: records.map((record) => record.project),
 		skippedProjectCount: chosen.length - written.length,
@@ -489,8 +529,9 @@ export function planBackupImport(
 }
 
 /**
- Imports the selection in four phases: check the quota, store the new images,
- write everything else in one transaction, then free images nothing uses. A
+ Imports the selection in four phases: check the quota, store the new images
+ and masks, write everything else in one transaction, then free what nothing
+ uses. A
  failure or a cancel before the third phase commits leaves the library as it was.
  */
 export async function runBackupImport(
@@ -510,30 +551,60 @@ export async function runBackupImport(
 		}
 	}
 
-	const totalBytes = missing.reduce((sum, item) => sum + item.byteLength, 0);
+	const missingMasks: BackupContents['masks'] = [];
+	for (const mask of masksOf(contents, chosen)) {
+		if (!(await store.hasMask(mask.sha256))) {
+			missingMasks.push(mask);
+		}
+	}
+
+	const totalBytes = [...missing, ...missingMasks].reduce(
+		(sum, item) => sum + item.byteLength,
+		0,
+	);
 	if (totalBytes > 0) {
 		await store.checkQuota(totalBytes);
 	}
 
 	signal?.throwIfAborted();
 	const inserted: string[] = [];
+	const insertedMasks: string[] = [];
+	// A failed cleanup leaves orphans, which the next startup deletes.
+	const discardInserted = async () =>
+		Promise.allSettled([
+			store.discardSources(inserted),
+			store.discardMasks(insertedMasks),
+		]);
 	let plan: BackupPlan;
 	try {
 		let doneBytes = 0;
 		onProgress?.({stage: 'importing', fraction: 0});
+		const staged = (path: string, bytes: number) => {
+			doneBytes += bytes;
+			// The last tenth is the commit.
+			onProgress?.({
+				stage: 'importing',
+				path,
+				fraction: (doneBytes / totalBytes) * 0.9,
+			});
+		};
+
 		for (const source of missing) {
 			signal?.throwIfAborted();
 			if (await store.stageSource(toSourceRecord(source, now()), signal)) {
 				inserted.push(source.sha256);
 			}
 
-			doneBytes += source.byteLength;
-			// The last tenth is the commit.
-			onProgress?.({
-				stage: 'importing',
-				path: source.path,
-				fraction: (doneBytes / totalBytes) * 0.9,
-			});
+			staged(source.path, source.byteLength);
+		}
+
+		for (const mask of missingMasks) {
+			signal?.throwIfAborted();
+			if (await store.stageMask(toMaskRecord(mask, now()), signal)) {
+				insertedMasks.push(mask.sha256);
+			}
+
+			staged(mask.path, mask.byteLength);
 		}
 
 		signal?.throwIfAborted();
@@ -546,19 +617,19 @@ export async function runBackupImport(
 			signal,
 		);
 	} catch (error) {
-		// A failed cleanup leaves orphans, which the next startup deletes.
-		await store.discardSources(inserted).catch(() => undefined);
+		await discardInserted();
 		throw error;
 	}
 
 	// The import is committed: nothing below may fail it.
-	const cleanup =
-		plan.mode === 'replace'
-			? [store.cleanupOrphanedSources(), store.cleanupOrphanedMasks()]
-			: [store.discardSources(inserted)];
-	await Promise.allSettled(cleanup);
+	await (plan.mode === 'replace'
+		? Promise.allSettled([
+				store.cleanupOrphanedSources(),
+				store.cleanupOrphanedMasks(),
+			])
+		: discardInserted());
 	onProgress?.({stage: 'importing', fraction: 1});
-	const {sources, records, ...result} = plan;
+	const {sources, masks, records, ...result} = plan;
 	return result;
 }
 

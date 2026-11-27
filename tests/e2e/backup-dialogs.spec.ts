@@ -357,7 +357,7 @@ test.describe('backup dialogs', () => {
 			zipSync({
 				...files,
 				'manifest.json': strToU8(
-					JSON.stringify({...manifest, backupVersion: 2}),
+					JSON.stringify({...manifest, backupVersion: 3}),
 				),
 			}),
 		);
@@ -370,7 +370,7 @@ test.describe('backup dialogs', () => {
 			{
 				file: newer,
 				message:
-					"Can't import backup: format version 2 is newer than this app supports. Update the app and try again.",
+					"Can't import backup: format version 3 is newer than this app supports. Update the app and try again.",
 			},
 		];
 

@@ -10,7 +10,6 @@ import {
 } from './backup-error.ts';
 import {readBackupDocuments} from './backup-documents.ts';
 import {
-	BACKUP_FORMAT_VERSION,
 	MAX_BACKUP_BYTES,
 	MAX_BACKUP_ENTRIES,
 	backupFileName,
@@ -28,10 +27,13 @@ import {
 	type BackupProjectEntry,
 } from './backup-format.ts';
 import {
+	archiveMask,
 	archiveSource,
 	createZipWriter,
+	isMaskData,
 	progressReporter,
 	savedHistory,
+	savedMasks,
 	savedPayload,
 	sha256Hex,
 	thumbnailPathFor,
@@ -39,11 +41,13 @@ import {
 import {
 	InvalidMetadata,
 	MAX_JSON_BYTES,
+	MAX_MASK_BYTES,
 	MAX_SOURCE_BYTES,
 	MAX_THUMBNAIL_BYTES,
-	PROJECT_FORMAT_VERSION,
 	THUMBNAIL_TYPES,
 	ensure,
+	hasMask,
+	type ArchiveMaskEntry,
 	type ArchiveOptions,
 	type ArchiveSourceEntry,
 	type ThumbnailPath,
@@ -128,6 +132,9 @@ export async function writeBackup(
 		input.sources.map((source) => [source.sha256, source]),
 	);
 	const sources = new Map<string, ArchiveSourceEntry>();
+	const storedMasks = new Map(input.masks?.map((mask) => [mask.sha256, mask]));
+	const masks = new Map<string, ArchiveMaskEntry>();
+	let masked = false;
 	const projects: BackupProjectEntry[] = [];
 	const ids = new Set<string>();
 	for (const item of input.projects) {
@@ -178,6 +185,27 @@ export async function writeBackup(
 			totalSourceBytes += source.blob.size;
 		}
 
+		const projectMasks = savedMasks(payload, history, storedMasks);
+		if (!projectMasks) {
+			throw exportError('export-missing-mask', name);
+		}
+
+		for (const mask of projectMasks) {
+			if (masks.has(mask.sha256)) {
+				continue;
+			}
+
+			if (mask.blob.size > MAX_MASK_BYTES) {
+				throw exportError('export-too-large');
+			}
+
+			const entry = archiveMask(mask);
+			masks.set(mask.sha256, entry);
+			addMedia(entry.path, mask.blob);
+		}
+
+		masked ||= hasMask([payload, ...(history ?? [])]);
+
 		const paths = backupProjectPaths(payload.id);
 		addJson(paths.project, payload);
 		if (history) {
@@ -207,9 +235,13 @@ export async function writeBackup(
 
 	const {presets, settings} = input;
 	if (presets) {
-		addJson('presets.json', {
-			presets: checked(() => presetsValue({presets}), 'export-invalid-record'),
-		});
+		const written = checked(
+			() => presetsValue({presets}),
+			'export-invalid-record',
+		);
+		// After stripping: only a brightness mask is left in a preset.
+		masked ||= hasMask(written);
+		addJson('presets.json', {presets: written});
 	}
 
 	if (settings) {
@@ -223,8 +255,8 @@ export async function writeBackup(
 		() =>
 			backupManifestValue({
 				kind: 'backup',
-				backupVersion: BACKUP_FORMAT_VERSION,
-				projectFormatVersion: PROJECT_FORMAT_VERSION,
+				backupVersion: masked ? 2 : 1,
+				projectFormatVersion: masked ? 2 : 1,
 				appVersion: input.appVersion,
 				exportedAt: exportedAt.toISOString(),
 				scope: input.scope,
@@ -232,6 +264,7 @@ export async function writeBackup(
 				includesPresets: presets !== undefined,
 				includesSettings: settings !== undefined,
 				sources: [...sources.values()],
+				...(masked && {masks: [...masks.values()]}),
 				projects,
 				presetCount: presets?.length ?? 0,
 			}),
@@ -280,6 +313,10 @@ function entryLimit(path: string): number | undefined {
 
 	if (/^projects\/[^/]+\/thumbnail\.(?:webp|jpg)$/.test(path)) {
 		return MAX_THUMBNAIL_BYTES;
+	}
+
+	if (path.startsWith('masks/')) {
+		return MAX_MASK_BYTES;
 	}
 
 	return path.startsWith('sources/') ? MAX_SOURCE_BYTES : undefined;
@@ -331,6 +368,14 @@ async function readContents(
 
 		return {source, entry};
 	});
+	const maskEntries = (manifest.masks ?? []).map((mask) => {
+		const entry = directory.entries.get(mask.path);
+		if (!entry) {
+			throw importError('missing-mask', {path: mask.path});
+		}
+
+		return {mask, entry};
+	});
 	const thumbnailEntries = manifest.projects.map((project) =>
 		project.thumbnailPath
 			? directory.entries.get(project.thumbnailPath)
@@ -340,6 +385,7 @@ async function readContents(
 	let mediaBytes = 0;
 	for (const entry of [
 		...sourceEntries.map(({entry}) => entry),
+		...maskEntries.map(({entry}) => entry),
 		...thumbnailEntries,
 	]) {
 		mediaBytes += entry?.size ?? 0;
@@ -357,6 +403,21 @@ async function readContents(
 		});
 	};
 
+	// A stored entry stays on disk as a slice of the file, so a large backup
+	// does not have to fit in memory.
+	const entryBlob = async (
+		entry: ZipEntry,
+		bytes: Uint8Array<ArrayBuffer>,
+		type: string,
+	) =>
+		entry.method === 0
+			? (await zipEntryData(file, entry, directory.dataEnd)).slice(
+					0,
+					bytes.length,
+					type,
+				)
+			: new Blob([bytes], {type});
+
 	const sources: BackupContents['sources'] = [];
 	for (const {source, entry} of sourceEntries) {
 		const bytes = await readMedia(entry, MAX_SOURCE_BYTES);
@@ -367,17 +428,20 @@ async function readContents(
 			throw importError('damaged-source', {path: source.path});
 		}
 
-		// A stored entry stays on disk as a slice of the file, so a large backup
-		// does not have to fit in memory.
-		const blob =
-			entry.method === 0
-				? (await zipEntryData(file, entry, directory.dataEnd)).slice(
-						0,
-						bytes.length,
-						source.mimeType,
-					)
-				: new Blob([bytes], {type: source.mimeType});
-		sources.push({...source, blob});
+		sources.push({
+			...source,
+			blob: await entryBlob(entry, bytes, source.mimeType),
+		});
+	}
+
+	const masks: BackupContents['masks'] = [];
+	for (const {mask, entry} of maskEntries) {
+		const bytes = await readMedia(entry, MAX_MASK_BYTES);
+		if (!(await isMaskData(bytes, mask))) {
+			throw importError('damaged-mask', {path: mask.path});
+		}
+
+		masks.push({...mask, blob: await entryBlob(entry, bytes, '')});
 	}
 
 	const projects: BackupProjectContents[] = [];
@@ -394,7 +458,7 @@ async function readContents(
 	}
 
 	signal?.throwIfAborted();
-	return {manifest, projects, sources, presets, settings};
+	return {manifest, projects, sources, masks, presets, settings};
 }
 
 /**

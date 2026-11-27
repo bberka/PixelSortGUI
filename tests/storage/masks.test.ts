@@ -21,12 +21,11 @@ import {allRecords} from './idb-helpers.ts';
 
 const LIMIT = 'A project can use at most 8 extra blend and mask images.';
 
-// A real asset: a small painted grid whose pixels are all `value`.
-async function asset(value: number): Promise<NewMask> {
+// A real asset: a painted grid, by default small, whose pixels are all `value`.
+async function asset(value: number, size = {width: 4, height: 3}) {
 	const {sha256, width, height, compressed} = await encodeMaskAsset({
-		width: 4,
-		height: 3,
-		data: new Uint8Array(12).fill(value),
+		...size,
+		data: new Uint8Array(size.width * size.height).fill(value),
 	});
 	return {sha256, width, height, blob: new Blob([compressed])};
 }
@@ -285,7 +284,8 @@ describe.each(adapters)('masks on $name', ({create}) => {
 	it('recomputes the references when a stack is saved or a file imported', async () => {
 		const {repository} = await create();
 		const project = await add(repository);
-		const mask = await asset(1);
+		// An export needs the grid of the source.
+		const mask = await asset(1, SOURCE_SIZE);
 		await commit(repository, project.id, painted(mask), {newMasks: [mask]});
 		const other = await add(repository, 2);
 		await repository.deleteProject(other.id);

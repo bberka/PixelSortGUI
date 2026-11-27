@@ -295,11 +295,11 @@ for (const adapter of adapters) {
 			const {blob} = await exportedFile();
 			const {repository} = await adapter.create();
 			const newer = await editedArchive(blob, ({manifest}) => {
-				manifest.formatVersion = 2;
+				manifest.formatVersion = 3;
 			});
 
 			await expect(repository.importProjectFile(newer, NAME)).rejects.toThrow(
-				`${PREFIX} project format version 2 is newer than this app supports. Update the app and try again.`,
+				`${PREFIX} project format version 3 is newer than this app supports. Update the app and try again.`,
 			);
 			await expectNothingStored(repository);
 		});

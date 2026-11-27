@@ -12,6 +12,7 @@ Updated with single-project save and import in the repository and app store (sec
 Updated with the backup size limit, validation, commit rules and modules (section 8.4) by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with database version 3 and reference-counted extra sources (section 8.5) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with database version 4 and mask storage (`F29`, section 8.6) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
+Updated with masks in project files and backups (section 8.6) by Claude Sonnet 5.5 (apx, low thinking), implementation subagent.
 
 # Drift persistence spec
 
@@ -198,10 +199,10 @@ All durable mutations use explicit IndexedDB transactions with `durability: 'def
 | Generate result thumbnail (F2) | `thumbnails` | Within 500 ms after `settle` render of a commit or initial import; a render made while an extra source was still loading is skipped ([engine.md section 8.3](engine.md#83-scheduling)) | Worker or OffscreenCanvas scales the `settle` bitmap to longest side ≤ 512 px, encodes WebP (or JPEG q=0.80 where WebP encoding is unavailable), writes `ThumbnailRecord`. Must finish within 5 s of commit (AC-F2.2). |
 | Rename project (F2) | `projects` | Immediate | Validates 1..120 chars trimmed, updates `name` and `updatedAt` (AC-F2.3). |
 | Duplicate project (F2) | `projects`, `history`, `thumbnails` | Immediate | One `readwrite` transaction: copies `ProjectRecord` with new UUID, name `"<name> copy"` (truncated to 120 chars), same `sourceHash` (no blob copy), fresh default `viewState` centred on the effective size, same `stack`, `stackA`, `transform` and `exportSettings`; copies all `history` rows under new `projectId`; copies `thumbnail` row if present (AC-F2.4). |
-| Save project file (F25) | none (reads only) | On request | Reads the project, its source, thumbnail and history (when included) in one `readonly` transaction, then writes the file in the archive worker (section 8.3.5). |
-| Open project file (F25) | `sources`, `projects`, `history`, `thumbnails`, `meta` | Immediate per file | Validates the whole file first, then writes one atomic transaction (section 8.3.5). Ends the first launch and triggers the automatic persistence request, as an image import does (section 7.3). |
+| Save project file (F25) | none (reads only) | On request | Reads the project, its source, masks, thumbnail and history (when included) in one `readonly` transaction, then writes the file in the archive worker (section 8.3.5). |
+| Open project file (F25) | `sources`, `masks`, `projects`, `history`, `thumbnails`, `meta` | Immediate per file | Validates the whole file first, then writes one atomic transaction (section 8.3.5). Ends the first launch and triggers the automatic persistence request, as an image import does (section 7.3). |
 | Export backup (F17) | none (reads only) | On request | Reads the chosen records in one `readonly` transaction, then writes the ZIP in the archive worker (section 8.4). |
-| Import backup (F17) | `sources`, `projects`, `history`, `thumbnails`, `presets`, `meta` | On confirmation | Validates the whole file first, then stores new sources and commits everything else in one transaction (section 8.4.4). |
+| Import backup (F17) | `sources`, `masks`, `projects`, `history`, `thumbnails`, `presets`, `meta` | On confirmation | Validates the whole file first, then stores new sources and masks and commits everything else in one transaction (section 8.4.4). |
 | Delete project (F2) | `projects`, `history`, `thumbnails`, `sources`, `meta` | Immediate after confirmation | One `readwrite` transaction: deletes `ProjectRecord`, all its `history` rows, and its `ThumbnailRecord`; clears `activeProjectId` if it matched; for each hash in its `referencedSourceHashes`, deletes the `sources` record when no remaining project refers to it (AC-F2.5, section 8.5). |
 | Create / Rename / Delete user preset (F10) | `presets` | Immediate | Writes or deletes `UserPresetRecord`. |
 | Change theme / compare mode (F11, F14) | `meta` (+ `localStorage` for theme) | Immediate | Writes `meta.appState`; theme changes also call `localStorage.setItem('drift:theme', theme)` synchronously. |
@@ -404,7 +405,7 @@ sources/
 `manifest.json`:
 
 ```ts
-export const PROJECT_FORMAT_VERSION = 1;
+export const PROJECT_FORMAT_VERSION = 2; // the newest version read, section 8.6
 
 export type ArchiveSourceEntry = {
 	sha256: string; // 64 lowercase hex characters
@@ -417,12 +418,13 @@ export type ArchiveSourceEntry = {
 
 export type ProjectFileManifest = {
 	kind: 'project';
-	formatVersion: 1; // 2 when the file holds a mask, section 8.6
+	formatVersion: 1 | 2; // 2 when the file holds a mask, section 8.6
 	appVersion: string; // stamped at build time (e.g. '0.2.0', or '0.x (dev)')
 	exportedAt: string; // ISO 8601 UTC timestamp
 	includesHistory: boolean;
 	primarySourceHash: string; // matches project.json sourceHash
 	sources: ArchiveSourceEntry[]; // primary source first, followed by any F26 secondary sources
+	masks?: ArchiveMaskEntry[]; // version 2 only, section 8.6
 	thumbnailPath: string | null; // 'thumbnail.webp' | 'thumbnail.jpg' | null
 };
 ```
@@ -464,8 +466,8 @@ export type ProjectHistoryPayload = {
 
 #### 8.3.3 Format versions and migrations
 
-- `manifest.formatVersion` starts at `1` and increments only when the archive directory layout or `manifest.json` / `project.json` schema changes incompatibly.
-- **Older version (`formatVersion < PROJECT_FORMAT_VERSION`):** Run pure sequential migrators `projectFileMigrations[v]` in memory on the parsed `manifest.json`, `project.json` and `history.json` before validation and DB write. A version below 1, or one with no migrator, is invalid metadata. Version 1 is the first, so the table is empty.
+- `manifest.formatVersion` started at `1` and increments only when the archive directory layout or `manifest.json` / `project.json` schema changes incompatibly.
+- **Older version (`formatVersion < PROJECT_FORMAT_VERSION`):** Run pure sequential migrators `projectFileMigrations[v]` in memory on the parsed `manifest.json`, `project.json` and `history.json` before validation and DB write. A version below 1, or one with no migrator, is invalid metadata. `projectFileMigrations[1]` adds nothing (section 8.6).
 - **Newer version (`formatVersion > PROJECT_FORMAT_VERSION`):** Reject before writing anything to IndexedDB with: `"Can't open <file name>: project format version <v> is newer than this app supports. Update the app and try again."`
 - **Optional `transform` field:** A `project.json` or history entry without `transform` reads as `IDENTITY_TRANSFORM` (`{rotation: 0, flipX: false, flipY: false, crop: null, resize: null}`). A `transform` that is present but does not fit the source size is invalid metadata: a file is never repaired the way a stored record is (section 8.1).
 - **Effect stack and instance versions:** Unknown effect `type`s and instances with `version > def.version` are **not** errors. They are kept verbatim (AC-F4.6), skipped when rendering, and reported after import via a non-blocking toast: `"Opened <name> with <N> unsupported effect(s)."` Older instance versions migrate lazily on open via `def.migrations` (section 6).
@@ -514,7 +516,7 @@ The import step then checks each source in this order:
 
 - A source already in `sources` is not decoded again. The file's width and height for it must equal the stored ones, else the metadata is invalid.
 - A new source is decoded with `probeImageDimensions`. A source that does not decode, or has a side over 16,384 px, is unreadable. A decoded size that differs from the file's declared width and height is invalid metadata.
-- The quota check runs last, and only when there is at least one new source. The in-memory fallback uses no browser storage, so it has no quota check.
+- The quota check runs last, over the new sources and masks (section 8.6), and only when there is at least one. The in-memory fallback uses no browser storage, so it has no quota check.
 
 **Save errors.** The writer checks the metadata and sizes it writes against the same rules. It does not re-hash the stored source bytes:
 
@@ -571,12 +573,13 @@ Using the exact same `ProjectFilePayload`, `ProjectHistoryPayload`, and `Archive
 `manifest.json`:
 
 ```ts
-export const BACKUP_FORMAT_VERSION = 1;
+export const BACKUP_FORMAT_VERSION = 2; // the newest version read, section 8.6
 
 export type BackupManifest = {
 	kind: 'backup';
-	backupVersion: 1; // 2 when the backup holds a mask, section 8.6
-	projectFormatVersion: 1; // matches PROJECT_FORMAT_VERSION for every project.json inside
+	backupVersion: 1 | 2; // 2 when the backup holds a mask, section 8.6
+	projectFormatVersion: 1 | 2; // of every project.json inside
+	masks?: ArchiveMaskEntry[]; // version 2 only, section 8.6
 	appVersion: string; // stamped at build time, e.g. '0.2.0'
 	exportedAt: string; // ISO 8601 UTC timestamp
 	scope: 'library' | 'selection';
@@ -828,7 +831,7 @@ The repository checks the record's shape, not its hash; the mask worker that mad
 | Hash, header or length mismatch, or decompression failure | `"Can't open <file name>: mask data is damaged (<path>)."` | `"Can't import backup: mask data is damaged (<path>)."` |
 
 - A save or export when a referenced mask is not stored fails with `"Can't save <project name>: its mask data is missing."` or `"Can't export backup: the mask data of <project name> is missing."`
-- Import writes new masks in the project-file transaction. A backup stages them in phase 2 beside the sources, includes them in the quota check, re-inserts a missing one in phase 3 and cleans them up with the sources.
+- Import writes new masks in the project-file transaction, and counts their bytes in its quota check. A backup stages them in phase 2 beside the sources, includes them in the quota check, re-inserts a missing one in phase 3 and cleans them up with the sources.
 - **Cloud (section 11):** masks upload once to `v1/masks/<sha256>.mask`, are listed in `CloudHead.masks`, and follow the source rules for upload order, verification and the 7-day cleanup.
 
 ## 9. Restore sequence on startup

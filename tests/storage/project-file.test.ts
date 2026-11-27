@@ -383,7 +383,7 @@ describe('readProjectFile', () => {
 		});
 	});
 
-	it.each([2, 1.5, '2'])(
+	it.each([3, 1.5, '2'])(
 		'refuses format version %s as newer (AC-F25.7)',
 		async (version) => {
 			const blob = await editedArchive(await saved(), ({manifest, project}) => {

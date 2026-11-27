@@ -530,10 +530,10 @@ for (const adapter of adapters) {
 				async (blob) =>
 					editedBackup(blob, (_, json) => {
 						json('manifest.json', (value) => {
-							value.backupVersion = 2;
+							value.backupVersion = 3;
 						});
 					}),
-				'format version 2 is newer than this app supports. Update the app and try again.',
+				'format version 3 is newer than this app supports. Update the app and try again.',
 			],
 			[
 				'a missing manifest',

@@ -384,10 +384,10 @@ describe('readBackup', () => {
 		[
 			'a newer backup version (AC-F17.7)',
 			manifest((value) => {
-				value.backupVersion = 2;
+				value.backupVersion = 3;
 				value.projects = 'a shape this version does not know';
 			}),
-			`${PREFIX} format version 2 is newer than this app supports. Update the app and try again.`,
+			`${PREFIX} format version 3 is newer than this app supports. Update the app and try again.`,
 		],
 		[
 			'a newer project format',

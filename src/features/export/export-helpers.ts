@@ -225,16 +225,42 @@ export function formatByteSize(bytes: number): string {
 	return `${mb < 10 ? mb.toFixed(2) : mb.toFixed(1)} MB`;
 }
 
-export function parseCustomFileSizeToKb(
-	value: number,
-	unit: FileSizeUnit,
-): number {
-	if (!Number.isFinite(value)) {
-		return 1024;
-	}
+/**
+ The number in an export field, or `null` while it is empty, not a number or
+ outside `min` to `max`. Nothing is clamped: the dialog asks for a new value.
+ */
+export function parseExportNumber(
+	draft: string,
+	{min, max}: {readonly min: number; readonly max: number},
+): number | null {
+	const value = Number(draft);
+	return Number.isSafeInteger(value) &&
+		draft.trim().length > 0 &&
+		value >= min &&
+		value <= max
+		? value
+		: null;
+}
 
-	const kb = unit === 'MB' ? value * 1024 : value;
-	return clampMaxFileSizeKb(kb);
+/**
+ The same for the custom maximum size, which takes decimals, in whole KB.
+ */
+export function parseExportSizeKb(
+	draft: string,
+	unit: FileSizeUnit,
+): number | null {
+	const value = draft.trim().length > 0 ? Number(draft) : NaN;
+	const kb = Math.round(unit === 'MB' ? value * 1024 : value);
+	return kb >= MIN_EXPORT_MAX_FILE_SIZE_KB && kb <= MAX_EXPORT_MAX_FILE_SIZE_KB
+		? kb
+		: null;
+}
+
+/**
+ A size in KB as the custom field shows it.
+ */
+export function fileSizeInUnit(kb: number, unit: FileSizeUnit): number {
+	return unit === 'MB' ? Number((kb / 1024).toFixed(2)) : kb;
 }
 
 export function defaultQualityFor(format: ExportFormat): number {

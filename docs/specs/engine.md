@@ -10,6 +10,7 @@ Updated with exact geometry rounding and resampling rules (section 16.3) by Clau
 Updated with split side rendering by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated `imageBlend` extra sources, sampling arithmetic and unlisted effects by Claude Sonnet 5.5 (apx, high thinking), implementation subagent.
 Updated with the worker and coordinator extra-source pipeline by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
+Updated with `pixelSort` v2 (per-channel sorting and interval transforms) by Gemini 4 Neon (Antigravity, thought level high), implementation subagent.
 
 # Drift engine spec
 
@@ -257,7 +258,9 @@ Designed now so future interactive canvas tools (such as painting a mask or draw
 
 ## 5. Pixel sort effect (`pixelSort`)
 
-`type: 'pixelSort'`, `version: 1`, `category: 'sort'`, label "Pixel sort", description "Sort runs of pixels along a direction by brightness, hue or a channel." `debugViews: ['selection']`.
+`type: 'pixelSort'`, `version: 2`, `category: 'sort'`, label "Pixel sort", description "Sort runs of pixels along a direction by brightness, hue or a channel." `debugViews: ['selection']`.
+
+**Version 1 to 2 migration (`migrations[1]`):** sets `channelMode` to `'rgba'` and `intervalTransform` to `'none'` when absent, leaving all version 1 parameters intact. Every version 1 instance renders byte-for-byte identically in version 2 and produces no `params-fixed` warning.
 
 ### 5.1 Parameters
 
@@ -273,13 +276,15 @@ Designed now so future interactive canvas tools (such as painting a mask or draw
 | `maxLength` | Maximum interval length | integer (px) | 0 | 0..16384; 0 means no limit | Length | always | Splits each run into intervals of at most this length. 0 means no limit. |
 | `lengthJitter` | Length jitter | number (ratio) | 0 | 0..1, step 0.01 | Length | `maxLength` ≠ 0 | Random variation of each interval length around the maximum. |
 | `skipChance` | Skip chance | number (ratio) | 0 | 0..1, step 0.01 | Length | always | Chance that an interval is left unchanged. |
-| `sortKey` | Sort key | enum | `luma` | the 8 keys of section 5.3 | Order | always | The key each interval is sorted by. |
+| `channelMode` | Channels | enum | `rgba` | `rgba` "All (RGBA)", `rgb` "RGB independent", `r` "Red only", `g` "Green only", `b` "Blue only" | Order | always | Sort whole RGBA pixels together, sort red, green and blue independently, or sort a single colour channel while leaving other channels and alpha unchanged. |
+| `sortKey` | Sort key | enum | `luma` | the 8 keys of section 5.3 | Order | `channelMode` = `rgba` | The key each interval is sorted by. |
 | `order` | Order | enum | `ascending` | `ascending` "Ascending", `descending` "Descending", `shuffle` "Shuffle", `random` "Random direction" | Order | always | Ascending puts the smallest key first along the line direction. Random direction picks ascending or descending per interval. |
 | `discretize` | Discretize | integer | 0 | 0..64 | Order | `fill` ≠ `average` | Colours within about this many 8-bit steps compare equal and keep their order, giving clumpier streaks. 0 turns it off. |
 | `fill` | Fill | enum | `sort` | `sort` "Sort", `average` "Average", `gradient` "Gradient" | Output | always | Sort moves the pixels; average paints each interval with its mean colour; gradient blends from its first ordered pixel to its last. |
+| `intervalTransform` | Interval transform | enum | `none` | `none` "None", `reverse` "Reverse", `mirror` "Mirror", `splice` "Splice", `fold` "Fold" | Output | `fill` ≠ `average` | Rearranges each ordered interval: reverse flips it end to end, mirror peaks in the centre, splice swaps the two halves, and fold puts the smallest values in the centre. |
 | `seed` | Seed | seed | random | uint32 | Seed | always | Drives length jitter, skipping, shuffle and random direction. |
 
-The effect runs in three steps per line: select pixels (5.4), split selected pixels into intervals (5.4), then reorder or repaint each interval (5.5).
+The effect runs in three steps per line: select pixels (5.4), split selected pixels into intervals (5.4), then reorder, transform and repaint each interval (5.5).
 
 ### 5.2 Lines: direction and angle
 
@@ -346,26 +351,54 @@ For each line, with pixels `p[0..n-1]` in line order:
 
 **4. Skip.** An interval of length 2 or more is left unchanged when `unit(seed, P_SKIP, lineId, toSource(position of its first pixel)) < skipChance`.
 
-### 5.5 Order and fill
+### 5.5 Order, channels, interval transform and fill
 
 For each interval that is not skipped, with `q` its pixels in line order (`q.length = n >= 2`):
 
-**Comparison key.** `c = sortKey16(pixel)`; if `discretize = D > 0`, `c = Math.floor(c / (D * 257))`, so colours within about `D` 8-bit steps compare equal and keep their order, giving clumpier streaks.
+**Channels (`channelMode`).**
+
+- `rgba` (default): all four channels move together as whole pixels, ordered by `sortKey`.
+- `rgb`, `r`, `g`, `b`: selection, run splitting and skipping are unchanged; unselected colour channels and alpha are copied bit-identically from the input pixel at every position. Each active channel `ch` (`[0, 1, 2]` for `rgb`, `[0]` for `r`, `[1]` for `g`, `[2]` for `b`, where `0 = R`, `1 = G`, `2 = B`) is ordered, transformed and filled independently using its own channel value as its 16-bit key (`q[j][ch] * 257`). `sortKey` is not used. Because each active channel depends only on its own values and channel index `ch`, `rgb` equals the channel-wise composition of `r`, `g` and `b` with input alpha.
+
+**Comparison key.**
+
+- In `rgba`: `c = sortKey16(pixel)`.
+- In `rgb`, `r`, `g`, `b` for active channel `ch`: `c = pixel[ch] * 257`.
+- In all modes, if `discretize = D > 0`: `c = Math.floor(c / (D * 257))`, so colours (or channel values) within about `D` 8-bit steps compare equal and keep their order, giving clumpier streaks.
 
 **Order.**
 
 - `ascending`: stable sort by `c`, smallest first along the line direction.
 - `descending`: stable sort by `65535 - c`. Equal keys keep their original order (descending is not the reverse of ascending when there are ties).
-- `random`: per interval, ascending if `unit(seed, P_ORDER, lineId, toSource(first position)) < 0.5`, else descending.
-- `shuffle`: Fisher–Yates on the interval: for `j` from `n - 1` down to 1, swap `q[j]` with `q[t]` where `t = intIn(0, j, seed, P_SHUFFLE, lineId, toSource(first position), j)`. `c` is not used.
+- `random`:
+  - In `rgba`: per interval, ascending if `unit(seed, P_ORDER, lineId, toSource(first position)) < 0.5`, else descending.
+  - In `rgb`, `r`, `g`, `b` for active channel `ch`: ascending if `unit(seed, P_CHANNEL_ORDER, lineId, toSource(first position), ch) < 0.5`, else descending.
+- `shuffle`: Fisher–Yates on local indices `0..n-1`: for `j` from `n - 1` down to 1, swap `idx[j]` with `idx[t]` where:
+  - In `rgba`: `t = intIn(0, j, seed, P_SHUFFLE, lineId, toSource(first position), j)`.
+  - In `rgb`, `r`, `g`, `b` for active channel `ch`: `t = intIn(0, j, seed, P_CHANNEL_SHUFFLE, lineId, toSource(first position), ch, j)`.
+  `c` is not used.
 
 Implementation note (informed by [spike S1](../research/spike-s1-engine-throughput.md)): pack `c * 65536 + localIndex` into a `Uint32Array` (local index < 65,536 because lines are at most 16,384 px); values are unique, so sorting them equals a stable sort on every engine. Spike S1 compared three approaches: the built-in `Uint32Array.prototype.sort()`, an exact 2-pass 8-bit LSD 16-bit radix sort (`radix-16`), and a 1-pass 8-bit counting sort (`counting-8`) that quantises keys. `radix-16` was fastest in Chromium by 1.60× at angle 0 (144.1 ms vs 231.2 ms) and 1.43× at angle 30 (212.4 ms vs 304.1 ms), while `Uint32Array.prototype.sort()` was slightly faster in Firefox by 1.11× at angle 0 (152.0 ms vs 168.0 ms) and 1.03× at angle 30 (270.0 ms vs 277.0 ms). The 8-bit counting sort is not exact and must not be used, because quantising keys breaks the determinism guarantee (section 10.2) and golden tests. Recommended choice: exact 16-bit radix sort (`radix-16`) with insertion sort for short runs (`n <= 32`). Both exact approaches produce bit-identical output, and the choice between them is an implementation detail that tests must not depend on.
 
+**Interval transform (`intervalTransform`).**
+
+For an interval of length `n >= 2` and output position `i` in `0..n-1`, `transformIndex(intervalTransform, i, n)` maps `i` to source position `k` in the ordered sequence `0..n-1` using exact integer arithmetic:
+
+| `intervalTransform` | `k = transformIndex(mode, i, n)` | Shape on `[0, 1, 2, 3, 4]` |
+|---|---|---|
+| `none` | `i` | `[0, 1, 2, 3, 4]` |
+| `reverse` | `n - 1 - i` | `[4, 3, 2, 1, 0]` |
+| `mirror` | let `mid = floorDiv(n + 1, 2)`; `2 * i` if `i < mid`, else `2 * (n - 1 - i) + 1` | `[0, 2, 4, 3, 1]` |
+| `splice` | let `shift = floorDiv(n, 2)`; `(i + shift) % n` | `[2, 3, 4, 0, 1]` |
+| `fold` | let `left = floorDiv(n, 2)`; `2 * (left - 1 - i) + 1` if `i < left`, else `2 * (i - left)` | `[3, 1, 0, 2, 4]` |
+
+Every mode is a bijection on `{0, ..., n - 1}` for all `n >= 2`. `mirror` places the first ordered values at both edges and the last in the centre; `fold` places the first ordered value in the centre and moves outward toward both edges; `splice` rotates the ordered interval by half its length so the end-to-start seam sits in the centre.
+
 **Fill.**
 
-- `sort`: write the ordered pixels back into the interval's positions in line order. All four channels move together. The output of the interval is a permutation of its input.
-- `average`: every pixel of the interval becomes the channel-wise mean, `floorDiv(2 * sum + n, 2 * n)` for each of R, G, B, A. Order and discretize do not affect it.
-- `gradient`: order the pixels as above, take the first ordered pixel `s` and the last `e`, and set pixel `j` (0-based in line order) of the interval to `floorDiv(2 * (s * (n - 1 - j) + e * j) + (n - 1), 2 * (n - 1))` per channel. Output colours are interpolated and are not a permutation. With `shuffle` order, `s` and `e` are the first and last shuffled pixels; with tied keys, `s` and `e` come from the stable order (earliest and latest in the interval).
+- `sort`: for output position `i` in `0..n-1`, let `k = transformIndex(intervalTransform, i, n)` and write ordered element `k` to position `i` (all four channels in `rgba`; each active channel independently in `rgb`, `r`, `g`, `b`, with unselected channels and alpha unchanged). Because every `intervalTransform` is a bijection, the output of the interval is a permutation of its input pixels in `rgba` and a per-channel permutation of every channel in `rgb`, `r`, `g`, `b`.
+- `average`: every pixel of the interval becomes the channel-wise mean `floorDiv(2 * sum + n, 2 * n)` (for R, G, B, A in `rgba`; for each active channel only in `rgb`, `r`, `g`, `b`, leaving other channels and alpha unchanged). `order`, `discretize` and `intervalTransform` do not affect it.
+- `gradient`: take the first ordered element `s` and the last ordered element `e` (all four channels of the first and last ordered pixels in `rgba`; the first and last ordered values of each active channel in `rgb`, `r`, `g`, `b`), and for output position `i` in `0..n-1` let `k = transformIndex(intervalTransform, i, n)` and set the output channel to `floorDiv(2 * (s * (n - 1 - k) + e * k) + (n - 1), 2 * (n - 1))`. Output colours are interpolated and are not a permutation. With `shuffle` order, `s` and `e` are the first and last shuffled elements; with tied keys, `s` and `e` come from the stable order (earliest and latest in the interval).
 
 ### 5.6 Masks (later; semantics fixed now)
 
@@ -377,11 +410,11 @@ Masks are a later feature (product.md section 6). When they arrive they follow t
 
 ### 5.7 Selection view
 
-With `ctx.debugView = 'selection'`, the output is the input with every unselected pixel's R, G and B replaced by `c >> 2` (alpha unchanged). Intervals and skipping are ignored; only `selected` matters. The UI's "Show selection" switch uses it.
+With `ctx.debugView = 'selection'`, the output is the input with every unselected pixel's R, G and B replaced by `c >> 2` (alpha unchanged). Intervals, channels, interval transforms and skipping are ignored; only `selected` matters. The UI's "Show selection" switch uses it.
 
 ### 5.8 Random purpose codes
 
-`P_CAP = 1`, `P_SKIP = 2`, `P_ORDER = 3`, `P_SHUFFLE = 4`. These values are part of the output definition and must not change without a version bump.
+`P_CAP = 1`, `P_SKIP = 2`, `P_ORDER = 3`, `P_SHUFFLE = 4`, `P_CHANNEL_ORDER = 5`, `P_CHANNEL_SHUFFLE = 6`. These values are part of the output definition and must not change without a version bump.
 
 ## 6. Other first-release effects
 
@@ -400,7 +433,7 @@ For channel `c` with offset `(dx, dy) = (ctx.px(cX), ctx.px(cY))`: `out.c(x, y) 
 
 ### 6.2 Later effects
 
-`sliceShift`, `channelSwap`, `blockShuffle`, `posterize`, `bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert` and `jpegCrush` (all version 1) are implemented as specified in section 16.1. Additional effects specified when scheduled (product.md section 6): `smear` (carry a colour along a line with per-pixel decay), `waveShift` (sine-modulated row offsets), `dither` (ordered Bayer), `grain`, `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), per-channel pixel sort, and the interval transforms (mirror, splice, fold, grouping equal colours) as new `pixelSort` parameters in a version 2.
+`sliceShift`, `channelSwap`, `blockShuffle`, `posterize`, `bayerDither`, `rgbNoise`, `pixelSmear`, `mirrorFold`, `thresholdInvert` and `jpegCrush` (all version 1) are implemented as specified in section 16.1, and per-channel sorting plus interval transforms (`reverse`, `mirror`, `splice`, `fold`) are implemented in `pixelSort` version 2 (section 5). Additional work specified when scheduled (product.md section 7): `dataBend` (corrupts the compressed source bytes and decodes the result; it is a source-level stage, not a pixel effect, and needs its own interface), equal-colour smooth grouping, and non-linear sort paths (concentric rectangles, circles, spirals, random walks, tiles).
 
 ## 7. Built-in presets
 
@@ -662,8 +695,8 @@ Run with `vp test run` in Node. Required per module:
 With `fast-check`, at least 200 runs each, on random images up to 64 × 64 and random valid parameters:
 
 1. Lines: every pixel appears in exactly one line; consecutive pixels are 8-connected; line length ≤ `max(W, H)`.
-2. `pixelSort` with `fill = sort`: each line's multiset of RGBA values is unchanged; unselected pixels are unchanged; within every non-skipped interval with `order` ascending or descending, comparison keys are monotonic in the stated direction.
-3. `pixelSort` with angle `θ` and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct and `maxLength` is 0, `skipChance` is 0, and `discretize` is 0.
+2. `pixelSort` with `fill = sort`: for `channelMode = rgba`, each line's multiset of RGBA values is unchanged; for `channelMode` in `rgb`, `r`, `g`, `b`, each active channel's multiset per line is unchanged, unselected channels and alpha are bit-identical to input, and `rgb` equals the channel-wise composition of `r`, `g`, and `b` with input alpha. Unselected pixels are unchanged; within every non-skipped interval with `intervalTransform = none` and `order` ascending or descending, comparison keys are monotonic in the stated direction.
+3. `pixelSort` with `intervalTransform = none`, angle `θ`, and `ascending` equals angle `θ + 180` with `descending` when all keys in the image are distinct and `maxLength` is 0, `skipChance` is 0, and `discretize` is 0.
 4. Every effect: output size equals input size; input buffer is unchanged after `render`; rendering twice gives identical bytes; `mix = 0` returns the input exactly.
 5. `channelShift` with all offsets 0 is the identity.
 6. Stack: `JSON.parse(JSON.stringify(stack))` renders identically; `validateParams` is idempotent; migrations of every version produce parameters that pass validation.

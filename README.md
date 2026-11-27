@@ -11,7 +11,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 - A start screen while the library is empty: a drop zone, "Open images", "Try a sample" (a picture drawn by the app, so it works offline) and "Read the guide". On the first launch it also shows before and after previews of pixel sort, channel shift, slice shift and posterize; selecting one opens the sample with that effect. The previews go away when dismissed or after the first import.
 - Geometry, under "Transform" in the editor: rotate by 90° and flip; crop with an on-canvas box (drag, aspect ratios, typed X, Y, width and height, arrow keys, Enter to apply and Escape to cancel); and resize in pixels or percent with an aspect lock and a choice of Lanczos-3, bilinear or nearest, up to 16,384 pixels per side and 50 megapixels. It is applied before the effects, never changes the original photo, and each change can be undone.
 - Effect stack: add effects, turn each one on or off, reorder, duplicate and remove them.
-- Pixel sort effect: sort direction by angle, selection by threshold range, edges or whole line, interval length with jitter and skip chance, sort key (luma, lightness, value, saturation, hue, red, green, blue), order (ascending, descending, shuffle, random direction), and fill (sort, average, gradient).
+- Pixel sort effect: sort direction by angle, selection by threshold range, edges or whole line, interval length with jitter and skip chance, channels (all RGBA, independent RGB, or red, green or blue only), sort key (luma, lightness, value, saturation, hue, red, green, blue), order (ascending, descending, shuffle, random direction), discretize, fill (sort, average, gradient), and interval transform (none, reverse, mirror, splice, fold).
 - Channel shift effect: move the red, green and blue channels by separate offsets, with stretch or wrap at the edges.
 - Channel swap effect: reassign the red, green and blue channels in any of the six orders.
 - Slice shift effect: shift random bands of rows or columns sideways, with a band size range, a probability, a maximum offset, wrap or stretch at the edges, and a seed.
@@ -44,7 +44,7 @@ Drift is an editor for glitch art and pixel sorting of still photos. It runs ent
 These are planned and not in the app.
 
 - Cloud backup and sync through your own Dropbox or Google Drive.
-- More pixel sort options, such as per-channel sorting and more line shapes.
+- More pixel sort line shapes, such as concentric rectangles, circles, spirals and random walks.
 - Masks and painting on the canvas.
 - Animation and video.
 

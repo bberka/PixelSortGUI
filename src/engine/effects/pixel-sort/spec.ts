@@ -2,8 +2,11 @@ import {SORT_KEYS, type SortKey} from '../../keys.ts';
 import type {EffectDefinition, ParamSpecs} from '../../types.ts';
 
 export type IntervalMode = 'threshold' | 'edges' | 'whole';
+export type ChannelMode = 'rgba' | 'rgb' | 'r' | 'g' | 'b';
 export type SortOrder = 'ascending' | 'descending' | 'shuffle' | 'random';
 export type FillMode = 'sort' | 'average' | 'gradient';
+export type IntervalTransform =
+	'none' | 'reverse' | 'mirror' | 'splice' | 'fold';
 
 export type PixelSortParams = {
 	angle: number;
@@ -16,10 +19,12 @@ export type PixelSortParams = {
 	maxLength: number;
 	lengthJitter: number;
 	skipChance: number;
+	channelMode: ChannelMode;
 	sortKey: SortKey;
 	order: SortOrder;
 	discretize: number;
 	fill: FillMode;
+	intervalTransform: IntervalTransform;
 	seed: number;
 };
 
@@ -144,6 +149,20 @@ export const pixelSortParamSpecs: ParamSpecs<PixelSortParams> = {
 		default: 0,
 		unit: 'ratio',
 	},
+	channelMode: {
+		kind: 'enum',
+		label: 'Channels',
+		group: 'Order',
+		help: 'Sort whole RGBA pixels together, sort red, green and blue independently, or sort a single colour channel while leaving other channels and alpha unchanged.',
+		options: [
+			{value: 'rgba', label: 'All (RGBA)'},
+			{value: 'rgb', label: 'RGB independent'},
+			{value: 'r', label: 'Red only'},
+			{value: 'g', label: 'Green only'},
+			{value: 'b', label: 'Blue only'},
+		],
+		default: 'rgba',
+	},
 	sortKey: {
 		kind: 'enum',
 		label: 'Sort key',
@@ -151,6 +170,7 @@ export const pixelSortParamSpecs: ParamSpecs<PixelSortParams> = {
 		help: 'The key each interval is sorted by.',
 		options: keyOptions,
 		default: 'luma',
+		visibleWhen: {param: 'channelMode', equals: ['rgba']},
 	},
 	order: {
 		kind: 'enum',
@@ -187,6 +207,21 @@ export const pixelSortParamSpecs: ParamSpecs<PixelSortParams> = {
 		],
 		default: 'sort',
 	},
+	intervalTransform: {
+		kind: 'enum',
+		label: 'Interval transform',
+		group: 'Output',
+		help: 'Rearranges each ordered interval: reverse flips it end to end, mirror places the first ordered values at the edges and the last in the centre, splice swaps the two halves, and fold puts the first ordered values in the centre.',
+		options: [
+			{value: 'none', label: 'None'},
+			{value: 'reverse', label: 'Reverse'},
+			{value: 'mirror', label: 'Mirror'},
+			{value: 'splice', label: 'Splice'},
+			{value: 'fold', label: 'Fold'},
+		],
+		default: 'none',
+		visibleWhen: {param: 'fill', notEquals: ['average']},
+	},
 	seed: {
 		kind: 'seed',
 		label: 'Seed',
@@ -200,11 +235,18 @@ export const pixelSortSpec: Omit<
 	'render'
 > = {
 	type: 'pixelSort',
-	version: 1,
+	version: 2,
 	label: 'Pixel sort',
 	description:
 		'Sort runs of pixels along a direction by brightness, hue or a channel.',
 	category: 'sort',
 	params: pixelSortParamSpecs,
+	migrations: {
+		1: (old) => ({
+			...old,
+			channelMode: old.channelMode ?? 'rgba',
+			intervalTransform: old.intervalTransform ?? 'none',
+		}),
+	},
 	debugViews: ['selection'],
 };

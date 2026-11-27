@@ -1,3 +1,8 @@
+import {
+	assertPositiveInteger,
+	renderSize,
+	type RenderSize,
+} from '../engine/render-size.ts';
 import type {RgbaImage} from '../engine/types.ts';
 import {
 	decodeTiff,
@@ -5,6 +10,12 @@ import {
 	readTiffInfo,
 	UnsupportedTiffError,
 } from './tiff.ts';
+
+export {
+	renderSize,
+	renderSizeForPixelCap,
+	type RenderSize,
+} from '../engine/render-size.ts';
 
 export const MAX_LONGEST_SIDE = 16_384;
 export const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
@@ -26,12 +37,6 @@ export type CodecError = {
 export type CodecResult<T> =
 	| {readonly ok: true; readonly value: T}
 	| {readonly ok: false; readonly error: CodecError};
-
-export type RenderSize = {
-	readonly width: number;
-	readonly height: number;
-	readonly scale: number;
-};
 
 export type ExportSizeSpec =
 	| {readonly kind: 'full'}
@@ -93,43 +98,6 @@ function getDefaultRuntime(): DecodeRuntime {
 			return sharedDecodeCanvas;
 		},
 	};
-}
-
-function assertPositiveInteger(value: number, name: string): void {
-	if (!Number.isSafeInteger(value) || value < 1) {
-		throw new RangeError(`${name} must be a positive integer, got ${value}`);
-	}
-}
-
-export function renderSize(
-	sourceWidth: number,
-	sourceHeight: number,
-	scale: number,
-): RenderSize {
-	assertPositiveInteger(sourceWidth, 'sourceWidth');
-	assertPositiveInteger(sourceHeight, 'sourceHeight');
-	if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
-		throw new RangeError(`scale must be in (0, 1], got ${scale}`);
-	}
-
-	const width = Math.max(1, Math.floor(sourceWidth * scale));
-	const height = Math.max(1, Math.floor(sourceHeight * scale));
-	return {width, height, scale: width / sourceWidth};
-}
-
-export function renderSizeForPixelCap(
-	sourceWidth: number,
-	sourceHeight: number,
-	pixelCap: number,
-): RenderSize {
-	assertPositiveInteger(sourceWidth, 'sourceWidth');
-	assertPositiveInteger(sourceHeight, 'sourceHeight');
-	if (!Number.isFinite(pixelCap) || pixelCap <= 0) {
-		throw new RangeError(`pixelCap must be positive, got ${pixelCap}`);
-	}
-
-	const scale = Math.min(1, Math.sqrt(pixelCap / (sourceWidth * sourceHeight)));
-	return renderSize(sourceWidth, sourceHeight, scale);
 }
 
 export function renderSizeForExport(

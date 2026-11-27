@@ -295,14 +295,24 @@ export function effectiveDimensions(
 	return resolveTransform(sourceWidth, sourceHeight, transform).size;
 }
 
-// Copies the crop rectangle of the oriented image straight out of the source.
-function orientAndCrop(
-	source: RgbaImage,
+export type OrientedMapping = {
+	// Source pixel index of oriented pixel (0, 0).
+	readonly origin: number;
+	// Added per step right and per step down in the oriented image.
+	readonly stepU: number;
+	readonly stepV: number;
+};
+
+/**
+ Where each pixel of the oriented image (rotation, then flips) lies in a row-major
+ source of `sw x sh`. The mapping is affine: oriented pixel `(u, v)` is source
+ pixel `origin + u * stepU + v * stepV`.
+ */
+export function orientedMapping(
+	sw: number,
+	sh: number,
 	{rotation, flipX, flipY}: SourceTransform,
-	crop: CropRect,
-): RgbaImage {
-	const sw = source.width;
-	const sh = source.height;
+): OrientedMapping {
 	const oriented = orientedDimensions(sw, sh, rotation);
 
 	// Source pixel index of oriented pixel (u, v): undo the flips, then the rotation.
@@ -328,10 +338,23 @@ function orientAndCrop(
 		}
 	};
 
-	// The mapping is affine, so one step per axis covers every pixel.
-	const origin = sourceIndex(crop.x, crop.y);
-	const stepU = sourceIndex(crop.x + 1, crop.y) - origin;
-	const stepV = sourceIndex(crop.x, crop.y + 1) - origin;
+	const origin = sourceIndex(0, 0);
+	return {
+		origin,
+		stepU: sourceIndex(1, 0) - origin,
+		stepV: sourceIndex(0, 1) - origin,
+	};
+}
+
+// Copies the crop rectangle of the oriented image straight out of the source.
+function orientAndCrop(
+	source: RgbaImage,
+	transform: SourceTransform,
+	crop: CropRect,
+): RgbaImage {
+	const mapping = orientedMapping(source.width, source.height, transform);
+	const {stepU, stepV} = mapping;
+	const origin = mapping.origin + crop.x * stepU + crop.y * stepV;
 
 	const target = createImage(crop.width, crop.height);
 	const from = source.data;

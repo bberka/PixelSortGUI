@@ -42,12 +42,16 @@ type Placement = {
 	sin: number;
 };
 
-function place(
+// Where `overlay` lies on a `width x height` render (engine.md section 16.5).
+export function place(
 	width: number,
 	height: number,
 	renderScale: number,
 	overlay: ExtraSource,
-	params: ImageBlendParams,
+	params: Pick<
+		ImageBlendParams,
+		'fit' | 'scale' | 'offsetX' | 'offsetY' | 'rotation'
+	>,
 ): Placement {
 	const {fit} = params;
 	let fitX: number;
@@ -81,7 +85,7 @@ function place(
  coordinates, with 1/256 pixel steps. Writes straight RGBA into `into`. Taps
  outside the image wrap when `tile` is set and clamp to the edge otherwise.
  */
-function sample(
+export function sample(
 	image: RgbaImage,
 	ux: number,
 	uy: number,

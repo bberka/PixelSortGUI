@@ -13,6 +13,7 @@ Updated with the backup size limit, validation, commit rules and modules (sectio
 Updated with database version 3 and reference-counted extra sources (section 8.5) by Claude Sonnet 5.5 (apx, high thinking), spec and implementation subagent.
 Updated with database version 4 and mask storage (`F29`, section 8.6) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with masks in project files and backups (section 8.6) by Claude Sonnet 5.5 (apx, low thinking), implementation subagent.
+Updated with mask history labels (section 8.2) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift persistence spec
 
@@ -361,6 +362,9 @@ While a request is unanswered the button reads `"Requesting protection..."` and 
 | Turn an effect on or off | `"Enable Pixel sort"`, `"Disable Pixel sort"` |
 | Reset one parameter, reset all, randomize | `"Reset Angle"`, `"Reset Pixel sort"`, `"Randomize Pixel sort"` |
 | Apply a preset, add a preset to the stack | `"Apply preset ASDF classic"`, `"Add Bright streaks"` |
+| Add, replace or remove a mask (F29) | `"Add paint mask"`, `"Add brightness mask"`, `"Add image mask"`, `"Mask type Brightness"`, `"Remove mask"` |
+| Fill or clear a painted mask | `"Fill mask"`, `"Clear mask"` |
+| Mask setting | `"Invert mask on"`, `"Mask feather 32 px"`, `"Mask range 50% to 100%"`, `"Mask softness 10%"`, `"Mask image chosen"`, `"Mask image cleared"`, `"Mask fit Contain"` |
 | Copy one split side over the other, swap them (F11) | `"Copy A to B"`, `"Swap sides"` |
 | Geometry actions (F20) | `"Rotate 90° CW"`, `"Rotate 90° CCW"`, `"Rotate 180°"`, `"Flip horizontal"`, `"Flip vertical"`, `"Crop 1200 × 800"`, `"Resize 1000 × 500"`, `"Reset crop"`, `"Reset resize"`, `"Reset transform"` |
 

@@ -8,6 +8,7 @@ Updated with touch targets, dialog focus and long names by Claude Sonnet 5.5 (ap
 Updated with export field validation and focus after screen changes by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 Updated with masks and the brush (F29, section 7.4) by Claude Sonnet 5.5 (apx, medium thinking), specification subagent.
 Updated with compare against any history step (F31) by Gemini 4 Neon (Antigravity, thought level medium), implementation subagent.
+Updated with the phone mask overlay tab (section 7.4) by Claude Sonnet 5.5 (apx, medium thinking), implementation subagent.
 
 # Drift design system
 
@@ -457,7 +458,7 @@ Guide screen:
 
 - **Desktop (`1440 × 900`):** the toolbar is a vertical strip at the top left of the canvas, `12 px` in and below the compare and split pills. The Mask group scrolls with the parameter panel; turning the brush on scrolls the brush settings into view.
 - **Tablet (`820 × 1180`):** the same vertical strip in the canvas; the Mask group is in the docked panel's right column. All targets are `44 px` on a coarse pointer.
-- **Phone (`390 × 844`):** nothing is laid over the canvas. While the brush is on, the toolbar replaces the effect strip as a `52 px` row of four labelled `44 px` buttons. In the one-control panel the tabs `"Mask"` (type, Show mask, Invert, Remove), then for a mask `"Feather"` and, by type, `"Size"`, `"Hardness"`, `"Strength"`, `"Overlay"` (Paint), `"Range"`, `"Softness"` (Brightness) or `"Mask image"`, `"Fit"` (Image) follow `Blend`. Each fits the `144 px` area. The `"Mask"` tab holds `"Edit with brush"`, `"Fill"` and `"Clear"`; its content scrolls inside the area. Turning the brush on selects `"Size"`.
+- **Phone (`390 × 844`):** nothing is laid over the canvas. While the brush is on, the toolbar replaces the effect strip as a `52 px` row of four labelled `44 px` buttons. In the one-control panel the tabs `"Mask"` (type, Show mask, Invert, Remove), then for a mask `"Feather"` and, by type, `"Overlay"` (while Show mask is on), then `"Size"`, `"Hardness"`, `"Strength"` (Paint), `"Range"`, `"Softness"` (Brightness) or `"Mask image"`, `"Fit"` (Image) follow `Blend`. Each fits the `144 px` area. The `"Mask"` tab holds `"Edit with brush"`, `"Fill"` and `"Clear"`; its content scrolls inside the area. Turning the brush on selects `"Size"`.
 - **Phone landscape:** the toolbar row takes the effect strip's place in the right drawer.
 
 ### 7.5 Paste image from clipboard (F30)

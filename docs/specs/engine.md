@@ -743,7 +743,8 @@ src/engine/            pure TypeScript, no DOM (no barrel file; import from each
   effects/rgb-noise.ts
   effects/jpeg-crush.ts
   effects/image-blend.ts
-  mask/                section 16.6: types.ts, validate.ts, grid.ts, fit.ts, evaluate.ts, feather.ts, pace.ts; brush and asset bytes
+  mask/                section 16.6: types.ts, validate.ts, grid.ts, fit.ts, evaluate.ts, feather.ts, pace.ts,
+                       coords.ts, brush-types.ts, brush.ts, asset.ts
   gpu/                 later
 src/codec/             decode.ts, encode.ts (worker-side, uses OffscreenCanvas)
 src/worker/            protocol.ts, preview.worker.ts, export.worker.ts, geometry.ts (decode sizes under a transform)
@@ -1323,7 +1324,7 @@ type MaskGeometry = {sourceWidth: number; sourceHeight: number; transform: Sourc
 
 #### Painted mask grid and asset
 
-- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304` (the engine repeats the formula in `mask/coords.ts`, and a test holds the two equal). Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
+- The grid of a painted mask lies on the **stored source** (decoded, EXIF-oriented, before any `SourceTransform`). Its size is `renderSizeForPixelCap(sourceWidth, sourceHeight, MASK_PIXEL_CAP)` with `MASK_PIXEL_CAP = 4,194,304` (`maskGridSize` in `mask/grid.ts`). Crop, rotation, flip and resize never rewrite it ([decisions.md D45](decisions.md#d45-painted-masks-live-on-the-stored-source-at-up-to-4-mp-2026-11-27)).
 - **Canonical bytes:** the ASCII bytes `DMSK`, width and height as little-endian uint32, then `width * height` mask bytes. The **mask hash** is the SHA-256 of the canonical bytes. Compression never affects it.
 - `asset: ''` is a mask that is 0 everywhere. It names no bytes, so it is never missing.
 - An asset is immutable. Every edit makes new bytes and a new hash.

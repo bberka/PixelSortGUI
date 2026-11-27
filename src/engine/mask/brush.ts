@@ -1,12 +1,8 @@
 // Deterministic brush painting on a mask grid (engine.md section 16.6).
 
 import {floorDiv, roundHalfAway} from '../math.ts';
-import type {
-	BrushSample,
-	BrushStroke,
-	MaskBitmap,
-	MaskRect,
-} from './brush-types.ts';
+import type {BrushSample, BrushStroke, MaskRect} from './brush-types.ts';
+import type {MaskBitmap} from './types.ts';
 
 export type MaskEdit = {
 	bitmap: MaskBitmap;

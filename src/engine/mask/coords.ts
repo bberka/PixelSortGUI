@@ -1,4 +1,4 @@
-// The painted mask grid and the mapping between it and the effective image
+// The mapping between the painted mask grid and the effective image
 // (engine.md section 16.6).
 
 import {clamp, roundHalfAway} from '../math.ts';
@@ -8,25 +8,14 @@ import {
 	type CropRect,
 	type Size,
 } from '../transform.ts';
-import type {BrushSample, MaskGeometry} from './brush-types.ts';
+import type {BrushSample} from './brush-types.ts';
+import {maskGridSize} from './grid.ts';
+import type {MaskGeometry} from './types.ts';
 
-export const MASK_PIXEL_CAP = 4_194_304;
 const MIN_SAMPLE_RADIUS = 8;
 
 // Continuous coordinates: pixel `i` covers `[i, i + 1)`.
 export type Point = {readonly x: number; readonly y: number};
-
-// The size `renderSizeForPixelCap` of `codec/decode.ts` gives at the mask cap.
-export function maskGridSize(sourceWidth: number, sourceHeight: number): Size {
-	const scale = Math.min(
-		1,
-		Math.sqrt(MASK_PIXEL_CAP / (sourceWidth * sourceHeight)),
-	);
-	return {
-		width: Math.max(1, Math.floor(sourceWidth * scale)),
-		height: Math.max(1, Math.floor(sourceHeight * scale)),
-	};
-}
 
 type Frame = {
 	grid: Size;

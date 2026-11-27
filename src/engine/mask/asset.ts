@@ -2,8 +2,8 @@
 // (engine.md section 16.6, persistence.md section 8.6).
 
 import {deflateSync, Inflate} from 'fflate';
-import type {MaskBitmap} from './brush-types.ts';
-import {MASK_PIXEL_CAP} from './coords.ts';
+import {MASK_PIXEL_CAP} from './grid.ts';
+import type {MaskBitmap} from './types.ts';
 
 // `DMSK`.
 const MAGIC = [0x44, 0x4d, 0x53, 0x4b];

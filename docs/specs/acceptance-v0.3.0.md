@@ -63,7 +63,7 @@ Targets (engine.md section 9): `settle` at 4 MP, p95 at most 300 ms; `drag`, p95
 RENDER_BENCH=1 pnpm exec playwright test render-bench -g imageBlend --workers=1 --repeat-each=3
 ```
 
-Result on 2026-11-27, on a machine that was never idle: `settle` p95 misses in both browsers (Chromium 322 to 551 ms, Firefox 346 to 903 ms), `drag` p95 was 26 to 79 ms at a lowered cap, and `AC-F8.1` is met. The `@perf` test of `AC-F26.1` measured 13 to 28 updates per second across three runs in both browsers. All numbers, the load and the recommendation are in [engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26). The effect is unchanged in this release.
+Result on 2026-11-27, on a machine that was never idle: `settle` p95 misses in both browsers (Chromium 322 to 551 ms, Firefox 346 to 903 ms), `drag` p95 was 26 to 79 ms at a lowered cap, and `AC-F8.1` is met. The `@perf` test of `AC-F26.1` measured 13 to 30 updates per second across four runs in both browsers. All numbers, the load and the recommendation are in [engine.md section 16.5](engine.md#165-multi-image-blending-imageblend-f26). The effect is unchanged in this release.
 
 ## Manual checklist
 

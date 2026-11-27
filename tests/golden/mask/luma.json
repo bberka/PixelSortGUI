@@ -1,0 +1,27 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "bgr"
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "luma",
+					"invert": false,
+					"feather": 0,
+					"range": [0.4, 0.7],
+					"softness": 0.15
+				}
+			}
+		]
+	},
+	"scale": 1
+}

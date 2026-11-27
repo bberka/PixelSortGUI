@@ -1,9 +1,13 @@
 import {compositeRows} from './composite.ts';
+import {renderMask, resolveMask, type ReadyMask} from './mask/evaluate.ts';
+import type {MaskBitmap, MaskGeometry} from './mask/types.ts';
 import {roundHalfAway} from './math.ts';
 import {resolveInstance} from './params.ts';
+import {scaledLength} from './render-size.ts';
 import {
 	canonicalStackJson,
 	copyImage,
+	stackSchemaVersion,
 	type DebugView,
 	type EffectDefinition,
 	type EffectInstance,
@@ -31,11 +35,20 @@ export type PipelineOptions = {
 	onProgress?: (fraction: number) => void;
 	// Images that `image` parameters name, keyed by SHA-256. Only read.
 	extraSources?: ReadonlyMap<string, ExtraSource>;
+	// Painted masks, keyed by mask hash. Only read.
+	masks?: ReadonlyMap<string, MaskBitmap>;
+	// How a painted mask maps onto the effective image. Absent: no transform.
+	geometry?: MaskGeometry;
 };
 
 export type PipelineWarning = {
 	instanceId: string;
-	code: 'unknown-type' | 'newer-version' | 'params-fixed' | 'missing-source';
+	code:
+		| 'unknown-type'
+		| 'newer-version'
+		| 'params-fixed'
+		| 'missing-source'
+		| 'missing-mask';
 };
 
 export type PipelineResult = {
@@ -162,6 +175,7 @@ export type RenderContextInit = {
 	checkpoint?: () => void | Promise<void>;
 	progress?: (fraction: number) => void;
 	extraSources?: ReadonlyMap<string, ExtraSource>;
+	mask?: Uint8Array | null;
 };
 
 function buildContext(
@@ -169,21 +183,21 @@ function buildContext(
 	scratch: Scratch,
 ): RenderContext {
 	const scale = init.renderWidth / init.sourceWidth;
-	const px = (sourcePx: number) => roundHalfAway(sourcePx * scale);
 	return {
 		level: init.level,
 		sourceWidth: init.sourceWidth,
 		sourceHeight: init.sourceHeight,
 		scale,
 		seed: init.seed ?? 0,
-		px,
-		pxLength: (sourcePx) => (sourcePx <= 0 ? 0 : Math.max(1, px(sourcePx))),
+		px: (sourcePx) => roundHalfAway(sourcePx * scale),
+		pxLength: (sourcePx) => scaledLength(sourcePx, scale),
 		toSource: (renderCoord) => Math.floor((renderCoord + 0.5) / scale),
 		checkpoint: init.checkpoint ?? (() => undefined),
 		progress: init.progress ?? (() => undefined),
 		scratch,
 		getSource: (sha256) => init.extraSources?.get(sha256),
 		debugView: init.debugView ?? 'none',
+		mask: init.mask ?? null,
 	};
 }
 
@@ -222,6 +236,7 @@ type Step = {
 	instance: EffectInstance;
 	definition: EffectDefinition;
 	params: Record<string, ParamValue>;
+	mask: ReadyMask | undefined;
 	isDebug: boolean;
 	cacheKey: string | undefined;
 	// Enabled instances before this one, skipped ones included.
@@ -249,6 +264,8 @@ function namesMissingSource(
 
 /**
  Runs the enabled instances of `stack` over `source` in order.
+ An instance with a mask renders as usual and its result is weighted by the mask
+ (section 16.6); one whose mask is missing is skipped.
  Copies: `source` and `stack` are only read. Each instance renders from the
  previous result into one of two working buffers, with no defensive copy of
  its input, so an effect that wrote to its input would corrupt the source or a
@@ -277,9 +294,9 @@ export async function renderStack(
 
 	const steps: Step[] = [];
 	const enabled: EffectInstance[] = [];
-	// Cache keys do not say which extra sources were supplied, so no stage from
-	// the first missing one onwards may be stored or reused.
-	let sourcesComplete = true;
+	// Cache keys do not say which extra sources and masks were supplied, so no
+	// stage from the first missing one onwards may be stored or reused.
+	let inputsComplete = true;
 	for (const [index, instance] of stack.instances.entries()) {
 		if (!instance.enabled) {
 			continue;
@@ -297,11 +314,35 @@ export async function renderStack(
 			warnings.push({instanceId: instance.id, code: 'params-fixed'});
 		}
 
-		if (
-			namesMissingSource(resolved.definition, resolved.params, extraSources)
-		) {
+		const missingParamSource = namesMissingSource(
+			resolved.definition,
+			resolved.params,
+			extraSources,
+		);
+		if (missingParamSource) {
 			warnings.push({instanceId: instance.id, code: 'missing-source'});
-			sourcesComplete = false;
+			inputsComplete = false;
+		}
+
+		const mask =
+			instance.mask === undefined
+				? undefined
+				: resolveMask(instance.mask, {
+						source,
+						sourceWidth: options.sourceWidth,
+						sourceHeight: options.sourceHeight,
+						geometry: options.geometry,
+						masks: options.masks,
+						extraSources,
+					});
+		if (mask?.status === 'missing') {
+			// One warning per code: the parameter may have reported the source already.
+			if (!(missingParamSource && mask.code === 'missing-source')) {
+				warnings.push({instanceId: instance.id, code: mask.code});
+			}
+
+			inputsComplete = false;
+			continue;
 		}
 
 		const isDebug = debug?.instanceId === instance.id;
@@ -310,16 +351,22 @@ export async function renderStack(
 			instance,
 			definition: resolved.definition,
 			params: resolved.params,
+			mask,
 			isDebug,
 			enabledBefore,
 			cacheKey:
-				cache && !isDebug && sourcesComplete
+				cache && !isDebug && inputsComplete
 					? stageCacheKey(
 							options.level,
 							width,
 							height,
 							options.sourceKey ?? '',
-							{...stack, instances: [...enabled]},
+							{
+								...stack,
+								// The prefix's own version, so a later mask keeps this key.
+								schemaVersion: stackSchemaVersion(enabled),
+								instances: [...enabled],
+							},
 						)
 					: undefined,
 		});
@@ -356,6 +403,9 @@ export async function renderStack(
 	const scratch = createScratch();
 	const working: RgbaImage[] = [];
 	const rowsPerSlice = Math.max(1, Math.ceil(CHECKPOINT_PIXELS / width));
+	// The mask (slot 0) and its blur buffer (slot 1), apart from the effects' scratch
+	// and reused by every masked instance of this render.
+	const maskScratch = createScratch();
 	try {
 		for (let s = firstStep; s < steps.length; s++) {
 			const {
@@ -363,6 +413,7 @@ export async function renderStack(
 				instance,
 				definition,
 				params,
+				mask,
 				isDebug,
 				cacheKey,
 				enabledBefore,
@@ -380,6 +431,16 @@ export async function renderStack(
 				isDebug && definition.debugViews?.includes(debug!.view)
 					? debug!.view
 					: 'none';
+			const maskData = mask
+				? await renderMask(mask, {
+						width,
+						height,
+						sourceWidth: options.sourceWidth,
+						target: maskScratch(0, width * height),
+						spare: () => maskScratch(1, width * height),
+						checkpoint,
+					})
+				: null;
 			const ctx = buildContext(
 				{
 					level: options.level,
@@ -389,6 +450,7 @@ export async function renderStack(
 					seed: typeof params.seed === 'number' ? params.seed : 0,
 					debugView,
 					extraSources,
+					mask: maskData,
 					checkpoint,
 					progress(fraction) {
 						report(
@@ -407,7 +469,7 @@ export async function renderStack(
 
 			if (
 				debugView === 'none' &&
-				(instance.mix < 1 || instance.blend !== 'normal')
+				(instance.mix < 1 || instance.blend !== 'normal' || maskData)
 			) {
 				for (let row = 0; row < height; row += rowsPerSlice) {
 					const sliced = checkpoint();
@@ -422,6 +484,7 @@ export async function renderStack(
 						instance.blend,
 						row,
 						Math.min(height, row + rowsPerSlice),
+						maskData,
 					);
 				}
 			}

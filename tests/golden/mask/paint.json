@@ -1,0 +1,29 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "bgr"
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "paint",
+					"invert": false,
+					"feather": 0,
+					"asset": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+				}
+			}
+		]
+	},
+	"scale": 1,
+	"masks": {
+		"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": "shapes"
+	}
+}

@@ -31,6 +31,7 @@ export type ContextOptions = {
 	// Defaults to the image width, so the scale is 1.
 	sourceWidth?: number;
 	debugView?: DebugView;
+	mask?: Uint8Array;
 	checkpoint?: () => void | Promise<void>;
 	progress?: (fraction: number) => void;
 };
@@ -46,6 +47,7 @@ export function contextFor(
 		sourceHeight: Math.round((input.height * sourceWidth) / input.width),
 		renderWidth: input.width,
 		debugView: options.debugView,
+		mask: options.mask,
 		checkpoint: options.checkpoint,
 		progress: options.progress,
 	});
@@ -260,6 +262,13 @@ export function model(
 				const k = key(params.selectKey, i);
 				selected[i] = (lo16 <= k && k <= hi16) === params.invert ? 0 : 1;
 			}
+		}
+	}
+
+	// Section 5.6: a mask value of 0 clears the selection, in every mode.
+	for (let i = 0; i < count; i++) {
+		if (ctx.mask?.[i] === 0) {
+			selected[i] = 0;
 		}
 	}
 

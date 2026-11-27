@@ -190,6 +190,20 @@ export function selectFromMap(
 	}
 }
 
+// A pixel the instance's mask leaves untouched is never selected (engine.md section 5.6).
+export function clearMasked(
+	mask: Uint8Array,
+	offsets: Int32Array,
+	length: number,
+	selected: Uint8Array,
+): void {
+	for (let i = 0; i < length; i++) {
+		if (mask[offsets[i]] === 0) {
+			selected[i] = 0;
+		}
+	}
+}
+
 // Length cap of the interval whose first pixel drew `u` (engine.md section 5.4).
 export function intervalCap(
 	scaledMaxLength: number,

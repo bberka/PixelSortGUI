@@ -269,7 +269,7 @@ describe('readProjectFile', () => {
 				...input,
 				project: {
 					...input.project,
-					stack: {...stackOf(unknown as never), schemaVersion: 2 as 1},
+					stack: {...stackOf(unknown as never), schemaVersion: 2},
 				},
 			}),
 			NAME,

@@ -1,0 +1,32 @@
+{
+	"input": "gradient-64x48",
+	"stack": {
+		"schemaVersion": 2,
+		"instances": [
+			{
+				"id": "mask0001",
+				"type": "channelSwap",
+				"version": 1,
+				"enabled": true,
+				"params": {
+					"order": "bgr"
+				},
+				"mix": 1,
+				"blend": "normal",
+				"mask": {
+					"kind": "image",
+					"invert": false,
+					"feather": 0,
+					"source": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+					"fit": "contain"
+				}
+			}
+		]
+	},
+	"scale": 1,
+	"extraSources": {
+		"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
+			"fixture": "alpha-32x32"
+		}
+	}
+}

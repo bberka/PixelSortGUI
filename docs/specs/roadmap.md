@@ -19,7 +19,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 - **One task, one worktree, one pull request.** Every task below is sized so one subagent can implement, test, and open a PR in a single session.
 - **Model tiers** follow [roster.md](../agents/roster.md): **GPT Luna** for light tasks and small-diff reviews; **Gemini 4 Neon (Antigravity, low or medium)** for standard and larger tasks; **Claude Fable (low or medium)** used sparingly only where `roster.md` justifies it (cross-cutting design, hardest engine work, or escalation after a Neon attempt fails), with the reason stated on the task; **deepseek-flash** for research and bulk reading. Every PR is reviewed by a different model from its author.
 - **Parallelism:** Tasks that share the same dependency prerequisite and touch disjoint areas are marked **Parallel with** so the lead agent can fan them out across separate worktrees.
-- **Verification:** Every task runs `vp run check` and `vp run build` once M0 lands, plus the task-specific verification listed below. UI tasks require screenshots in a desktop browser at `390 × 844`, `820 × 1180`, and `1440 × 900` (layout check only) in both Light and True Black themes, uploaded to the pull request.
+- **Verification:** Every task runs `vp run check` and `vp run build` once M0 lands, plus the task-specific verification listed below. UI tasks require screenshots in a desktop browser at `390 × 844`, `820 × 1180`, and `1440 × 900` (layout check only) in both Light and Black themes, uploaded to the pull request.
 
 ---
 
@@ -82,11 +82,11 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 
 ## Milestone 4: Design system, shell, library, import, and settings
 
-**Goal:** Build the visual foundation (Light and True Black themes), application shell, image import workflow, Library screen, and Settings / About dialogs.
+**Goal:** Build the visual foundation (Light and Black themes), application shell, image import workflow, Library screen, and Settings / About dialogs.
 
 | ID | Task | Spec sections | Depends on | Parallel with | Model tier | Verification |
 |---|---|---|---|---|---|---|
-| `T4.1` | Design tokens, zero-FOUC theme boot, and shadcn UI primitives: `src/styles/app.css`, `index.html` inline theme script, `src/components/ui/*` (`button`, `card`, `dialog`, `alert-dialog`, `dropdown-menu`, `input`, `label`, `popover`, `progress`, `scroll-area`, `select`, `separator`, `sheet`, `slider`, `sonner`, `switch`, `tabs`, `toggle-group`, `tooltip`, `badge`), theme toggle component. | `DESIGN.md §1–§5`, `product.md F14` | `T0.1`, `T0.4` | M2, M3 | Gemini 4 Neon (Antigravity, medium) | Playwright check: Light, True Black (`#000000`), and System themes switch cleanly; zero dark-frame flash on light reload; axe passes. |
+| `T4.1` | Design tokens, zero-FOUC theme boot, and shadcn UI primitives: `src/styles/app.css`, `index.html` inline theme script, `src/components/ui/*` (`button`, `card`, `dialog`, `alert-dialog`, `dropdown-menu`, `input`, `label`, `popover`, `progress`, `scroll-area`, `select`, `separator`, `sheet`, `slider`, `sonner`, `switch`, `tabs`, `toggle-group`, `tooltip`, `badge`), theme toggle component. | `DESIGN.md §1–§5`, `product.md F14` | `T0.1`, `T0.4` | M2, M3 | Gemini 4 Neon (Antigravity, medium) | Playwright check: Light, Black (`#000000`), and System themes switch cleanly; zero dark-frame flash on light reload; axe passes. |
 | `T4.2` | App shell, secure-context gate, startup integration, storage banner, and polite live region: `src/App.tsx`, route host, secure-context error screen, `Storage unavailable` banner, `role="status"` live region. | `persistence.md §7, §9`, `DESIGN.md §9, §10`, `product.md §4, F3, F16, F19` | `T3.4`, `T4.1` | none | Gemini 4 Neon (Antigravity, low) | Unit + Playwright tests for secure-context error, storage-unavailable banner, live region announcements, and deleted-project hash recovery; 3-viewport screenshots. |
 | `T4.3` | Image import flow and validation dialogs: `src/features/import/` (multi-file picker, desktop drag-and-drop overlay, EXIF-normalized dimension probe, 16,384 px / 200 MB rejection messages, > 50 MP `"Import at 50 MP"` / `"Import anyway"` dialog, `"Storage is full"` dialog). | `product.md §4, F1, F16`, `DESIGN.md §9` | `T3.2`, `T4.2` | `T4.4`, `T4.5` | Gemini 4 Neon (Antigravity, medium) | Playwright tests for AC-F1.1–AC-F1.7 and AC-F16.2 (multi-select, drop, invalid file, oversized, > 50 MP downscale, EXIF orientation 6, dedup); 3-viewport screenshots. |
 | `T4.4` | Library screen: `src/features/library/` (responsive 2/3/auto-fill card grid, empty state, `IntersectionObserver` lazy thumbnail decoding, card menu with Open/Rename/Duplicate/Delete + confirmation dialog, full keyboard navigation). | `product.md F2`, `DESIGN.md §6.1, §9` | `T4.2`, `T4.3` | `T4.5` | Gemini 4 Neon (Antigravity, medium) | Playwright tests for AC-F2.1–AC-F2.7 (including 100-project lazy scroll and keyboard-only card actions); 3-viewport × 2-theme screenshots. |
@@ -140,7 +140,7 @@ Status: settled for first release, 2026-11-24. Companion specs: [product.md](pro
 | `F11` | Compare (toggle/hold `\` & button, split view `S` & draggable/keyboard divider) | `T3.4`, `T5.2` | `T5.2`, `T6.3` |
 | `F12` | Export (native PNG/JPEG/probed WebP, quality, sizes, progress/cancel, Share, EXIF-free) | `T2.6`, `T3.1`, `T5.6` | `T2.6`, `T5.6`, `T6.3`, `T6.4` |
 | `F13` | Zoom and pan (fit, 100%, 10%–3200%, 60 fps zoom/pan, keyboard, 64 px clamp, >200% crisp) | `T5.1` | `T5.1`, `T6.3`, `T6.4` |
-| `F14` | Themes (Light, True Black `#000000`, System, zero-flash reload, contrast) | `T3.4`, `T4.1`, `T4.5` | `T4.1`, `T6.2`, `T6.3` |
+| `F14` | Themes (Light, Black `#000000`, System, zero-flash reload, contrast) | `T3.4`, `T4.1`, `T4.5` | `T4.1`, `T6.2`, `T6.3` |
 | `F15` | Offline and install (PWA precache, offline editing/export, update toast, install prompt) | `T6.1` | `S3`, `T6.1`, `T6.3`, `T6.4` |
 | `F16` | Storage status and warnings (usage/quota, full dialog, private browsing note, unavailable banner) | `T3.2`, `T4.2`, `T4.5` | `S3`, `T3.2`, `T4.2`, `T4.5`, `T6.4` |
 | `F18` | Responsive layouts (390/820/1440 layout check in desktop browser, target sizing, resize retention) | `T4.4`, `T5.7` | `T5.7`, `T6.2`, `T6.4` |

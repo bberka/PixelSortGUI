@@ -5,7 +5,6 @@ import {
 	ChevronRightIcon,
 	DownloadIcon,
 	ExternalLinkIcon,
-	FileTextIcon,
 	MonitorIcon,
 	MoonIcon,
 	ShieldCheckIcon,
@@ -19,10 +18,7 @@ import {
 	protectionMessage,
 	type ProtectionResult,
 } from './protection-feedback.ts';
-import {
-	THIRD_PARTY_NOTICES,
-	THIRD_PARTY_NOTICES_FILE,
-} from './third-party-notices.generated.ts';
+import {ThirdPartyNoticesDialog} from './third-party-notices-dialog.tsx';
 import {useAppStore} from '@/app/runtime-context.tsx';
 import {
 	EXPORT_BACKUP_LABEL,
@@ -52,7 +48,7 @@ const THEME_OPTIONS: ReadonlyArray<{
 }> = [
 	{value: 'system', label: 'System'},
 	{value: 'light', label: 'Light'},
-	{value: 'dark', label: 'True Black'},
+	{value: 'dark', label: 'Black'},
 ];
 
 /**
@@ -104,7 +100,6 @@ export function SettingsContent({
 	const promptInstall = usePwaStore((state) => state.promptInstall);
 
 	const [requestingPersistence, setRequestingPersistence] = useState(false);
-	const [noticesOpen, setNoticesOpen] = useState(false);
 	const [changelogOpen, setChangelogOpen] = useState(false);
 	const [protectionResult, setProtectionResult] =
 		useState<ProtectionResult | null>(null);
@@ -179,7 +174,6 @@ export function SettingsContent({
 
 	const usageText = formatStorageUsage(storage.estimate);
 	const versionLabel = getAppVersionLabel();
-	const licenceTextsHref = `/${THIRD_PARTY_NOTICES_FILE}`;
 
 	return (
 		<div className="flex flex-col gap-5 text-sm">
@@ -416,83 +410,7 @@ export function SettingsContent({
 					))}
 				</ul>
 
-				<div className="flex flex-col gap-2">
-					<div className="flex items-center justify-between gap-2">
-						<span className="text-foreground">
-							Third-party notices ({THIRD_PARTY_NOTICES.length})
-						</span>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							aria-expanded={noticesOpen}
-							aria-controls="settings-third-party-notices"
-							onClick={() => {
-								setNoticesOpen((previous) => !previous);
-							}}
-						>
-							{noticesOpen ? (
-								<ChevronDownIcon className="size-4" aria-hidden="true" />
-							) : (
-								<ChevronRightIcon className="size-4" aria-hidden="true" />
-							)}
-							<span>{noticesOpen ? 'Hide notices' : 'View notices'}</span>
-						</Button>
-					</div>
-					<a
-						href={licenceTextsHref}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1.5 self-start text-sm font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-					>
-						<FileTextIcon className="size-3.5 shrink-0" aria-hidden="true" />
-						<span>Full licence texts</span>
-					</a>
-					{noticesOpen ? (
-						<ScrollArea
-							id="settings-third-party-notices"
-							orientation="both"
-							tabStop={false}
-							className="max-h-56 rounded-md border border-border bg-secondary"
-						>
-							<ul className="flex flex-col divide-y divide-border">
-								{THIRD_PARTY_NOTICES.map((notice) => (
-									<li
-										key={notice.name}
-										className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
-									>
-										<div className="flex min-w-0 flex-col">
-											{notice.url ? (
-												<a
-													href={notice.url}
-													target="_blank"
-													rel="noopener noreferrer"
-													className="inline-flex min-h-6 pointer-coarse:min-h-11 items-center gap-1 truncate font-medium text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-												>
-													<span className="truncate">{notice.name}</span>
-													<ExternalLinkIcon
-														className="size-3 shrink-0"
-														aria-hidden="true"
-													/>
-												</a>
-											) : (
-												<span className="truncate font-medium text-foreground">
-													{notice.name}
-												</span>
-											)}
-											<span className="font-mono text-muted-foreground tabular-nums">
-												{notice.version}
-											</span>
-										</div>
-										<Badge variant="outline" className="shrink-0">
-											{notice.license}
-										</Badge>
-									</li>
-								))}
-							</ul>
-						</ScrollArea>
-					) : null}
-				</div>
+				<ThirdPartyNoticesDialog />
 
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center justify-between gap-2">

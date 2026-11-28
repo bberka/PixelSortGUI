@@ -93,8 +93,19 @@ afterEach(() => {
 	container = undefined;
 });
 
+async function openNoticesDialog() {
+	const trigger = [...document.querySelectorAll('button')].find((button) =>
+		button.textContent?.startsWith('Third-party notices ('),
+	)!;
+	act(() => {
+		trigger.click();
+	});
+	await flush();
+	return [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
+}
+
 describe('Settings view', () => {
-	it('switches theme via the store when selecting System, Light, and True Black', async () => {
+	it('switches theme via the store when selecting System, Light, and Black', async () => {
 		const context = createTestStore();
 		const storageManager: StorageManagerLike = {
 			estimate: async () => ({usage: 42_000_000, quota: 512_000_000}),
@@ -111,7 +122,7 @@ describe('Settings view', () => {
 			button.textContent?.includes('Light'),
 		);
 		const darkButton = [...dialog!.querySelectorAll('button')].find((button) =>
-			button.textContent?.includes('True Black'),
+			button.textContent?.includes('Black'),
 		);
 		expect(lightButton).toBeDefined();
 		expect(darkButton).toBeDefined();
@@ -364,23 +375,17 @@ describe('Settings view', () => {
 
 		expect(dialog.textContent).not.toContain('View licence');
 
-		const viewNoticesButton = [...dialog.querySelectorAll('button')].find(
-			(button) => button.textContent?.includes('View notices'),
-		)!;
-		act(() => {
-			viewNoticesButton.click();
-		});
-		await flush();
+		const noticesDialog = await openNoticesDialog();
 
 		expect(THIRD_PARTY_NOTICES.length).toBeGreaterThan(0);
 		for (const notice of THIRD_PARTY_NOTICES) {
-			expect(dialog.textContent).toContain(notice.name);
-			expect(dialog.textContent).toContain(notice.license);
+			expect(noticesDialog.textContent).toContain(notice.name);
+			expect(noticesDialog.textContent).toContain(notice.license);
 		}
 
-		const externalLinks = [
-			...dialog.querySelectorAll('a[href]:not([href^="#"])'),
-		];
+		const externalLinks = [dialog, noticesDialog].flatMap((element) => [
+			...element.querySelectorAll('a[href]:not([href^="#"])'),
+		]);
 		expect(externalLinks.length).toBeGreaterThan(0);
 		for (const link of externalLinks) {
 			expect(link.getAttribute('target')).toBe('_blank');
@@ -410,7 +415,7 @@ describe('Settings view', () => {
 		openSettingsDialog();
 		await flush();
 
-		const dialog = document.querySelector('[role="dialog"]')!;
+		const dialog = await openNoticesDialog();
 		const link = [...dialog.querySelectorAll('a')].find(
 			(anchor) => anchor.textContent === 'Full licence texts',
 		);

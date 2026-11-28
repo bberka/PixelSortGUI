@@ -311,9 +311,9 @@ The canvas supports fit-to-view, 100% (one image pixel per CSS pixel) and contin
 
 ### F14. Themes
 
-Two themes, light and true black (pure `#000000` background), plus "System" which follows the operating system setting. Default: System. The choice is made in Settings -> Appearance (the app bar has no theme button), applied before first paint on reload (no flash of the other theme). Tokens are in [DESIGN.md](../../DESIGN.md#2-themes-and-color-tokens).
+Two themes, Light and Black (pure `#000000` background), plus "System" which follows the operating system setting. Default: System. The choice is made in Settings -> Appearance (the app bar has no theme button), applied before first paint on reload (no flash of the other theme). Tokens are in [DESIGN.md](../../DESIGN.md#2-themes-and-color-tokens).
 
-- AC-F14.1: Switching the OS to dark mode while "System" is selected switches the app to the true black theme without a reload.
+- AC-F14.1: Switching the OS to dark mode while "System" is selected switches the app to the Black theme without a reload.
 - AC-F14.2: Reloading with the light theme selected on a dark OS shows no dark frame before the light theme appears (checked with a screen recording at 60 fps).
 - AC-F14.3: Every screen passes the automated contrast check (axe) in both themes.
 
@@ -458,6 +458,10 @@ Acceptance criteria:
 - AC-F24.1: Settings -> About includes a `"View changelog"` toggle that expands the bundled release notes offline without any network request.
 - AC-F24.2: The build reads `CHANGELOG.md` from the repository root so release notes stay in sync with tagged releases.
 
+Third-party notices (also Settings -> About, [DESIGN.md section 7](../../DESIGN.md)):
+
+- AC-F24.3: The `"Third-party notices (<count>)"` button opens a dialog that lists every bundled package with its version and licence and links the full licence texts. It scrolls inside the dialog without clipping or horizontal overflow at the three F18 viewports, and `Escape` or its close button returns to Settings with focus on the button.
+
 ### F25. Project files (save and open a single project)
 
 A user can save any single project to disk as a self-contained `.glproj` file (a standard ZIP archive) and open it again later on any device or browser without uploading anything. The archive holds the untouched original source bytes (plus any secondary images referenced by `F26`), its SHA-256 hash, project metadata (name, created/modified/opened timestamps, source dimensions and MIME type), the geometry transform (`F20`), the effect stack, export settings, view state, optional undo history (default included), and an optional preview thumbnail. Format details and validation rules are in [persistence.md section 8.3](persistence.md#83-project-file-format-f25).
@@ -496,8 +500,8 @@ Export all browser data (projects, user presets, and app settings) or a chosen s
 
 Acceptance criteria:
 
-- AC-F17.1: Exporting a full backup of 3 projects (2 sharing the same source image), 2 user presets, and True Black theme produces a `.zip` containing `manifest.json`, `presets.json`, `settings.json`, 3 `projects/<id>/project.json` entries, and only 2 deduplicated `sources/<sha256>.<ext>` entries.
-- AC-F17.2: Importing that backup on a fresh browser profile shows all 3 projects, 2 presets, and settings pre-checked in the preview dialog; unchecking 1 project and importing restores only the 2 checked projects, the 2 presets, and the True Black theme.
+- AC-F17.1: Exporting a full backup of 3 projects (2 sharing the same source image), 2 user presets, and Black theme produces a `.zip` containing `manifest.json`, `presets.json`, `settings.json`, 3 `projects/<id>/project.json` entries, and only 2 deduplicated `sources/<sha256>.<ext>` entries.
+- AC-F17.2: Importing that backup on a fresh browser profile shows all 3 projects, 2 presets, and settings pre-checked in the preview dialog; unchecking 1 project and importing restores only the 2 checked projects, the 2 presets, and the Black theme.
 - AC-F17.3: Re-importing the same backup in Merge mode marks all 3 projects `"Unchanged"` and skips them without creating duplicates; modifying 1 project locally and re-importing marks it `"Modified locally"` and imports it as `"<name> (imported)"` without overwriting the local edit.
 - AC-F17.4: Importing in Replace mode prompts for confirmation, replaces all local projects and presets with the selected backup items, and deletes orphaned source blobs afterwards.
 - AC-F17.5: Cancelling a backup export or import stops within 1 s and leaves IndexedDB unchanged.
@@ -671,7 +675,7 @@ Acceptance criteria:
 - AC-F29.16: A `.glproj` and a backup of a masked project restore the same pixels and the same undo steps on a fresh profile; a changed or missing mask entry writes nothing and shows the message of persistence.md section 8.6. A project without masks still saves as format version 1.
 - AC-F29.17: A 4000 × 3000 px project upgraded from database version 3 opens with the same pixels and history. Two exports of a masked project are pixel-identical.
 - AC-F29.18: On the reference laptop with a 12 MP photo and the default brush, the overlay follows the pointer with p95 under 50 ms, no main-thread task over 50 ms occurs while painting, and the preview shows a finished stroke within 500 ms (p95).
-- AC-F29.19: At `390 × 844`, `820 × 1180` and `1440 × 900`, in Light and True Black, the mask controls and brush toolbar are reachable without horizontal scroll, targets are at least `44 × 44 px` on a coarse pointer, the phone canvas keeps at least `50%` of the height with one control shown, and axe reports no violations.
+- AC-F29.19: At `390 × 844`, `820 × 1180` and `1440 × 900`, in Light and Black, the mask controls and brush toolbar are reachable without horizontal scroll, targets are at least `44 × 44 px` on a coarse pointer, the phone canvas keeps at least `50%` of the height with one control shown, and axe reports no violations.
 - AC-F29.20: While the brush is on or a masked project is edited, the app makes no network request.
 
 ### F30. Paste image from clipboard
@@ -723,7 +727,7 @@ Acceptance criteria:
 - AC-F31.5: Switching or closing projects, entering crop mode, or running Undo / Redo / History jump clears the pinned history comparison cleanly.
 - AC-F31.6: Pinning a history entry whose `transform` differs from the current `transform` (for example before a 90° rotation or crop) renders the pinned snapshot with its own transform contain-fitted and centered inside the current image bounds without stretching in both Split and toggle Compare views.
 - AC-F31.7: Pinning a redo-branch entry and then making a new commit (which discards redo entries) automatically clears the pinned comparison without errors.
-- AC-F31.8: The `"Compare with this"` action and canvas exit control are operable by keyboard alone, meet the `44 × 44 px` coarse-pointer target rule, lay out without horizontal overflow at `390 × 844`, `820 × 1180`, and `1440 × 900`, and pass axe in both Light and True Black themes.
+- AC-F31.8: The `"Compare with this"` action and canvas exit control are operable by keyboard alone, meet the `44 × 44 px` coarse-pointer target rule, lay out without horizontal overflow at `390 × 844`, `820 × 1180`, and `1440 × 900`, and pass axe in both Light and Black themes.
 
 ## 7. Later (beyond v0.2.0)
 

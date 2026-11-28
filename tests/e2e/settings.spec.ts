@@ -14,6 +14,15 @@ async function openSettings(page: Page) {
 	return dialog;
 }
 
+async function openNotices(page: Page) {
+	await page
+		.getByRole('button', {name: /^Third-party notices \(\d+\)$/})
+		.click();
+	const dialog = page.getByRole('dialog', {name: 'Third-party notices'});
+	await expect(dialog).toBeVisible();
+	return dialog;
+}
+
 test.describe('Settings, storage status, and About', () => {
 	test('AC-F14 & AC-F16.1: opens from Library and Editor, switches theme, shows usage, persistence, and About notices', async ({
 		page,
@@ -58,7 +67,7 @@ test.describe('Settings, storage status, and About', () => {
 		// Theme switching in Settings updates html[data-theme]
 		await dialog.getByRole('radio', {name: 'Light'}).click();
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-		await dialog.getByRole('radio', {name: 'True Black'}).click();
+		await dialog.getByRole('radio', {name: 'Black'}).click();
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
 		// About: product name, ASDFPixelSort credit, MIT licence, third-party notices
@@ -75,13 +84,17 @@ test.describe('Settings, storage status, and About', () => {
 			dialog.getByRole('link', {name: /Licence \(MIT\)/}),
 		).toBeVisible();
 
-		await dialog.getByRole('button', {name: 'View notices'}).click();
-		const noticesList = dialog.locator('#settings-third-party-notices');
-		await expect(noticesList).toBeVisible();
+		const notices = await openNotices(page);
+		const noticesList = notices.getByTestId('third-party-notices');
 		await expect(noticesList.getByText('react', {exact: true})).toBeVisible();
-		await expect(noticesList.getByText('zustand', {exact: true})).toBeVisible();
+		await expect(
+			noticesList.getByText('zustand', {exact: true}),
+		).toBeAttached();
 
-		// Close with Escape
+		// Escape closes only the notices dialog, then Settings
+		await page.keyboard.press('Escape');
+		await expect(notices).toBeHidden();
+		await expect(dialog).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(dialog).toBeHidden();
 
@@ -100,17 +113,14 @@ test.describe('Settings, storage status, and About', () => {
 		page,
 	}) => {
 		await page.goto('/');
-		const dialog = await openSettings(page);
-
-		await dialog.getByRole('button', {name: 'View notices'}).click();
-		const noticesList = dialog.locator('#settings-third-party-notices');
-		await expect(noticesList).toBeVisible();
+		await openSettings(page);
+		const dialog = await openNotices(page);
 		// A locator call that reads many of these items crashes Playwright's
 		// Firefox page (Page crashed), so read the names in one page evaluation.
 		const names = await page.evaluate(() =>
 			[
 				...globalThis.document.querySelectorAll(
-					'#settings-third-party-notices li > div > :first-child',
+					'[data-testid="third-party-notices"] li > div > :first-child',
 				),
 			].map((element) => element.textContent?.trim() ?? ''),
 		);
@@ -142,6 +152,70 @@ test.describe('Settings, storage status, and About', () => {
 			'Permission is hereby granted',
 		);
 	});
+
+	for (const theme of ['light', 'dark'] as const) {
+		for (const viewport of PROOF_VIEWPORTS) {
+			test(`@a11y AC-F24.3: notices dialog fits and returns focus in ${theme} theme at ${viewport.width}x${viewport.height}`, async ({
+				page,
+			}) => {
+				await page.addInitScript((selectedTheme) => {
+					globalThis.localStorage.setItem('drift:theme', selectedTheme);
+				}, theme);
+				await page.setViewportSize({
+					width: viewport.width,
+					height: viewport.height,
+				});
+				await page.goto('/');
+				const settings = await openSettings(page);
+				const trigger = settings.getByRole('button', {
+					name: /^Third-party notices/,
+				});
+
+				const notices = await openNotices(page);
+				await expect(notices).toHaveAccessibleDescription(
+					'Open-source packages bundled with Drift, with their versions and licences.',
+				);
+				const link = notices.getByRole('link', {name: 'Full licence texts'});
+				await expect(link).toBeInViewport({ratio: 1});
+				await expect(
+					notices.getByRole('button', {name: 'Close'}),
+				).toBeInViewport({ratio: 1});
+				// The open animation scales the dialog, so wait for its final box.
+				await notices.evaluate(async (element) => {
+					await Promise.all(
+						element.getAnimations().map(async (item) => item.finished),
+					);
+				});
+				await expect(notices).toBeInViewport({ratio: 1});
+				const clipped = await notices.evaluate((element) =>
+					[element, ...element.querySelectorAll('*')]
+						.filter(
+							(node) =>
+								node.getBoundingClientRect().right >
+								element.getBoundingClientRect().right + 0.5,
+						)
+						.map((node) => node.outerHTML.slice(0, 80)),
+				);
+				expect(clipped).toEqual([]);
+
+				// The last row is reachable by scrolling the list.
+				const lastRow = notices.getByRole('listitem').last();
+				await lastRow.scrollIntoViewIfNeeded();
+				await expect(lastRow).toBeInViewport({ratio: 1});
+				await assertNoA11yViolations(page);
+
+				await page.keyboard.press('Escape');
+				await expect(notices).toBeHidden();
+				await expect(trigger).toBeFocused();
+
+				await trigger.press('Enter');
+				await notices.getByRole('button', {name: 'Close'}).click();
+				await expect(notices).toBeHidden();
+				await expect(settings).toBeVisible();
+				await expect(trigger).toBeFocused();
+			});
+		}
+	}
 
 	// The service worker precaches lazy chunks in the background after load.
 	// Blocking it leaves only the requests the page itself makes.

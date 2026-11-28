@@ -27,7 +27,7 @@ When you copy:
 1. Copy only parts whose implementation is non-obvious. Write simple parts yourself.
 2. Add the project's copyright line and the full MIT permission text to `THIRD-PARTY-NOTICES.md` at the repository root (create it with the first copy). Record which project and which part.
 3. Say in the pull request and in the effect's spec (Provenance) what was copied.
-4. A hosted web app ships its code to users, so the notices must also be reachable from the app. Settings → About links "Full licence texts", the same-origin file `THIRD-PARTY-NOTICES.txt` in the build output.
+4. A hosted web app ships its code to users, so the notices must also be reachable from the app. The notices dialog links "Full licence texts", the same-origin file `THIRD-PARTY-NOTICES.txt` in the build output.
 5. Do not imply the original author endorses this project.
 
 ## May only learn from (never copy)

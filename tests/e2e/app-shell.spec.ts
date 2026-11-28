@@ -211,10 +211,7 @@ test('the Settings theme selector changes the theme and survives a reload', asyn
 		}));
 
 	await page.getByRole('button', {name: 'Settings'}).click();
-	await page
-		.getByRole('dialog')
-		.getByRole('radio', {name: 'True Black'})
-		.click();
+	await page.getByRole('dialog').getByRole('radio', {name: 'Black'}).click();
 	await expect.poll(readTheme).toEqual({
 		stored: 'dark',
 		attr: 'dark',

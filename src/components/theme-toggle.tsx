@@ -12,7 +12,7 @@ const THEME_OPTIONS: ReadonlyArray<{
 }> = [
 	{value: 'system', label: 'System'},
 	{value: 'light', label: 'Light'},
-	{value: 'dark', label: 'True Black'},
+	{value: 'dark', label: 'Black'},
 ];
 
 function ThemeIcon({theme}: {readonly theme: ThemePreference}) {

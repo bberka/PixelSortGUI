@@ -28,7 +28,7 @@ Rules every screen follows:
 
 ## 2. Themes and color tokens
 
-Two explicit themes: **Light** and **True Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with the selector in Settings (the app bar has no theme button).
+Two explicit themes: **Light** and **Black** (pure `#000000` background for OLED clarity and zero colour cast around photos), plus **System** (follows `prefers-color-scheme`, default), with the selector in Settings (the app bar has no theme button).
 
 ### 2.1 Activation and zero-flash boot
 
@@ -40,7 +40,7 @@ Two explicit themes: **Light** and **True Black** (pure `#000000` background for
 
 Defined as space-separated RGB triples in `src/styles/app.css` and exposed through Tailwind 4 `@theme` (`--color-background: rgb(var(--background))`). Every foreground/background pair meets WCAG 2.2 AA (≥ 4.5:1 for normal text, ≥ 3:1 for large text and UI components).
 
-| Token | Light (`hex` / RGB) | True Black (`hex` / RGB) | Role |
+| Token | Light (`hex` / RGB) | Black (`hex` / RGB) | Role |
 |---|---|---|---|
 | `--background` | `#fafafa` / `250 250 250` | `#000000` / `0 0 0` | App shell, Library background, Editor chrome base |
 | `--canvas-stage` | `#e4e4e7` / `228 228 231` | `#000000` / `0 0 0` | Viewport behind the photo canvas |
@@ -99,7 +99,7 @@ System stacks only (zero network requests):
 - **Interactive target minimums:**
   - Coarse pointer (`@media (pointer: coarse)` or phone/tablet viewport class): `44 × 44 CSS px` minimum hit area for every button, slider thumb, toggle, chip, menu trigger, menu and select item, text and numeric input, dialog close button, and Settings link.
   - Desktop (`@media (pointer: fine)` and desktop class): `24 × 24 CSS px` minimum (`32 px` standard toolbar buttons).
-- **Elevation:** Flat hierarchy using `1 px solid rgb(var(--border))` and `--background` → `--card` → `--popover` steps. Only overlays (`Dialog`, `Popover`, `DropdownMenu`, `Sheet`) carry a subtle shadow in Light mode (`0 8px 24px rgb(0 0 0 / 0.10)`); in True Black mode they rely on a crisp `1 px solid rgb(var(--input))` border instead of diffuse shadow.
+- **Elevation:** Flat hierarchy using `1 px solid rgb(var(--border))` and `--background` → `--card` → `--popover` steps. Only overlays (`Dialog`, `Popover`, `DropdownMenu`, `Sheet`) carry a subtle shadow in Light mode (`0 8px 24px rgb(0 0 0 / 0.10)`); in Black mode they rely on a crisp `1 px solid rgb(var(--input))` border instead of diffuse shadow.
 
 ## 5. Controls and shadcn component mapping
 
@@ -136,7 +136,7 @@ All numeric, integer, range, Mix, and Export quality sliders use `Slider` (`src/
 - **Touch scrolling:** under `@media (pointer: coarse)` the row is `44 px` tall and allows vertical panning (`touch-action: pan-y`). A swipe up or down that starts on a slider scrolls the panel and changes nothing; a sideways drag moves the slider.
 
 - **Dimensions and radii:** `32 px` (`h-8`) interactive row height; `10 px` (`h-2.5`, `4 px` radius) thick track; `12 × 24 px` (`4 px` radius) rectangular studio-fader grip centered inside a `24 × 28 px` pointer target (`44 × 44 px` under `@media (pointer: coarse)`).
-- **Tokens and contrast:** Unfilled track uses `bg-muted` with `1 px solid` `border-input`; filled range uses `bg-accent` (≥ 4.6:1 against `bg-muted` in both Light and True Black themes). The grip uses `bg-card` with a `2 px` `border-foreground` frame and a `2 × 12 px` `bg-foreground` centre notch (`border-accent` on hover). End ticks at `0%` and `100%` use `bg-input`; the default-value tick uses `bg-foreground`. Focus renders `2 px solid` `outline-ring` with `2 px` offset. Disabled state reduces opacity to `50%` and blocks pointer events.
+- **Tokens and contrast:** Unfilled track uses `bg-muted` with `1 px solid` `border-input`; filled range uses `bg-accent` (≥ 4.6:1 against `bg-muted` in both Light and Black themes). The grip uses `bg-card` with a `2 px` `border-foreground` frame and a `2 × 12 px` `bg-foreground` centre notch (`border-accent` on hover). End ticks at `0%` and `100%` use `bg-input`; the default-value tick uses `bg-foreground`. Focus renders `2 px solid` `outline-ring` with `2 px` offset. Disabled state reduces opacity to `50%` and blocks pointer events.
 - **Range form:** Two-thumb sliders render a filled `bg-accent` band between two identical rectangular grips that cannot cross (`minStepsBetweenThumbs={0}`).
 - **Alternative variants** (selectable via the `variant` prop or `DEFAULT_SLIDER_VARIANT`):
   - **`fill-bar`:** `32 px` tall scrubby fill bar (`rounded-md`, `border-input`, `bg-muted` track, full-height `bg-accent` fill, vertical bar grip, default-value tick).
@@ -185,10 +185,10 @@ One component, `ScrollArea` in `src/components/ui/scroll-area.tsx` (Radix `Scrol
 - **Plain thumb.** No arrow buttons, no track background, no border: a rounded thumb only. The track is `transparent`.
 - **Thickness.** The thumb is `4 px` at rest. While the pointer is on the scrollbar strip, or the thumb is being dragged, it widens to `8 px` over `150 ms`, and returns to `4 px` when the pointer leaves and the drag ends. With `prefers-reduced-motion: reduce` there is no transition.
 - **Grab target.** The transparent strip is `12 px` wide, so the thin thumb is as easy to grab as a wide one.
-- **Colour.** The thumb is `--muted-foreground`: at least `7:1` on `--background`, `--card`, `--popover` and `--secondary` in Light, and at least `6.9:1` on the same surfaces in True Black (`#000000`). Both exceed the `3:1` needed for UI components.
+- **Colour.** The thumb is `--muted-foreground`: at least `7:1` on `--background`, `--card`, `--popover` and `--secondary` in Light, and at least `6.9:1` on the same surfaces in Black (`#000000`). Both exceed the `3:1` needed for UI components.
 - **Idle.** The bar is invisible while the area is idle and fades in (`150 ms`) while the pointer is over the area, while focus is inside it, while it scrolls (and for `800 ms` after), and during a drag.
 - **Unchanged behaviour.** Wheel, touch, keyboard scrolling and focus work as before. The viewport is an explicit tab stop (`tabIndex=0`) in the parameter panel, the Settings panel and the gallery, as before. Regions that were plain `overflow` elements keep the browser's own rule (`tabStop={false}`), so no tab stop is added.
-- **Regions.** Parameter panel (and the phone parameter row, which scrolls horizontally), effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body and third-party notices, export sheet body, backup dialog bodies, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
+- **Regions.** Parameter panel (and the phone parameter row, which scrolls horizontally), effect stack (both axes: the phone strip scrolls horizontally), library grid, Settings body, third-party notices dialog list, export sheet body, backup dialog bodies, and the dev gallery page. Radix `Select` and `DropdownMenu` lists scroll natively and are the exception, because their positioning needs Radix's own viewport.
 
 ## 6. Layout
 
@@ -328,10 +328,11 @@ One control (default)             All controls
   - Filename: text `Input` prefilled `<project name>-<YYYYMMDD-HHmmss>.<ext>`.
   - Actions: `"Download"` primary button, `"Share"` secondary button (shown only when `navigator.canShare?.({files: [...]})` is true), and during export a `Progress` bar with stage label (`Decoding`, `Rendering`, `Encoding`) and `"Cancel"` button (AC-F12.4).
 - **Settings and About (F14, F15, F16):**
-  - Appearance: Theme `ToggleGroup` (`System`, `Light`, `True Black`).
+  - Appearance: Theme `ToggleGroup` (`System`, `Light`, `Black`).
   - Storage: `"Using <used> of <quota>"` (AC-F16.1), persistence status + `"Request protection"` button, the result message of a request as small body text in a polite live region under the button ([persistence.md section 7.3](docs/specs/persistence.md#73-requesting-persistent-storage)), and a short muted note, worded as a condition, that a private window does not retain data after closing.
   - App installation: `"Install app"` button when `beforeinstallprompt` is captured (desktop Chromium).
-  - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and `"Third-party notices"` expandable section listing each bundled package with its version and licence, and a `"Full licence texts"` link to the same-origin file `THIRD-PARTY-NOTICES.txt` (no licence text in the app's JavaScript).
+  - About: App version, credit line `"Pixel sorting lineage: inspired by Kim Asendorf's ASDFPixelSort."` (licensing.md), and an outline `"Third-party notices (<count>)"` button (`FileText`) that opens the notices dialog.
+  - Third-party notices dialog: a `Dialog` at every viewport class, stacked over Settings, titled `"Third-party notices"` with the description `"Open-source packages bundled with Drift, with their versions and licences."`. At most `85dvh` tall. The header and footer stay in place and only the list between them scrolls, vertically. Each row shows the package name (a link where it has a URL), version and a licence `Badge`; long names wrap. The footer holds the `"Full licence texts"` link to the same-origin file `THIRD-PARTY-NOTICES.txt` (no licence text in the app's JavaScript). `Escape` or the close button closes only this dialog and returns focus to its button.
 
 ### 7.1 On-canvas tool slot
 
@@ -365,7 +366,7 @@ The slot for interactive canvas tools, so they plug in without changing the thre
   - **Split side switcher:** Hidden while a history step is pinned, because side A displays the read-only history snapshot rather than `stackA`.
   - **Different geometry:** When the pinned step's `transform` yields different effective dimensions from the current edit, its snapshot is uniformly contain-fitted and centered inside the current image rectangle without stretching.
 - **App changelog (F24):**
-  - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below `"Third-party notices"`, using the same collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
+  - Placed in Settings -> About (`src/features/settings/settings-content.tsx`) directly below the `"Third-party notices (<count>)"` button, using a collapsible pattern (`"Changelog"` + `"View changelog"` / `"Hide changelog"` button with `aria-expanded` and `aria-controls`), rendering the bundled `CHANGELOG.md` text in a scrollable container.
 - **Project files (F25):**
   - **Library card menu (`src/features/library/project-card.tsx`):** Add `"Save project file"` (`Download` or `Archive` icon) below `"Duplicate"` and above the separator before `"Delete"`.
   - **Editor (`src/features/toolbar/editor-toolbar.tsx` / phone overflow):** on desktop and tablet a ghost icon button (`Archive`, `aria-label` and tooltip `"Save project file"`) follows Presets in the editor toolbar. On a phone, portrait and landscape, the seven toolbar buttons stay as they are and the action is the menu item in the app bar overflow (`⋮`, section 6.4). The action has no keyboard shortcut.
@@ -433,7 +434,7 @@ Guide screen:
 
 ### 7.4 Masks and the brush (F29)
 
-**Tokens.** `--mask-overlay` is `#ff2d55` in both themes, because it is drawn over the photo; the "Show mask" opacity sets its alpha. All controls use the semantic tokens of section 2.2, so Light and True Black need nothing else.
+**Tokens.** `--mask-overlay` is `#ff2d55` in both themes, because it is drawn over the photo; the "Show mask" opacity sets its alpha. All controls use the semantic tokens of section 2.2, so Light and Black need nothing else.
 
 **Mask group** (`src/features/masks/`), in the parameter panel below Blend & Mix, headed `"Mask"`:
 
@@ -577,4 +578,4 @@ Target: **WCAG 2.2 Level AA** for all UI outside the user's photo (F19).
 - **Status announcements (AC-F19.3):** One visually hidden live region (`role="status" aria-live="polite" aria-atomic="true"`) announces `"Rendering"`, `"Rendered"`, `"Export finished: <file name>"`, and undo/redo results. Throttled so rapid `drag` renders do not spam assistive tech (announce on `settle` and `full` transitions).
 - **Pointer and coarse-pointer sizing:** Minimum `24 × 24 CSS px` interactive targets on desktop (`@media (pointer: fine)`), and minimum `44 × 44 CSS px` targets plus `16 px` font size on text/numeric inputs under `@media (pointer: coarse)` so responsive layouts stay ready for touch devices. A checkbox is drawn `16 px` and gets its target from a label that wraps it and spans its row (`CheckRow`).
 - **Reduced motion (AC-F19.4):** Under `@media (prefers-reduced-motion: reduce)`, all sheet transitions, toast slides, zoom easing, and spinner/progress animations become instant state updates (`transition-duration: 0.01ms`).
-- **Automated verification (AC-F14.3, AC-F19.2):** CI runs Playwright with `@axe-core/playwright` checking zero serious/critical/moderate WCAG 2.2 AA violations on the Library, Editor, Export dialog, Settings, and Guide screens in both Light and True Black themes at `390 × 844`, `820 × 1180`, and `1440 × 900`.
+- **Automated verification (AC-F14.3, AC-F19.2):** CI runs Playwright with `@axe-core/playwright` checking zero serious/critical/moderate WCAG 2.2 AA violations on the Library, Editor, Export dialog, Settings, and Guide screens in both Light and Black themes at `390 × 844`, `820 × 1180`, and `1440 × 900`.

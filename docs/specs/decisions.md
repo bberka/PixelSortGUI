@@ -115,7 +115,7 @@ Status: settled for first release (one optional tooling question remains open), 
 
 ### D14. Themes (formerly Q1, settled 2026-11-24)
 
-- **Choice:** Two themes — **Light** (`#fafafa`) and **True Black** (`#000000`) — defaulting to **System** (`prefers-color-scheme`), with the selector in Settings (`F14`, `DESIGN.md` section 2).
+- **Choice:** Two themes — **Light** (`#fafafa`) and **Black** (`#000000`, labelled "True Black" until D51) — defaulting to **System** (`prefers-color-scheme`), with the selector in Settings (`F14`, `DESIGN.md` section 2).
 
 ### D15. Project licence (formerly Q2, settled 2026-11-24)
 
@@ -363,6 +363,11 @@ Status: settled for first release (one optional tooling question remains open), 
 - **Choice:** Option (b) for both, bumping `pixelSort` to `version: 2` with `migrations[1]` filling `channelMode: 'rgba'` and `intervalTransform: 'none'` (`engine.md` section 5).
 - **Reason:** One `channelMode` enum has no invalid/dead state, renders cleanly as a single dropdown across all viewport widths, keeps `rgba` defaults 100% byte-identical to v1, and makes `rgb` equal the exact channel-wise composition of `r`, `g` and `b` with input alpha. Bijective integer formulas preserve every channel's multiset for `fill: 'sort'`, avoid floating-point divergence across JS engines, and keep `mirror` (centre peak) and `fold` (centre valley) visually distinct. Providing `migrations[1]` upgrades v1 instances without emitting a `params-fixed` warning.
 - **Revisit if:** Users ask to sort a single channel by a different pixel key (such as sorting red by hue) or to pass a custom splice offset.
+
+### D51. "Black" theme label and a notices dialog (2026-11-28)
+
+- **Choice:** The dark theme is labelled **Black**; the stored value stays `dark`, so saved preferences carry over. Settings -> About opens the third-party notices in their own dialog instead of expanding them inline.
+- **Why:** The inline list was cut off because it did not fit inside Settings.
 
 ---
 

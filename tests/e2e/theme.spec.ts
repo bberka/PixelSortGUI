@@ -50,14 +50,14 @@ for (const theme of THEMES) {
 	}
 }
 
-test('theme selection persists across reloads and True Black computes to rgb(0, 0, 0)', async ({
+test('theme selection persists across reloads and Black computes to rgb(0, 0, 0)', async ({
 	page,
 }) => {
 	await page.emulateMedia({colorScheme: 'light'});
 	await page.goto(GALLERY_PATH);
 
 	const themeGroup = page.getByRole('radiogroup', {name: 'Theme'}).first();
-	await themeGroup.getByRole('radio', {name: 'True Black'}).click();
+	await themeGroup.getByRole('radio', {name: 'Black'}).click();
 
 	await expect
 		.poll(() =>
@@ -146,7 +146,7 @@ test('System theme follows emulated OS colour scheme changes without reload', as
 		.toBe(LIGHT_BG);
 });
 
-test('reloading Light on dark OS and True Black on light OS applies theme before DOMContentLoaded', async ({
+test('reloading Light on dark OS and Black on light OS applies theme before DOMContentLoaded', async ({
 	page,
 }) => {
 	for (const scenario of [

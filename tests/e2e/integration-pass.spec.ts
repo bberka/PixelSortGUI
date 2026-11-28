@@ -62,8 +62,12 @@ test.describe('integration pass: database reload banner and Settings/About links
 			await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
 		}
 
-		await dialog.getByRole('button', {name: /View notices/}).click();
-		await expect(dialog.locator('#settings-third-party-notices')).toBeVisible();
+		await dialog.getByRole('button', {name: /^Third-party notices/}).click();
+		await expect(
+			page
+				.getByRole('dialog', {name: 'Third-party notices'})
+				.getByTestId('third-party-notices'),
+		).toBeVisible();
 
 		expect(externalRequests).toEqual([]);
 	});
